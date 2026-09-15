@@ -1,49 +1,45 @@
-# OpenGenesisLINK – Entwicklungsbasis
+# OpenGenesisLINK Server
 
-> **OpenGenesisLINK** ist eine eigenständige, moderne Plattform für föderierte virtuelle Welten.
+OpenGenesisLINK is an independent C++23 server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Dieses Paket beschreibt den finalisierten Konzeptstand für die langfristige Neuentwicklung von OpenGenesisLINK.
+Current development version: **0.2.0-dev**.
 
-Wichtig: **NexVerse ist nicht die Plattform selbst**, sondern eine konkrete virtuelle Welt, die später auf OpenGenesisLINK betrieben werden kann.
+## What already runs
 
-## Zielhorizont
+- Core and World Node processes
+- binary OGL foundation framing over TCP
+- persistent World Node and Region registries
+- generation-based reconnect sessions
+- node leases and stale-node handling
+- region registration and lifecycle
+- live Region Runtime with dedicated tick loop
+- entity/avatar foundation
+- first native OpenGenesis Physics kernel
+- region runtime metrics streamed to the Core
+- HTTP health/status API
+- automatic World Node reconnect after Core restart
+- Debug and Release tests
 
-Geplant ist eine Entwicklung über etwa **24 Monate inklusive intensiver Testphasen**.
+## Build
 
-## Kernziele
-
-- vollständig eigene Plattformarchitektur
-- klare Trennung von Core, World Nodes und externen Diensten
-- eigene Physik-Engine
-- eigenes Federation-Protokoll
-- OpenSimulator-Hypergrid-Kompatibilität über Bridge
-- globales Atlas-/Map-System
-- eigenes, einfaches Addon-System
-- eigener nativer Viewer
-- Legacy-Viewer-Kompatibilität als Übergang
-- modulare Datenhaltung
-- saubere, verständliche Konfiguration
-- offene, dokumentierbare Schnittstellen
-
-## Leitprinzipien
-
-1. OpenGenesisLINK darf intern nicht von OpenSimulator abhängig sein.
-2. Legacy-Kompatibilität ist immer ein Adapter.
-3. Konfiguration muss verständlich und zentral organisiert sein.
-4. Addons sollen auch für Anfänger einfach entwickelbar sein.
-5. Federation muss sicher, versioniert und dokumentiert sein.
-6. Die globale Karte darf nur ausdrücklich veröffentlichte Regionen zeigen.
-7. Physik soll als eigenständige Engine und klarer Subsystem-Vertrag entwickelt werden.
-
-## Technische Basis
-
-OpenGenesisLINK wird nativ in **C++23** entwickelt. Die erste Foundation-Implementierung ist Bestandteil dieses Pakets und enthält bereits einen kompilierbaren Core, World Node, OGL-Wire-Foundation-Handshake, Registry, Konfiguration und Tests.
-
-Schnellstart:
+Requirements: Linux, CMake >= 3.25, Ninja, a C++23 compiler and pthreads.
 
 ```bash
 ./scripts/build.sh
+```
+
+Run an end-to-end recovery test:
+
+```bash
 ./scripts/smoke-test.sh
 ```
 
-Details: `19-CXX23-TECHNIKBASIS.md`, `20-IMPLEMENTIERUNGSSTAND.md` und `docs/OGL-WIRE-FOUNDATION-v0.md`.
+The default status endpoint is `http://127.0.0.1:18080/v1/status`.
+
+## Supported architecture targets
+
+OpenGenesisLINK is developed without intentional x86-only dependencies. The primary targets are x86_64 and ARM64/aarch64.
+
+## License
+
+Mozilla Public License 2.0 (MPL-2.0). See `LICENSE`.

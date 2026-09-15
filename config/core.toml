@@ -1,0 +1,14 @@
+[network]
+listen_address = "127.0.0.1"
+port = 19000
+
+[admin]
+listen_address = "127.0.0.1"
+port = 18080
+
+[lease]
+timeout_seconds = 15
+
+[storage]
+worlds = "data/worlds.db"
+regions = "data/regions.db"

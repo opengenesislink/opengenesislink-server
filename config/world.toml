@@ -1,0 +1,23 @@
+[node]
+id = "world-01"
+name = "OpenGenesis World 01"
+
+[network]
+public_endpoint = "127.0.0.1:19100"
+
+[core]
+endpoint = "127.0.0.1:19000"
+reconnect_seconds = 2
+lease_seconds = 5
+
+[runtime]
+tick_hz = 45.0
+
+[regions]
+count = 1
+
+[region0]
+id = "genesis-central"
+name = "Genesis Central"
+grid_x = 1000
+grid_y = 1000
