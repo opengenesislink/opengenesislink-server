@@ -59,10 +59,10 @@ void receive_all(const int fd, const std::span<std::byte> data) {
 }
 
 std::uint32_t read_payload_size(const std::array<std::byte, protocol::kHeaderSize>& header) {
-    return (std::to_integer<std::uint32_t>(header[8]) << 24U) |
-           (std::to_integer<std::uint32_t>(header[9]) << 16U) |
-           (std::to_integer<std::uint32_t>(header[10]) << 8U) |
-           std::to_integer<std::uint32_t>(header[11]);
+    return (std::to_integer<std::uint32_t>(header[12]) << 24U) |
+           (std::to_integer<std::uint32_t>(header[13]) << 16U) |
+           (std::to_integer<std::uint32_t>(header[14]) << 8U) |
+           std::to_integer<std::uint32_t>(header[15]);
 }
 
 } // namespace
