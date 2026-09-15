@@ -5,11 +5,74 @@ cd "$ROOT"
 rm -rf data
 cmake --preset dev >/dev/null
 cmake --build --preset dev >/dev/null
-./build/dev/opengenesis-core config/core.toml > /tmp/ogl-core.log 2>&1 & CORE=$!
+
+read -r CORE_PORT ADMIN_PORT SCENE_PORT < <(python3 - <<'PY'
+import socket
+ports=[]
+for _ in range(3):
+    s=socket.socket(socket.AF_INET,socket.SOCK_STREAM)
+    s.bind(('127.0.0.1',0))
+    ports.append(s.getsockname()[1])
+    s.close()
+print(*ports)
+PY
+)
+export CORE_PORT ADMIN_PORT SCENE_PORT
+
+CORE_CFG=/tmp/ogl-core-smoke.toml
+WORLD_CFG=/tmp/ogl-world-smoke.toml
+cat > "$CORE_CFG" <<EOF
+[network]
+listen_address = "127.0.0.1"
+port = $CORE_PORT
+
+[admin]
+listen_address = "127.0.0.1"
+port = $ADMIN_PORT
+
+[lease]
+timeout_seconds = 15
+
+[storage]
+worlds = "data/worlds.db"
+regions = "data/regions.db"
+EOF
+
+cat > "$WORLD_CFG" <<EOF
+[node]
+id = "world-01"
+name = "OpenGenesis World 01"
+
+[network]
+public_endpoint = "127.0.0.1:$SCENE_PORT"
+scene_listen_address = "127.0.0.1"
+scene_port = $SCENE_PORT
+
+[core]
+endpoint = "127.0.0.1:$CORE_PORT"
+reconnect_seconds = 1
+lease_seconds = 2
+
+[runtime]
+tick_hz = 45.0
+terrain_base_height = 21.0
+
+[regions]
+count = 1
+
+[region0]
+id = "genesis-central"
+name = "Genesis Central"
+grid_x = 1000
+grid_y = 1000
+EOF
+
+./build/dev/opengenesis-core "$CORE_CFG" > /tmp/ogl-core.log 2>&1 & CORE=$!
 cleanup(){
   status=$?
   trap - EXIT
   if [ "$status" -ne 0 ]; then
+    echo "Smoke ports: core=$CORE_PORT admin=$ADMIN_PORT scene=$SCENE_PORT" >&2
     echo "--- OpenGenesis Core log ---" >&2
     cat /tmp/ogl-core.log 2>/dev/null >&2 || true
     cat /tmp/ogl-core2.log 2>/dev/null >&2 || true
@@ -18,17 +81,20 @@ cleanup(){
   fi
   kill "$CORE" 2>/dev/null || true
   kill "${WORLD:-}" 2>/dev/null || true
+  rm -f "$CORE_CFG" "$WORLD_CFG"
   exit "$status"
 }
 trap cleanup EXIT
-sleep 0.6
-./build/dev/opengenesis-world config/world.toml > /tmp/ogl-world.log 2>&1 & WORLD=$!
-sleep 2
+sleep 0.4
+./build/dev/opengenesis-world "$WORLD_CFG" > /tmp/ogl-world.log 2>&1 & WORLD=$!
+sleep 1
 
 python3 - <<'PY'
-import json, socket, struct, time, urllib.request
+import json, os, socket, struct, time, urllib.request
 
-HOST, PORT = '127.0.0.1', 19100
+HOST = '127.0.0.1'
+PORT = int(os.environ['SCENE_PORT'])
+ADMIN_PORT = int(os.environ['ADMIN_PORT'])
 
 def recv_exact(sock, size):
     out = b''
@@ -61,10 +127,10 @@ def fields(payload):
 sock = None
 payload = ''
 last_error = None
-for attempt in range(20):
+for _ in range(40):
     candidate = None
     try:
-        candidate = socket.create_connection((HOST, PORT), timeout=5)
+        candidate = socket.create_connection((HOST, PORT), timeout=2)
         send_frame(candidate, 1, 1, 'client=ogl-smoke\nprotocol=1\n')
         if recv_frame(candidate)[0] != 2:
             raise RuntimeError('scene HELLO rejected')
@@ -77,15 +143,13 @@ for attempt in range(20):
     except (OSError, RuntimeError) as error:
         last_error = error
         if candidate is not None:
-            try:
-                candidate.close()
-            except Exception:
-                pass
+            try: candidate.close()
+            except Exception: pass
         time.sleep(0.25)
 if sock is None:
     raise RuntimeError(f'scene endpoint did not become ready: {last_error}')
+
 joined = fields(payload)
-avatar_id = int(joined['avatar_id'])
 start_sequence = int(joined['sequence'])
 req = 2
 
@@ -126,7 +190,7 @@ t, _, snapshot = recv_frame(sock)
 assert t == 103 and 'entity_count=2' in snapshot and '|object|Smoke Cube|' in snapshot
 
 time.sleep(3)
-with urllib.request.urlopen('http://127.0.0.1:18080/v1/status') as response:
+with urllib.request.urlopen(f'http://127.0.0.1:{ADMIN_PORT}/v1/status') as response:
     status = json.load(response)
 assert status['version'] == '0.3.0'
 assert status['world_nodes'][0]['state'] == 'online'
@@ -152,12 +216,13 @@ PY
 GEN1=$(cat /tmp/ogl-generation)
 TICKS1=$(cat /tmp/ogl-ticks)
 kill "$CORE"; wait "$CORE" 2>/dev/null || true
-sleep 3
-./build/dev/opengenesis-core config/core.toml > /tmp/ogl-core2.log 2>&1 & CORE=$!
-sleep 5
+sleep 2
+./build/dev/opengenesis-core "$CORE_CFG" > /tmp/ogl-core2.log 2>&1 & CORE=$!
+sleep 4
 python3 - "$GEN1" "$TICKS1" <<'PY'
-import json,sys,urllib.request
-d=json.load(urllib.request.urlopen('http://127.0.0.1:18080/v1/status'))
+import json,os,sys,urllib.request
+admin_port=int(os.environ['ADMIN_PORT'])
+d=json.load(urllib.request.urlopen(f'http://127.0.0.1:{admin_port}/v1/status'))
 assert d['world_nodes'][0]['state']=='online'
 assert d['world_nodes'][0]['generation']>int(sys.argv[1])
 r=d['regions'][0]
@@ -169,8 +234,9 @@ PY
 kill "$WORLD"; wait "$WORLD" 2>/dev/null || true
 sleep 1
 python3 - <<'PY'
-import json,urllib.request
-d=json.load(urllib.request.urlopen('http://127.0.0.1:18080/v1/status'))
+import json,os,urllib.request
+admin_port=int(os.environ['ADMIN_PORT'])
+d=json.load(urllib.request.urlopen(f'http://127.0.0.1:{admin_port}/v1/status'))
 assert d['regions'][0]['state']=='offline'
 PY
 
