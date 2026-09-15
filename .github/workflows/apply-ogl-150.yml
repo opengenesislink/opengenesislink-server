@@ -1,0 +1,32 @@
+name: Apply OpenGenesisLINK 1.5.0 payload
+
+on:
+  push:
+    branches: [sync-1.5.0-dev]
+    paths:
+      - '.github/ogl15-part05'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply verified public source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/ogl15-part00 .github/ogl15-part01 .github/ogl15-part02 .github/ogl15-part03 .github/ogl15-part04 .github/ogl15-part05 > /tmp/ogl15.b64
+          base64 -d /tmp/ogl15.b64 > /tmp/ogl15.tar.xz
+          echo "a11854e1893df410ad8ff59a5dffed9ddb1d92764f88ee456b29895f918669c2  /tmp/ogl15.tar.xz" | sha256sum -c -
+          git rm -r .
+          tar -xJf /tmp/ogl15.tar.xz -C .
+          git config user.name "OpenGenesis (MPL 2.0)"
+          git config user.email "153564363+opengenesislink@users.noreply.github.com"
+          git add -A
+          git commit -m "OpenGenesisLINK Server 1.5.0-dev world governance milestone"
+          git push origin HEAD:sync-1.5.0-dev
