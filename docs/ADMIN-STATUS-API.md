@@ -1,10 +1,13 @@
-# Core Status API
+# Core Admin / Status API
 
-The Core exposes a small development HTTP status endpoint (default `127.0.0.1:18080`).
+The original status-only endpoint has evolved into the OpenGenesisLINK Core Web API in `0.4.0-dev`.
 
-- `GET /health` — process health and version
-- `GET /v1/status` — World Node and Region state
+See [`WEB-API-v1.md`](WEB-API-v1.md) for the current endpoint list, Identity/Auth requests and browser dashboard behavior.
 
-Region status includes generation, lifecycle state, ticks, entities, avatars, physics bodies, Scene event sequence count, Terrain revision and simulation FPS.
+The default development listener is:
 
-The endpoint is currently operational/diagnostic only and is not yet the final authenticated administration API.
+```text
+http://127.0.0.1:18080/
+```
+
+Keep this listener on a trusted interface until the production TLS/authorization layer is implemented.

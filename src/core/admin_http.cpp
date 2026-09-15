@@ -1,16 +1,5 @@
-#include "opengenesis/core/admin_http.hpp"
-#include "opengenesis/common/log.hpp"
-#include <arpa/inet.h>
-#include <cerrno>
-#include <cstring>
-#include <netdb.h>
-#include <sstream>
-#include <stdexcept>
-#include <sys/socket.h>
-#include <unistd.h>
-namespace opengenesis::core {
-namespace { std::string esc(const std::string& s){std::string o;for(const char c:s){if(c=='"'||c=='\\')o+='\\';o+=c;}return o;} }
-AdminHttpServer::AdminHttpServer(std::string a,const std::uint16_t p,std::shared_ptr<WorldRegistry>w,std::shared_ptr<RegionRegistry>r):address_(std::move(a)),port_(p),worlds_(std::move(w)),regions_(std::move(r)){}AdminHttpServer::~AdminHttpServer(){stop();}
-void AdminHttpServer::start(){if(running_.exchange(true))return;thread_=std::thread(&AdminHttpServer::run,this);}void AdminHttpServer::stop(){if(!running_.exchange(false))return;if(listen_fd_>=0){::shutdown(listen_fd_,SHUT_RDWR);::close(listen_fd_);listen_fd_=-1;}if(thread_.joinable())thread_.join();}
-void AdminHttpServer::run(){try{addrinfo h{};h.ai_socktype=SOCK_STREAM;h.ai_family=AF_UNSPEC;h.ai_flags=AI_PASSIVE;addrinfo* res=nullptr;const auto ps=std::to_string(port_);if(::getaddrinfo(address_.c_str(),ps.c_str(),&h,&res)!=0)throw std::runtime_error("admin getaddrinfo");for(auto* p=res;p;p=p->ai_next){listen_fd_=::socket(p->ai_family,p->ai_socktype,p->ai_protocol);if(listen_fd_<0)continue;int one=1;::setsockopt(listen_fd_,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));if(::bind(listen_fd_,p->ai_addr,p->ai_addrlen)==0&&::listen(listen_fd_,32)==0)break;::close(listen_fd_);listen_fd_=-1;}::freeaddrinfo(res);if(listen_fd_<0)throw std::runtime_error("admin bind failed");common::log(common::LogLevel::info,"core.admin","HTTP status API listening on "+address_+":"+ps);while(running_){const int fd=::accept(listen_fd_,nullptr,nullptr);if(fd<0){if(!running_)break;if(errno==EINTR)continue;continue;}char buf[2048]{};const auto n=::recv(fd,buf,sizeof(buf)-1,0);std::string req=n>0?std::string(buf,static_cast<std::size_t>(n)):"";std::string path="/";const auto a=req.find(' '),b=a==std::string::npos?std::string::npos:req.find(' ',a+1);if(a!=std::string::npos&&b!=std::string::npos)path=req.substr(a+1,b-a-1);std::ostringstream body;if(path=="/health"){body<<"{\"status\":\"ok\",\"version\":\""<<OGL_VERSION<<"\"}";}else if(path=="/v1/status"){const auto ws=worlds_->list();const auto rs=regions_->list();body<<"{\"version\":\""<<OGL_VERSION<<"\",\"world_nodes\":[";for(std::size_t i=0;i<ws.size();++i){if(i)body<<',';body<<"{\"id\":\""<<esc(ws[i].id)<<"\",\"state\":\""<<ws[i].state<<"\",\"generation\":"<<ws[i].generation<<"}";}body<<"],\"regions\":[";for(std::size_t i=0;i<rs.size();++i){if(i)body<<',';const auto&r=rs[i];body<<"{\"id\":\""<<esc(r.id)<<"\",\"name\":\""<<esc(r.name)<<"\",\"state\":\""<<r.state<<"\",\"node\":\""<<esc(r.node_id)<<"\",\"generation\":"<<r.node_generation<<",\"ticks\":"<<r.ticks<<",\"entities\":"<<r.entities<<",\"avatars\":"<<r.avatars<<",\"physics_bodies\":"<<r.physics_bodies<<",\"scene_events\":"<<r.scene_events<<",\"terrain_revision\":"<<r.terrain_revision<<",\"sim_fps\":"<<r.sim_fps<<"}";}body<<"]}";}else{body<<"{\"error\":\"not-found\"}";}const auto content=body.str();const bool ok=path=="/health"||path=="/v1/status";std::ostringstream response;response<<"HTTP/1.1 "<<(ok?"200 OK":"404 Not Found")<<"\r\nContent-Type: application/json\r\nContent-Length: "<<content.size()<<"\r\nConnection: close\r\n\r\n"<<content;const auto out=response.str();::send(fd,out.data(),out.size(),MSG_NOSIGNAL);::close(fd);}}catch(const std::exception& e){if(running_)common::log(common::LogLevel::error,"core.admin",e.what());}}
-}
+// OpenGenesisLINK Core Web/API implementation is split into focused implementation fragments.
+// The fragments are included in order so the internal helpers remain translation-unit local.
+#include "admin_http_support.inc"
+#include "admin_http_dashboard.inc"
+#include "admin_http_server.inc"

@@ -57,4 +57,20 @@ bool Terrain::set_height(const std::size_t x, const std::size_t y, const double 
     return true;
 }
 
+std::vector<double> Terrain::snapshot_heights() const {
+    std::scoped_lock lock(mutex_);
+    return heights_;
+}
+
+bool Terrain::restore_heights(std::vector<double> heights, const std::uint64_t revision) {
+    if (heights.size() != width_ * height_ || revision == 0) return false;
+    if (!std::all_of(heights.begin(), heights.end(), [](const double value) { return std::isfinite(value); })) {
+        return false;
+    }
+    std::scoped_lock lock(mutex_);
+    heights_ = std::move(heights);
+    revision_.store(revision);
+    return true;
+}
+
 } // namespace opengenesis::world

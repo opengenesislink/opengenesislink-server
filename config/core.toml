@@ -9,6 +9,11 @@ port = 18080
 [lease]
 timeout_seconds = 15
 
+[identity]
+session_lifetime_seconds = 86400
+
 [storage]
 worlds = "data/worlds.db"
 regions = "data/regions.db"
+users = "data/users.db"
+sessions = "data/sessions.db"

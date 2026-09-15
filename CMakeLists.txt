@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 0.3.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -9,18 +9,23 @@ option(OGL_BUILD_TESTS "Build OpenGenesisLINK tests" ON)
 option(OGL_ENABLE_WERROR "Treat warnings as errors" OFF)
 
 find_package(Threads REQUIRED)
+find_package(OpenSSL REQUIRED)
 
 add_library(opengenesis-foundation
     src/common/log.cpp
     src/config/toml_config.cpp
+    src/security/crypto.cpp
     src/network/tcp.cpp
     src/protocol/frame.cpp
     src/core/world_registry.cpp
     src/core/region_registry.cpp
     src/core/node_sessions.cpp
     src/core/admin_http.cpp
+    src/core/identity_store.cpp
+    src/core/session_store.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
+    src/world/region_persistence.cpp
     src/world/terrain.cpp
     src/world/scene_server.cpp
 )
@@ -29,7 +34,7 @@ add_library(OpenGenesis::Foundation ALIAS opengenesis-foundation)
 target_include_directories(opengenesis-foundation PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads)
+target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto)
 target_compile_definitions(opengenesis-foundation PUBLIC OGL_VERSION="${PROJECT_VERSION}")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")

@@ -22,6 +22,8 @@ public:
     [[nodiscard]] double height_at(std::size_t x, std::size_t y) const;
     [[nodiscard]] double sample(double world_x, double world_y) const;
     bool set_height(std::size_t x, std::size_t y, double value);
+    [[nodiscard]] std::vector<double> snapshot_heights() const;
+    bool restore_heights(std::vector<double> heights, std::uint64_t revision);
 
 private:
     [[nodiscard]] std::size_t index(std::size_t x, std::size_t y) const;

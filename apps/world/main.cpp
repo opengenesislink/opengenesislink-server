@@ -2,6 +2,7 @@
 #include "opengenesis/config/toml_config.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
+#include "opengenesis/world/region_persistence.hpp"
 #include "opengenesis/world/region_runtime.hpp"
 #include "opengenesis/world/scene_server.hpp"
 
@@ -9,6 +10,7 @@
 #include <chrono>
 #include <csignal>
 #include <cstdint>
+#include <filesystem>
 #include <iomanip>
 #include <memory>
 #include <sstream>
@@ -20,6 +22,7 @@
 
 using opengenesis::common::LogLevel;
 namespace protocol = opengenesis::protocol;
+namespace world = opengenesis::world;
 
 namespace {
 std::atomic_bool running{true};
@@ -74,6 +77,10 @@ int main(int argc, char** argv) {
         const auto lease = std::chrono::seconds{config.get_int("core.lease_seconds", 5)};
         const auto tick_hz = config.get_double("runtime.tick_hz", 45.0);
         const auto terrain_base = config.get_double("runtime.terrain_base_height", 21.0);
+        const auto storage_root = std::filesystem::path{
+            config.get_string("storage.root", "data/world")};
+        const auto save_interval = std::chrono::seconds{
+            std::max<std::int64_t>(1, config.get_int("storage.save_interval_seconds", 2))};
 
         const int count = static_cast<int>(config.get_int("regions.count", 1));
         std::vector<RegionConfig> region_configs;
@@ -86,16 +93,35 @@ int main(int argc, char** argv) {
                 .grid_y = static_cast<int>(config.get_int(prefix + "grid_y", 1000))});
         }
 
-        std::vector<std::shared_ptr<opengenesis::world::RegionRuntime>> runtimes;
+        std::vector<std::shared_ptr<world::RegionRuntime>> runtimes;
+        std::vector<std::unique_ptr<world::RegionPersistence>> persistence;
         runtimes.reserve(region_configs.size());
+        persistence.reserve(region_configs.size());
         for (const auto& region : region_configs) {
-            auto runtime = std::make_shared<opengenesis::world::RegionRuntime>(region.id, tick_hz, terrain_base);
+            auto runtime = std::make_shared<world::RegionRuntime>(region.id, tick_hz, terrain_base);
+            auto store = std::make_unique<world::RegionPersistence>(storage_root / region.id);
+            store->load(*runtime);
             runtime->start();
             runtimes.push_back(std::move(runtime));
+            persistence.push_back(std::move(store));
         }
 
-        opengenesis::world::SceneServer scene_server(scene_address, scene_port, runtimes);
+        world::SceneServer scene_server(scene_address, scene_port, runtimes);
         scene_server.start();
+
+        std::thread persistence_thread([&] {
+            while (running) {
+                std::this_thread::sleep_for(save_interval);
+                for (std::size_t index = 0; index < runtimes.size(); ++index) {
+                    try {
+                        persistence[index]->save(*runtimes[index]);
+                    } catch (const std::exception& error) {
+                        opengenesis::common::log(LogLevel::warning, "world.persistence", error.what());
+                    }
+                }
+            }
+        });
+
         opengenesis::common::log(LogLevel::info, "world",
                                  "OpenGenesis World " OGL_VERSION " running " +
                                      std::to_string(runtimes.size()) + " region(s)");
@@ -103,7 +129,7 @@ int main(int argc, char** argv) {
         while (running) {
             try {
                 opengenesis::common::log(LogLevel::info, "world.core",
-                                         "Connecting to core " + core_host + ":" +
+                                         "Connecting to core " + core_host + ':' +
                                              std::to_string(core_port));
                 auto socket = opengenesis::network::TcpSocket::connect(core_host, core_port);
                 std::uint32_t request_id = 1;
@@ -128,8 +154,7 @@ int main(int argc, char** argv) {
                 opengenesis::common::log(LogLevel::info, "world.core",
                                          "Connected generation " + std::to_string(generation));
 
-                for (std::size_t index = 0; index < region_configs.size(); ++index) {
-                    const auto& region = region_configs[index];
+                for (const auto& region : region_configs) {
                     std::ostringstream body;
                     body << "id=" << region.id << '\n' << "name=" << region.name << '\n'
                          << "grid_x=" << region.grid_x << '\n' << "grid_y=" << region.grid_y << '\n';
@@ -200,7 +225,11 @@ int main(int argc, char** argv) {
         }
 
         scene_server.stop();
-        for (const auto& runtime : runtimes) runtime->stop();
+        if (persistence_thread.joinable()) persistence_thread.join();
+        for (std::size_t index = 0; index < runtimes.size(); ++index) {
+            runtimes[index]->stop();
+            persistence[index]->save(*runtimes[index], true);
+        }
         opengenesis::common::log(LogLevel::info, "world", "Shutdown complete");
         return 0;
     } catch (const std::exception& error) {

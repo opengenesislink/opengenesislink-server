@@ -47,6 +47,22 @@ std::uint64_t RegionRuntime::spawn_avatar(std::string name, Transform transform)
     return spawn_entity(std::move(name), EntityKind::avatar, transform, true);
 }
 
+bool RegionRuntime::restore_object(const std::uint64_t id, std::string name, Transform transform,
+                                   const bool physical) {
+    if (id == 0) return false;
+    std::scoped_lock lock(mutex_);
+    if (entities_.contains(id)) return false;
+    Entity entity{.id = id, .name = std::move(name), .kind = EntityKind::object, .transform = transform};
+    if (physical) {
+        const double radius = std::max(0.1, transform.scale.z * 0.5);
+        entity.physics_body = physics_.add_body({.position = transform.position, .radius = radius});
+    }
+    entities_[id] = entity;
+    next_entity_ = std::max(next_entity_, id + 1);
+    append_event_locked("entity_restored", id, transform, entity.name);
+    return true;
+}
+
 std::uint64_t RegionRuntime::spawn_entity(std::string name, const EntityKind kind, Transform transform,
                                           const bool physical) {
     if (transform.position.z == 0.0) {
@@ -92,6 +108,16 @@ bool RegionRuntime::set_velocity(const std::uint64_t id, const physics::Vec3 vel
     const auto it = entities_.find(id);
     if (it == entities_.end() || !it->second.physics_body) return false;
     return physics_.set_body_velocity(it->second.physics_body, velocity);
+}
+
+bool RegionRuntime::set_terrain_height(const std::size_t x, const std::size_t y, const double value) {
+    if (!terrain_.set_height(x, y, value)) return false;
+    std::scoped_lock lock(mutex_);
+    Transform transform;
+    transform.position = {static_cast<double>(x) * terrain_.cell_size(),
+                          static_cast<double>(y) * terrain_.cell_size(), value};
+    append_event_locked("terrain_updated", 0, transform, std::to_string(terrain_.revision()));
+    return true;
 }
 
 std::optional<Entity> RegionRuntime::entity(const std::uint64_t id) const {

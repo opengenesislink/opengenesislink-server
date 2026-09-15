@@ -1,5 +1,13 @@
 # Third-party components
 
-The current OpenGenesisLINK 0.2.0-dev runtime has no mandatory third-party runtime library dependency beyond the C++ standard library, POSIX/Linux networking APIs and pthreads.
+OpenGenesisLINK Server keeps external dependencies deliberately small.
 
-Build tooling uses CMake and Ninja.
+## OpenSSL / libcrypto
+
+Used by the Core Identity subsystem for:
+
+- cryptographically secure random salts and session tokens
+- PBKDF2-HMAC-SHA256 password verification
+- SHA-256 hashing of persisted session-token identifiers
+
+OpenSSL is dynamically linked through CMake `OpenSSL::Crypto`. See the OpenSSL project for its applicable license terms.

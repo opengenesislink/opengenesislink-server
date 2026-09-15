@@ -52,6 +52,8 @@ enum class MessageType : std::uint16_t {
     scene_events = 131,
     terrain_sample_request = 140,
     terrain_sample = 141,
+    terrain_set_request = 142,
+    terrain_set_ack = 143,
 
     error = 255
 };

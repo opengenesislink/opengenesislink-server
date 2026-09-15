@@ -16,6 +16,10 @@ lease_seconds = 5
 tick_hz = 45.0
 terrain_base_height = 21.0
 
+[storage]
+root = "data/world"
+save_interval_seconds = 2
+
 [regions]
 count = 1
 

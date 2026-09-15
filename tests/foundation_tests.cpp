@@ -1,8 +1,12 @@
 #include "opengenesis/config/toml_config.hpp"
+#include "opengenesis/core/identity_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
+#include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
 #include "opengenesis/physics/physics_world.hpp"
+#include "opengenesis/security/crypto.hpp"
 #include "opengenesis/protocol/frame.hpp"
+#include "opengenesis/world/region_persistence.hpp"
 #include "opengenesis/world/region_runtime.hpp"
 #include "opengenesis/world/terrain.hpp"
 
@@ -82,6 +86,62 @@ void registry_test() {
            "collision reject");
 }
 
+void identity_test() {
+    const auto dir = std::filesystem::temp_directory_path() / "ogl-tests-040-identity";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const auto users_path = (dir / "users.db").string();
+    const auto sessions_path = (dir / "sessions.db").string();
+
+    std::string reason;
+    opengenesis::core::IdentityStore identities(users_path);
+    const auto user = identities.register_user("Test.User", "Test User", "correct horse battery", reason);
+    expect(user.has_value(), "identity register");
+    expect(user->username == "test.user", "identity normalized username");
+    expect(!identities.register_user("test.user", "Duplicate", "another password", reason),
+           "identity duplicate reject");
+    expect(identities.authenticate("TEST.USER", "correct horse battery").has_value(),
+           "identity authenticate");
+    expect(!identities.authenticate("test.user", "wrong password").has_value(),
+           "identity wrong password reject");
+
+    opengenesis::core::IdentityStore reloaded(users_path);
+    expect(reloaded.count() == 1 && reloaded.find_by_id(user->id).has_value(),
+           "identity persistence");
+
+    opengenesis::core::SessionStore sessions(sessions_path, std::chrono::seconds{600});
+    const auto created = sessions.create(user->id);
+    expect(created.token.size() == 64, "session token length");
+    expect(sessions.find(created.token).has_value(), "session lookup");
+    opengenesis::core::SessionStore reloaded_sessions(sessions_path, std::chrono::seconds{600});
+    expect(reloaded_sessions.find(created.token).has_value(), "session persistence");
+    expect(reloaded_sessions.revoke(created.token), "session revoke");
+    expect(!reloaded_sessions.find(created.token).has_value(), "session revoked lookup");
+}
+
+void persistence_test() {
+    const auto dir = std::filesystem::temp_directory_path() / "ogl-tests-040-region";
+    std::filesystem::remove_all(dir);
+    opengenesis::world::RegionRuntime source("persisted", 30.0, 21.0);
+    opengenesis::world::Transform transform;
+    transform.position = {42.0, 43.0, 44.0};
+    transform.rotation = {0.1, 0.2, 0.3};
+    transform.scale = {2.0, 3.0, 4.0};
+    const auto id = source.spawn_object("Persistent Cube", transform, false);
+    expect(source.set_terrain_height(5, 6, 27.5), "terrain persistent edit");
+    opengenesis::world::RegionPersistence store(dir);
+    store.save(source, true);
+
+    opengenesis::world::RegionRuntime restored("persisted", 30.0, 21.0);
+    opengenesis::world::RegionPersistence loader(dir);
+    loader.load(restored);
+    const auto object = restored.entity(id);
+    expect(object.has_value() && object->name == "Persistent Cube", "scene object restore");
+    expect(std::abs(object->transform.position.z - 44.0) < 0.001, "scene transform restore");
+    expect(std::abs(restored.terrain().height_at(5, 6) - 27.5) < 0.001, "terrain restore");
+    expect(restored.terrain().revision() >= 2, "terrain revision restore");
+}
+
 void terrain_test() {
     opengenesis::world::Terrain terrain(8, 8, 1.0, 21.0);
     expect(std::abs(terrain.sample(3.5, 3.5) - 21.0) < 0.001, "terrain base height");
@@ -141,10 +201,12 @@ int main() {
         config_test();
         frame_test();
         registry_test();
+        identity_test();
+        persistence_test();
         terrain_test();
         physics_test();
         runtime_test();
-        std::cout << "OpenGenesisLINK 0.3.0 foundation tests: PASS\n";
+        std::cout << "OpenGenesisLINK 0.4.0 foundation tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

@@ -62,9 +62,11 @@ public:
 
     std::uint64_t spawn_object(std::string name, Transform transform = {}, bool physical = true);
     std::uint64_t spawn_avatar(std::string name, Transform transform = {});
+    bool restore_object(std::uint64_t id, std::string name, Transform transform, bool physical);
     bool remove_entity(std::uint64_t id);
     bool update_transform(std::uint64_t id, Transform transform);
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
+    bool set_terrain_height(std::size_t x, std::size_t y, double value);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
     [[nodiscard]] std::vector<Entity> snapshot_entities() const;

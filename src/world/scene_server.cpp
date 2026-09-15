@@ -194,6 +194,18 @@ void handle_client(opengenesis::network::TcpSocket socket,
                        << region->terrain().revision() << '\n';
                 socket.send_frame({protocol::MessageType::terrain_sample, frame.request_id,
                                    protocol::payload_from_string(sample.str())});
+            } else if (frame.type == protocol::MessageType::terrain_set_request) {
+                const auto x = integer(body, "x");
+                const auto y = integer(body, "y");
+                const double height = number(body, "height", region->terrain().base_height());
+                const bool ok = region->set_terrain_height(static_cast<std::size_t>(x),
+                                                           static_cast<std::size_t>(y), height);
+                socket.send_frame({ok ? protocol::MessageType::terrain_set_ack : protocol::MessageType::error,
+                                   frame.request_id,
+                                   protocol::payload_from_string(ok
+                                                                     ? "status=updated\nrevision=" +
+                                                                           std::to_string(region->terrain().revision()) + "\n"
+                                                                     : "reason=terrain-update-rejected\n")});
             } else if (frame.type == protocol::MessageType::ping) {
                 socket.send_frame({protocol::MessageType::pong, frame.request_id, frame.payload});
             } else if (frame.type == protocol::MessageType::goodbye) {
