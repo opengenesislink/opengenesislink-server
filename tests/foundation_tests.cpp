@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
@@ -26,10 +27,23 @@ void config_test() {
 }
 
 void frame_test() {
-    opengenesis::protocol::Frame frame{opengenesis::protocol::MessageType::scene_join, 7,
+    constexpr std::uint32_t request_id = 0x01020304U;
+    opengenesis::protocol::Frame frame{opengenesis::protocol::MessageType::scene_join, request_id,
                                        opengenesis::protocol::payload_from_string("region=r1\n")};
-    const auto decoded = opengenesis::protocol::decode(opengenesis::protocol::encode(frame));
-    expect(decoded.type == frame.type && decoded.request_id == 7, "frame roundtrip");
+    const auto encoded = opengenesis::protocol::encode(frame);
+    expect(encoded.size() == opengenesis::protocol::kHeaderSize + 10, "frame encoded size");
+    expect(std::to_integer<unsigned>(encoded[8]) == 0x01U &&
+               std::to_integer<unsigned>(encoded[9]) == 0x02U &&
+               std::to_integer<unsigned>(encoded[10]) == 0x03U &&
+               std::to_integer<unsigned>(encoded[11]) == 0x04U,
+           "request id header offset");
+    expect(std::to_integer<unsigned>(encoded[12]) == 0x00U &&
+               std::to_integer<unsigned>(encoded[13]) == 0x00U &&
+               std::to_integer<unsigned>(encoded[14]) == 0x00U &&
+               std::to_integer<unsigned>(encoded[15]) == 0x0AU,
+           "payload length header offset");
+    const auto decoded = opengenesis::protocol::decode(encoded);
+    expect(decoded.type == frame.type && decoded.request_id == request_id, "frame roundtrip");
 }
 
 void registry_test() {
