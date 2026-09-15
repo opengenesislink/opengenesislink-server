@@ -1,6 +1,6 @@
 # Core Admin / Status API
 
-The original status-only endpoint has evolved into the OpenGenesisLINK Core Web API in `0.4.0-dev`.
+The original status-only endpoint has evolved into the OpenGenesisLINK Core Web API starting in `0.4.0-dev`; `0.5.0-dev` adds Viewer/content status.
 
 See [`WEB-API-v1.md`](WEB-API-v1.md) for the current endpoint list, Identity/Auth requests and browser dashboard behavior.
 

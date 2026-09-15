@@ -12,10 +12,13 @@
 
 namespace opengenesis::world {
 
+class SceneAuthContext;
+
 class SceneServer final {
 public:
     SceneServer(std::string address, std::uint16_t port,
-                const std::vector<std::shared_ptr<RegionRuntime>>& regions);
+                const std::vector<std::shared_ptr<RegionRuntime>>& regions,
+                std::string ticket_secret);
     ~SceneServer();
     SceneServer(const SceneServer&) = delete;
     SceneServer& operator=(const SceneServer&) = delete;
@@ -29,6 +32,7 @@ private:
     std::string address_;
     std::uint16_t port_;
     std::unordered_map<std::string, std::shared_ptr<RegionRuntime>> regions_;
+    std::shared_ptr<SceneAuthContext> auth_;
     std::atomic_bool running_{false};
     std::thread thread_;
 };

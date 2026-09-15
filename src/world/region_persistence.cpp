@@ -127,7 +127,7 @@ void RegionPersistence::load(RegionRuntime& runtime) {
         while (std::getline(input, line)) {
             if (line.empty() || line[0] == '#') continue;
             const auto fields = split_tabs(line);
-            if (fields.size() != 12) continue;
+            if (fields.size() != 12 && fields.size() != 13) continue;
             try {
                 Transform transform;
                 const auto id = std::stoull(fields[0]);
@@ -136,7 +136,8 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                 transform.rotation = {std::stod(fields[5]), std::stod(fields[6]), std::stod(fields[7])};
                 transform.scale = {std::stod(fields[8]), std::stod(fields[9]), std::stod(fields[10])};
                 const bool physical = fields[11] == "1";
-                (void)runtime.restore_object(id, name, transform, physical);
+                const auto owner = fields.size() == 13 ? text_unhex(fields[12]) : std::string{};
+                (void)runtime.restore_object(id, name, transform, physical, owner);
             } catch (...) {
             }
         }
@@ -176,14 +177,14 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
         const auto temporary = path.string() + ".tmp";
         std::ofstream output(temporary, std::ios::trunc);
         if (!output) throw std::runtime_error("cannot write scene persistence");
-        output << "# OpenGenesisLINK persistent scene objects v1\n" << std::setprecision(17);
+        output << "# OpenGenesisLINK persistent scene objects v2\n" << std::setprecision(17);
         for (const auto& entity : runtime.snapshot_entities()) {
             if (entity.kind != EntityKind::object) continue;
             const auto& t = entity.transform;
             output << entity.id << '\t' << text_hex(entity.name) << '\t' << t.position.x << '\t'
                    << t.position.y << '\t' << t.position.z << '\t' << t.rotation.x << '\t'
                    << t.rotation.y << '\t' << t.rotation.z << '\t' << t.scale.x << '\t'
-                   << t.scale.y << '\t' << t.scale.z << '\t' << (entity.physics_body != 0 ? 1 : 0) << '\n';
+                   << t.scale.y << '\t' << t.scale.z << '\t' << (entity.physics_body != 0 ? 1 : 0) << '\t' << text_hex(entity.owner_user_id) << '\n';
         }
         output.close();
         if (!output) throw std::runtime_error("cannot flush scene persistence");

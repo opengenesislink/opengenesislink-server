@@ -2,173 +2,56 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<WorldRegistry> worlds,
                                  std::shared_ptr<RegionRegistry> regions,
                                  std::shared_ptr<IdentityStore> identities,
-                                 std::shared_ptr<SessionStore> sessions)
+                                 std::shared_ptr<SessionStore> sessions,
+                                 std::shared_ptr<AssetStore> assets,
+                                 std::shared_ptr<InventoryStore> inventory,
+                                 std::string scene_ticket_secret,
+                                 std::chrono::seconds scene_ticket_lifetime)
     : address_(std::move(address)), port_(port), worlds_(std::move(worlds)), regions_(std::move(regions)),
-      identities_(std::move(identities)), sessions_(std::move(sessions)) {}
+      identities_(std::move(identities)), sessions_(std::move(sessions)), assets_(std::move(assets)),
+      inventory_(std::move(inventory)), scene_ticket_secret_(std::move(scene_ticket_secret)),
+      scene_ticket_lifetime_(scene_ticket_lifetime) {}
 
 AdminHttpServer::~AdminHttpServer() { stop(); }
+void AdminHttpServer::start(){if(running_.exchange(true))return;started_at_=std::chrono::steady_clock::now();thread_=std::thread(&AdminHttpServer::run,this);}
+void AdminHttpServer::stop(){if(!running_.exchange(false))return;if(listen_fd_>=0){::shutdown(listen_fd_,SHUT_RDWR);::close(listen_fd_);listen_fd_=-1;}if(thread_.joinable())thread_.join();}
 
-void AdminHttpServer::start() {
-    if (running_.exchange(true)) return;
-    started_at_ = std::chrono::steady_clock::now();
-    thread_ = std::thread(&AdminHttpServer::run, this);
-}
-
-void AdminHttpServer::stop() {
-    if (!running_.exchange(false)) return;
-    if (listen_fd_ >= 0) {
-        ::shutdown(listen_fd_, SHUT_RDWR);
-        ::close(listen_fd_);
-        listen_fd_ = -1;
-    }
-    if (thread_.joinable()) thread_.join();
-}
-
-void AdminHttpServer::run() {
-    try {
-        addrinfo hints{};
-        hints.ai_socktype = SOCK_STREAM;
-        hints.ai_family = AF_UNSPEC;
-        hints.ai_flags = AI_PASSIVE;
-        addrinfo* results = nullptr;
-        const auto port_text = std::to_string(port_);
-        if (::getaddrinfo(address_.c_str(), port_text.c_str(), &hints, &results) != 0) {
-            throw std::runtime_error("admin getaddrinfo failed");
-        }
-        for (auto* current = results; current != nullptr; current = current->ai_next) {
-            listen_fd_ = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-            if (listen_fd_ < 0) continue;
-            const int reuse = 1;
-            (void)::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-            if (::bind(listen_fd_, current->ai_addr, current->ai_addrlen) == 0 &&
-                ::listen(listen_fd_, 64) == 0) break;
-            ::close(listen_fd_);
-            listen_fd_ = -1;
-        }
-        ::freeaddrinfo(results);
-        if (listen_fd_ < 0) throw std::runtime_error("admin bind failed");
-        common::log(common::LogLevel::info, "core.admin",
-                    "Web/API interface listening on http://" + address_ + ':' + port_text);
-
-        while (running_) {
-            const int fd = ::accept(listen_fd_, nullptr, nullptr);
-            if (fd < 0) {
-                if (!running_) break;
-                if (errno == EINTR) continue;
-                continue;
-            }
-            try {
-                const auto request = read_request(fd);
-                if (!request) {
-                    send_response(fd, {.status = 400, .body = "{\"error\":\"bad-request\"}"});
-                    ::close(fd);
-                    continue;
-                }
-
-                HttpResponse response;
-                const auto& method = request->method;
-                const auto& path = request->path;
-                if (method == "GET" && path == "/") {
-                    response.content_type = "text/html; charset=utf-8";
-                    response.body = dashboard_html();
-                } else if (method == "GET" && path == "/health") {
-                    response.body = "{\"status\":\"ok\",\"version\":\"" + std::string(OGL_VERSION) + "\"}";
-                } else if (method == "GET" && path == "/v1") {
-                    response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
-                                    std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","identity_stats":"/v1/identity/stats","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
-                } else if (method == "GET" && path == "/v1/worlds") {
-                    response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
-                } else if (method == "GET" && path == "/v1/regions") {
-                    response.body = "{\"regions\":" + regions_json(regions_->list()) + "}";
-                } else if (method == "GET" && path == "/v1/identity/stats") {
-                    response.body = "{\"users\":" + std::to_string(identities_->count()) +
-                                    ",\"active_sessions\":" + std::to_string(sessions_->active_count()) + "}";
-                } else if (method == "GET" && path == "/v1/identity/users") {
-                    response.body = "{\"users\":" + users_json(identities_->list()) + "}";
-                } else if (method == "GET" && path == "/v1/status") {
-                    const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
-                                            std::chrono::steady_clock::now() - started_at_)
-                                            .count();
-                    response.body = "{\"version\":\"" + std::string(OGL_VERSION) +
-                                    "\",\"uptime_seconds\":" + std::to_string(uptime) +
-                                    ",\"world_nodes\":" + worlds_json(worlds_->list()) +
-                                    ",\"regions\":" + regions_json(regions_->list()) +
-                                    ",\"identities\":" + std::to_string(identities_->count()) +
-                                    ",\"active_sessions\":" + std::to_string(sessions_->active_count()) + "}";
-                } else if (method == "POST" && path == "/v1/auth/register") {
-                    const auto username = json_string(request->body, "username");
-                    const auto display_name = json_string(request->body, "display_name");
-                    const auto password = json_string(request->body, "password");
-                    if (!username || !display_name || !password) {
-                        response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
-                    } else {
-                        std::string reason;
-                        const auto user = identities_->register_user(*username, *display_name, *password, reason);
-                        if (!user) {
-                            response = {.status = reason == "username-exists" ? 409 : 400,
-                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
-                        } else {
-                            const auto created = sessions_->create(user->id);
-                            response.status = 201;
-                            response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
-                                            "\",\"username\":\"" + json_escape(user->username) +
-                                            "\",\"display_name\":\"" + json_escape(user->display_name) +
-                                            "\"},\"token\":\"" + created.token + "\",\"expires_unix\":" +
-                                            std::to_string(created.session.expires_unix) + "}";
-                        }
-                    }
-                } else if (method == "POST" && path == "/v1/auth/login") {
-                    const auto username = json_string(request->body, "username");
-                    const auto password = json_string(request->body, "password");
-                    if (!username || !password) {
-                        response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
-                    } else if (const auto user = identities_->authenticate(*username, *password)) {
-                        const auto created = sessions_->create(user->id);
-                        response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
-                                        "\",\"username\":\"" + json_escape(user->username) +
-                                        "\",\"display_name\":\"" + json_escape(user->display_name) +
-                                        "\"},\"token\":\"" + created.token + "\",\"expires_unix\":" +
-                                        std::to_string(created.session.expires_unix) + "}";
-                    } else {
-                        response = {.status = 401, .body = "{\"error\":\"invalid-credentials\"}"};
-                    }
-                } else if (method == "GET" && path == "/v1/auth/me") {
-                    const auto token = bearer_token(*request);
-                    const auto session = sessions_->find(token);
-                    const auto user = session ? identities_->find_by_id(session->user_id) : std::nullopt;
-                    if (!session || !user) {
-                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
-                    } else {
-                        response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
-                                        "\",\"username\":\"" + json_escape(user->username) +
-                                        "\",\"display_name\":\"" + json_escape(user->display_name) +
-                                        "\"},\"session\":{\"id\":\"" + json_escape(session->id) +
-                                        "\",\"expires_unix\":" + std::to_string(session->expires_unix) + "}}";
-                    }
-                } else if (method == "POST" && path == "/v1/auth/logout") {
-                    const auto token = bearer_token(*request);
-                    if (token.empty() || !sessions_->revoke(token)) {
-                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
-                    } else {
-                        response.body = "{\"status\":\"logged-out\"}";
-                    }
-                } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
-                           path == "/v1/auth/logout") {
-                    response = {.status = 405, .body = "{\"error\":\"method-not-allowed\"}"};
-                } else {
-                    response = {.status = 404, .body = "{\"error\":\"not-found\"}"};
-                }
-                send_response(fd, response);
-            } catch (const std::exception& error) {
-                common::log(common::LogLevel::warning, "core.admin.client", error.what());
-                send_response(fd, {.status = 500, .body = "{\"error\":\"internal-error\"}"});
-            }
-            ::close(fd);
-        }
-    } catch (const std::exception& error) {
-        if (running_) common::log(common::LogLevel::error, "core.admin", error.what());
-    }
+void AdminHttpServer::run(){
+ try{
+  addrinfo hints{};hints.ai_socktype=SOCK_STREAM;hints.ai_family=AF_UNSPEC;hints.ai_flags=AI_PASSIVE;addrinfo* results=nullptr;const auto port_text=std::to_string(port_);
+  if(::getaddrinfo(address_.c_str(),port_text.c_str(),&hints,&results)!=0)throw std::runtime_error("admin getaddrinfo failed");
+  for(auto* cur=results;cur;cur=cur->ai_next){listen_fd_=::socket(cur->ai_family,cur->ai_socktype,cur->ai_protocol);if(listen_fd_<0)continue;const int reuse=1;(void)::setsockopt(listen_fd_,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse));if(::bind(listen_fd_,cur->ai_addr,cur->ai_addrlen)==0&&::listen(listen_fd_,64)==0)break;::close(listen_fd_);listen_fd_=-1;}::freeaddrinfo(results);if(listen_fd_<0)throw std::runtime_error("admin bind failed");
+  common::log(common::LogLevel::info,"core.admin","Web/API interface listening on http://"+address_+':'+port_text);
+  while(running_){const int fd=::accept(listen_fd_,nullptr,nullptr);if(fd<0){if(!running_)break;if(errno==EINTR)continue;continue;}try{
+    const auto request=read_request(fd);if(!request){send_response(fd,{.status=400,.body="{\"error\":\"bad-request\"}"});::close(fd);continue;}
+    HttpResponse response;const auto& method=request->method;const auto& path=request->path;
+    const auto auth=[&]()->std::pair<std::optional<AuthSession>,std::optional<UserInfo>>{const auto session=sessions_->find(bearer_token(*request));const auto user=session?identities_->find_by_id(session->user_id):std::nullopt;return {session,user};};
+    if(method=="GET"&&path=="/"){response.content_type="text/html; charset=utf-8";response.body=dashboard_html();}
+    else if(method=="GET"&&path=="/health")response.body="{\"status\":\"ok\",\"version\":\""+std::string(OGL_VERSION)+"\"}";
+    else if(method=="GET"&&path=="/v1")response.body=R"JSON({"service":"OpenGenesisLINK Core","version":")JSON"+std::string(OGL_VERSION)+R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v1","assets-v1","inventory-v1","world-status"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","content_stats":"/v1/content/stats","viewer_session":"POST /v1/viewer/session","assets":"GET|POST /v1/assets","inventory":"GET /v1/inventory","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+    else if(method=="GET"&&path=="/v1/worlds")response.body="{\"world_nodes\":"+worlds_json(worlds_->list())+"}";
+    else if(method=="GET"&&path=="/v1/regions")response.body="{\"regions\":"+regions_json(regions_->list())+"}";
+    else if(method=="GET"&&path=="/v1/identity/stats")response.body="{\"users\":"+std::to_string(identities_->count())+",\"active_sessions\":"+std::to_string(sessions_->active_count())+"}";
+    else if(method=="GET"&&path=="/v1/identity/users")response.body="{\"users\":"+users_json(identities_->list())+"}";
+    else if(method=="GET"&&path=="/v1/content/stats")response.body="{\"assets\":"+std::to_string(assets_->count())+",\"asset_bytes\":"+std::to_string(assets_->total_bytes())+",\"inventory_folders\":"+std::to_string(inventory_->folder_count())+",\"inventory_items\":"+std::to_string(inventory_->item_count())+"}";
+    else if(method=="GET"&&path=="/v1/status"){const auto uptime=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-started_at_).count();response.body="{\"version\":\""+std::string(OGL_VERSION)+"\",\"uptime_seconds\":"+std::to_string(uptime)+",\"world_nodes\":"+worlds_json(worlds_->list())+",\"regions\":"+regions_json(regions_->list())+",\"identities\":"+std::to_string(identities_->count())+",\"active_sessions\":"+std::to_string(sessions_->active_count())+",\"assets\":"+std::to_string(assets_->count())+",\"inventory_items\":"+std::to_string(inventory_->item_count())+"}";}
+    else if(method=="POST"&&path=="/v1/auth/register"){const auto username=json_string(request->body,"username"),display=json_string(request->body,"display_name"),password=json_string(request->body,"password");if(!username||!display||!password)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else{std::string reason;const auto user=identities_->register_user(*username,*display,*password,reason);if(!user)response={.status=reason=="username-exists"?409:400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{(void)inventory_->ensure_root(user->id);const auto created=sessions_->create(user->id);response.status=201;response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"username\":\""+json_escape(user->username)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"token\":\""+created.token+"\",\"expires_unix\":"+std::to_string(created.session.expires_unix)+"}";}}}
+    else if(method=="POST"&&path=="/v1/auth/login"){const auto username=json_string(request->body,"username"),password=json_string(request->body,"password");if(!username||!password)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else if(const auto user=identities_->authenticate(*username,*password)){(void)inventory_->ensure_root(user->id);const auto created=sessions_->create(user->id);response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"username\":\""+json_escape(user->username)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"token\":\""+created.token+"\",\"expires_unix\":"+std::to_string(created.session.expires_unix)+"}";}else response={.status=401,.body="{\"error\":\"invalid-credentials\"}"};}
+    else if(method=="GET"&&path=="/v1/auth/me"){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"username\":\""+json_escape(user->username)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"session\":{\"id\":\""+json_escape(session->id)+"\",\"expires_unix\":"+std::to_string(session->expires_unix)+"}}";}
+    else if(method=="POST"&&path=="/v1/auth/logout"){const auto token=bearer_token(*request);if(token.empty()||!sessions_->revoke(token))response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"status\":\"logged-out\"}";}
+    else if(method=="POST"&&path=="/v1/viewer/session"){auto[session,user]=auth();const auto region_id=json_string(request->body,"region");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!region_id)response={.status=400,.body="{\"error\":\"missing-region\"}"};else{const auto region=regions_->find(*region_id);const auto world=region?worlds_->find(region->node_id):std::nullopt;if(!region||!world||region->state!="online"||world->state!="online")response={.status=409,.body="{\"error\":\"region-offline-or-unknown\"}"};else{const auto ticket=security::issue_scene_ticket(scene_ticket_secret_,user->id,user->display_name,region->id,scene_ticket_lifetime_);response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"region\":{\"id\":\""+json_escape(region->id)+"\",\"name\":\""+json_escape(region->name)+"\"},\"scene_endpoint\":\""+json_escape(world->endpoint)+"\",\"scene_ticket\":\""+ticket.token+"\",\"expires_unix\":"+std::to_string(ticket.claims.expires_unix)+"}";}}}
+    else if(method=="GET"&&path=="/v1/assets"){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"assets\":"+assets_json(assets_->list_for_user(user->id))+"}";}
+    else if(method=="POST"&&path=="/v1/assets"){auto[session,user]=auth();const auto name=json_string(request->body,"name"),mime=json_string(request->body,"mime_type"),encoded=json_string(request->body,"data_base64");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name||!mime||!encoded)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else{try{auto data=security::base64_decode(*encoded);std::string reason;const auto asset=assets_->create(user->id,*name,*mime,std::move(data),reason);if(!asset)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{response.status=201;response.body="{\"asset\":"+asset_json(*asset)+"}";}}catch(const std::exception&){response={.status=400,.body="{\"error\":\"invalid-asset-data\"}"};}}}
+    else if(method=="GET"&&path.starts_with("/v1/assets/")&&path.size()>11){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else{const auto id=path.substr(11);const auto asset=assets_->find(id);const auto data=asset?assets_->read(id,user->id):std::nullopt;if(!asset||!data)response={.status=404,.body="{\"error\":\"asset-not-found\"}"};else response.body="{\"asset\":"+asset_json(*asset)+",\"data_base64\":\""+security::base64_encode(*data)+"\"}";}}
+    else if(method=="GET"&&path=="/v1/inventory"){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body=inventory_json(inventory_->list(user->id));}
+    else if(method=="POST"&&path=="/v1/inventory/folders"){auto[session,user]=auth();const auto name=json_string(request->body,"name"),parent=json_string(request->body,"parent_id");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name)response={.status=400,.body="{\"error\":\"missing-name\"}"};else{std::string reason;const auto folder=inventory_->create_folder(user->id,parent.value_or(""),*name,reason);if(!folder)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{response.status=201;response.body="{\"folder\":{\"id\":\""+folder->id+"\",\"parent_id\":\""+folder->parent_id+"\",\"name\":\""+json_escape(folder->name)+"\"}}";}}}
+    else if(method=="POST"&&path=="/v1/inventory/items"){auto[session,user]=auth();const auto name=json_string(request->body,"name"),parent=json_string(request->body,"parent_id"),asset_id=json_string(request->body,"asset_id");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name||!asset_id)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else{const auto asset=assets_->find(*asset_id);if(!asset||asset->owner_user_id!=user->id)response={.status=403,.body="{\"error\":\"asset-not-owned\"}"};else{std::string reason;const auto item=inventory_->create_item(user->id,parent.value_or(""),*asset_id,*name,reason);if(!item)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{response.status=201;response.body="{\"item\":{\"id\":\""+item->id+"\",\"asset_id\":\""+item->asset_id+"\",\"name\":\""+json_escape(item->name)+"\"}}";}}}}
+    else if(path=="/v1/auth/register"||path=="/v1/auth/login"||path=="/v1/auth/logout"||path=="/v1/viewer/session"||path=="/v1/assets"||path=="/v1/inventory/folders"||path=="/v1/inventory/items")response={.status=405,.body="{\"error\":\"method-not-allowed\"}"};
+    else response={.status=404,.body="{\"error\":\"not-found\"}"};
+    send_response(fd,response);
+  }catch(const std::exception& e){common::log(common::LogLevel::warning,"core.admin.client",e.what());send_response(fd,{.status=500,.body="{\"error\":\"internal-error\"}"});}::close(fd);
+  }
+ }catch(const std::exception& e){if(running_)common::log(common::LogLevel::error,"core.admin",e.what());}
 }
 
 } // namespace opengenesis::core

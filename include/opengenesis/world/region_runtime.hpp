@@ -27,6 +27,7 @@ struct Transform {
 struct Entity {
     std::uint64_t id{0};
     std::string name;
+    std::string owner_user_id;
     EntityKind kind{EntityKind::object};
     Transform transform{};
     std::uint64_t physics_body{0};
@@ -60,9 +61,11 @@ public:
     void start();
     void stop();
 
-    std::uint64_t spawn_object(std::string name, Transform transform = {}, bool physical = true);
-    std::uint64_t spawn_avatar(std::string name, Transform transform = {});
-    bool restore_object(std::uint64_t id, std::string name, Transform transform, bool physical);
+    std::uint64_t spawn_object(std::string name, Transform transform = {}, bool physical = true,
+                               std::string owner_user_id = {});
+    std::uint64_t spawn_avatar(std::string user_id, std::string name, Transform transform = {});
+    bool restore_object(std::uint64_t id, std::string name, Transform transform, bool physical,
+                        std::string owner_user_id = {});
     bool remove_entity(std::uint64_t id);
     bool update_transform(std::uint64_t id, Transform transform);
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
@@ -82,7 +85,7 @@ public:
 
 private:
     void loop();
-    std::uint64_t spawn_entity(std::string name, EntityKind kind, Transform transform, bool physical);
+    std::uint64_t spawn_entity(std::string name, std::string owner_user_id, EntityKind kind, Transform transform, bool physical);
     std::uint64_t append_event_locked(std::string type, std::uint64_t entity_id,
                                       const Transform& transform, std::string text = {});
 

@@ -1,10 +1,13 @@
 #include "opengenesis/config/toml_config.hpp"
+#include "opengenesis/core/asset_store.hpp"
 #include "opengenesis/core/identity_store.hpp"
+#include "opengenesis/core/inventory_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
 #include "opengenesis/physics/physics_world.hpp"
 #include "opengenesis/security/crypto.hpp"
+#include "opengenesis/security/scene_ticket.hpp"
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/world/region_persistence.hpp"
 #include "opengenesis/world/region_runtime.hpp"
@@ -119,6 +122,45 @@ void identity_test() {
     expect(!reloaded_sessions.find(created.token).has_value(), "session revoked lookup");
 }
 
+
+void scene_ticket_test() {
+    const std::string secret = "unit-test-scene-ticket-secret-0123456789abcdef";
+    const auto issued = opengenesis::security::issue_scene_ticket(
+        secret, "user-1", "Test Avatar", "region-1", std::chrono::seconds{60});
+    expect(issued.token.starts_with("ogst1."), "scene ticket prefix");
+    const auto claims = opengenesis::security::verify_scene_ticket(secret, issued.token, "region-1");
+    expect(claims.has_value(), "scene ticket verify");
+    expect(claims->user_id == "user-1" && claims->display_name == "Test Avatar", "scene ticket claims");
+    expect(!opengenesis::security::verify_scene_ticket(secret, issued.token, "region-2"), "scene ticket region binding");
+    auto tampered = issued.token; tampered.back() = tampered.back() == '0' ? '1' : '0';
+    expect(!opengenesis::security::verify_scene_ticket(secret, tampered, "region-1"), "scene ticket signature");
+}
+
+void content_test() {
+    const auto dir = std::filesystem::temp_directory_path() / "ogl-tests-050-content";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    opengenesis::core::AssetStore assets((dir / "assets.db").string(), dir / "blobs", 1024 * 1024);
+    std::string reason;
+    const auto asset = assets.create("user-1", "hello.txt", "text/plain", "hello OpenGenesis", reason);
+    expect(asset.has_value(), "asset create");
+    expect(asset->size == 17 && assets.read(asset->id, "user-1").value_or("") == "hello OpenGenesis", "asset read");
+    expect(!assets.read(asset->id, "user-2"), "asset ownership");
+    opengenesis::core::AssetStore reloaded_assets((dir / "assets.db").string(), dir / "blobs", 1024 * 1024);
+    expect(reloaded_assets.find(asset->id).has_value(), "asset metadata persistence");
+
+    opengenesis::core::InventoryStore inventory((dir / "inventory.db").string());
+    const auto root_folder = inventory.ensure_root("user-1");
+    const auto folder = inventory.create_folder("user-1", root_folder.id, "Objects", reason);
+    expect(folder.has_value(), "inventory folder create");
+    const auto item = inventory.create_item("user-1", folder->id, asset->id, "Hello Asset", reason);
+    expect(item.has_value(), "inventory item create");
+    opengenesis::core::InventoryStore reloaded_inventory((dir / "inventory.db").string());
+    const auto listed = reloaded_inventory.list("user-1");
+    expect(listed.folders.size() == 1 && listed.items.size() == 1, "inventory persistence");
+    expect(listed.items[0].asset_id == asset->id, "inventory asset reference");
+}
+
 void persistence_test() {
     const auto dir = std::filesystem::temp_directory_path() / "ogl-tests-040-region";
     std::filesystem::remove_all(dir);
@@ -127,7 +169,7 @@ void persistence_test() {
     transform.position = {42.0, 43.0, 44.0};
     transform.rotation = {0.1, 0.2, 0.3};
     transform.scale = {2.0, 3.0, 4.0};
-    const auto id = source.spawn_object("Persistent Cube", transform, false);
+    const auto id = source.spawn_object("Persistent Cube", transform, false, "user-owner");
     expect(source.set_terrain_height(5, 6, 27.5), "terrain persistent edit");
     opengenesis::world::RegionPersistence store(dir);
     store.save(source, true);
@@ -137,6 +179,7 @@ void persistence_test() {
     loader.load(restored);
     const auto object = restored.entity(id);
     expect(object.has_value() && object->name == "Persistent Cube", "scene object restore");
+    expect(object->owner_user_id == "user-owner", "scene owner restore");
     expect(std::abs(object->transform.position.z - 44.0) < 0.001, "scene transform restore");
     expect(std::abs(restored.terrain().height_at(5, 6) - 27.5) < 0.001, "terrain restore");
     expect(restored.terrain().revision() >= 2, "terrain revision restore");
@@ -168,8 +211,8 @@ void runtime_test() {
     opengenesis::world::RegionRuntime runtime("test", 60.0, 21.0);
     opengenesis::world::Transform avatar_transform;
     avatar_transform.position = {128, 128, 23};
-    const auto avatar = runtime.spawn_avatar("avatar", avatar_transform);
-    const auto object = runtime.spawn_object("cube", {}, true);
+    const auto avatar = runtime.spawn_avatar("user-1", "avatar", avatar_transform);
+    const auto object = runtime.spawn_object("cube", {}, true, "user-1");
     runtime.start();
     std::this_thread::sleep_for(std::chrono::milliseconds{180});
 
@@ -202,11 +245,13 @@ int main() {
         frame_test();
         registry_test();
         identity_test();
+        scene_ticket_test();
+        content_test();
         persistence_test();
         terrain_test();
         physics_test();
         runtime_test();
-        std::cout << "OpenGenesisLINK 0.4.0 foundation tests: PASS\n";
+        std::cout << "OpenGenesisLINK 0.5.0 foundation tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';

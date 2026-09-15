@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 0.4.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 0.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,6 +15,7 @@ add_library(opengenesis-foundation
     src/common/log.cpp
     src/config/toml_config.cpp
     src/security/crypto.cpp
+    src/security/scene_ticket.cpp
     src/network/tcp.cpp
     src/protocol/frame.cpp
     src/core/world_registry.cpp
@@ -23,6 +24,8 @@ add_library(opengenesis-foundation
     src/core/admin_http.cpp
     src/core/identity_store.cpp
     src/core/session_store.cpp
+    src/core/asset_store.cpp
+    src/core/inventory_store.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
     src/world/region_persistence.cpp

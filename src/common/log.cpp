@@ -1,66 +1,21 @@
 #include "opengenesis/common/log.hpp"
-
 #include <chrono>
 #include <ctime>
 #include <iomanip>
 #include <iostream>
-#include <sstream>
-#include <string>
+#include <mutex>
 
 namespace opengenesis::common {
-namespace {
-
-std::string_view level_name(const LogLevel level) {
-    switch (level) {
-        case LogLevel::debug: return "DEBUG";
-        case LogLevel::info: return "INFO";
-        case LogLevel::warning: return "WARN";
-        case LogLevel::error: return "ERROR";
-    }
-    return "UNKNOWN";
-}
-
-std::string timestamp_utc() {
-    const auto now = std::chrono::system_clock::now();
-    const auto time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-#if defined(_WIN32)
-    gmtime_s(&tm, &time);
-#else
-    gmtime_r(&time, &tm);
-#endif
-    std::ostringstream out;
-    out << std::put_time(&tm, "%Y-%m-%dT%H:%M:%SZ");
-    return out.str();
-}
-
-} // namespace
-
-Logger& Logger::instance() {
-    static Logger logger;
-    return logger;
-}
-
-void Logger::set_level(const LogLevel level) noexcept {
-    std::scoped_lock lock(mutex_);
-    level_ = level;
-}
-
-LogLevel Logger::level() const noexcept {
-    std::scoped_lock lock(mutex_);
-    return level_;
-}
-
-void Logger::write(const LogLevel level, const std::string_view component, const std::string_view message) {
-    std::scoped_lock lock(mutex_);
-    if (static_cast<int>(level) < static_cast<int>(level_)) {
-        return;
-    }
-    std::clog << timestamp_utc() << " [" << level_name(level) << "] [" << component << "] " << message << '\n';
-}
-
+namespace { std::mutex g_log_mutex; }
 void log(const LogLevel level, const std::string_view component, const std::string_view message) {
-    Logger::instance().write(level, component, message);
+    const char* label = "INFO";
+    if (level == LogLevel::debug) label = "DEBUG";
+    else if (level == LogLevel::warning) label = "WARN";
+    else if (level == LogLevel::error) label = "ERROR";
+    const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm tm{};
+    localtime_r(&now, &tm);
+    std::scoped_lock lock(g_log_mutex);
+    std::clog << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [" << label << "] [" << component << "] " << message << '\n';
 }
-
-} // namespace opengenesis::common
+}

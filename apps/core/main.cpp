@@ -1,6 +1,8 @@
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/config/toml_config.hpp"
 #include "opengenesis/core/admin_http.hpp"
+#include "opengenesis/core/asset_store.hpp"
+#include "opengenesis/core/inventory_store.hpp"
 #include "opengenesis/core/identity_store.hpp"
 #include "opengenesis/core/node_sessions.hpp"
 #include "opengenesis/core/region_registry.hpp"
@@ -58,6 +60,11 @@ int main(int argc, char** argv) {
         const auto lease_timeout = std::chrono::seconds{config.get_int("lease.timeout_seconds", 15)};
         const auto session_lifetime = std::chrono::seconds{
             config.get_int("identity.session_lifetime_seconds", 86400)};
+        const auto scene_ticket_lifetime = std::chrono::seconds{
+            config.get_int("identity.scene_ticket_lifetime_seconds", 60)};
+        const auto scene_ticket_secret = config.get_string(
+            "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
+        if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
 
         auto worlds = std::make_shared<core::WorldRegistry>(
             config.get_string("storage.worlds", "data/worlds.db"));
@@ -67,12 +74,23 @@ int main(int argc, char** argv) {
             config.get_string("storage.users", "data/users.db"));
         auto auth_sessions = std::make_shared<core::SessionStore>(
             config.get_string("storage.sessions", "data/sessions.db"), session_lifetime);
+        auto assets = std::make_shared<core::AssetStore>(
+            config.get_string("storage.assets_metadata", "data/assets.db"),
+            config.get_string("storage.assets_blobs", "data/assets"),
+            static_cast<std::size_t>(config.get_int("assets.max_bytes", 1048576)));
+        auto inventory = std::make_shared<core::InventoryStore>(
+            config.get_string("storage.inventory", "data/inventory.db"));
         auto node_sessions = std::make_shared<core::NodeSessions>();
+
+        if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
+            opengenesis::common::log(LogLevel::warning, "core.security",
+                                     "Using development scene-ticket secret; replace it before network exposure");
+        }
 
         core::AdminHttpServer admin(
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
-            identities, auth_sessions);
+            identities, auth_sessions, assets, inventory, scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
 
         opengenesis::network::TcpListener listener(address, port);

@@ -12,6 +12,9 @@ endpoint = "127.0.0.1:19000"
 reconnect_seconds = 2
 lease_seconds = 5
 
+[security]
+scene_ticket_secret = "development-only-change-this-scene-ticket-secret"
+
 [runtime]
 tick_hz = 45.0
 terrain_base_height = 21.0

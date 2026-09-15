@@ -1,185 +1,26 @@
 #include "opengenesis/network/tcp.hpp"
-
 #include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <poll.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include <array>
 #include <cerrno>
 #include <cstring>
+#include <netdb.h>
+#include <poll.h>
 #include <stdexcept>
-#include <utility>
-#include <vector>
-
+#include <sys/socket.h>
+#include <unistd.h>
 namespace opengenesis::network {
 namespace {
-
-[[noreturn]] void throw_socket_error(const std::string& operation) {
-    throw std::runtime_error(operation + ": " + std::strerror(errno));
+void send_all(const int fd,const std::byte* data,std::size_t size){ while(size){const auto n=::send(fd,data,size,MSG_NOSIGNAL); if(n<0){if(errno==EINTR)continue; throw std::runtime_error(std::string("send: ")+std::strerror(errno));} if(n==0)throw std::runtime_error("socket closed during send"); data+=n; size-=static_cast<std::size_t>(n);} }
+void recv_all(const int fd,std::byte* data,std::size_t size){ while(size){const auto n=::recv(fd,data,size,0); if(n<0){if(errno==EINTR)continue; throw std::runtime_error(std::string("recv: ")+std::strerror(errno));} if(n==0)throw std::runtime_error("peer closed connection"); data+=n; size-=static_cast<std::size_t>(n);} }
 }
-
-void close_fd(int& fd) noexcept {
-    if (fd >= 0) {
-        ::close(fd);
-        fd = -1;
-    }
+TcpSocket::TcpSocket(const int fd):fd_(fd){} TcpSocket::~TcpSocket(){close();}
+TcpSocket::TcpSocket(TcpSocket&& o) noexcept:fd_(o.fd_){o.fd_=-1;} TcpSocket& TcpSocket::operator=(TcpSocket&& o) noexcept{if(this!=&o){close();fd_=o.fd_;o.fd_=-1;}return *this;}
+void TcpSocket::close(){if(fd_>=0){::shutdown(fd_,SHUT_RDWR);::close(fd_);fd_=-1;}}
+TcpSocket TcpSocket::connect(const std::string& host,const std::uint16_t port,const std::chrono::milliseconds timeout){
+    addrinfo hints{}; hints.ai_socktype=SOCK_STREAM; hints.ai_family=AF_UNSPEC; addrinfo* res=nullptr; const auto ps=std::to_string(port); if(::getaddrinfo(host.c_str(),ps.c_str(),&hints,&res)!=0)throw std::runtime_error("getaddrinfo failed for "+host);
+    for(auto* p=res;p;p=p->ai_next){const int fd=::socket(p->ai_family,p->ai_socktype,p->ai_protocol);if(fd<0)continue; timeval tv{static_cast<long>(timeout.count()/1000),static_cast<long>((timeout.count()%1000)*1000)};::setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&tv,sizeof(tv));::setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&tv,sizeof(tv)); if(::connect(fd,p->ai_addr,p->ai_addrlen)==0){::freeaddrinfo(res);return TcpSocket(fd);}::close(fd);} ::freeaddrinfo(res);throw std::runtime_error("connect failed to "+host+":"+std::to_string(port));
 }
-
-void send_all(const int fd, const std::span<const std::byte> data) {
-    std::size_t sent = 0;
-    while (sent < data.size()) {
-        const auto result = ::send(fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL);
-        if (result < 0) {
-            if (errno == EINTR) continue;
-            throw_socket_error("send");
-        }
-        if (result == 0) {
-            throw std::runtime_error("send: peer closed connection");
-        }
-        sent += static_cast<std::size_t>(result);
-    }
+void TcpSocket::send_frame(const protocol::Frame& frame) const { const auto bytes=protocol::encode(frame); send_all(fd_,bytes.data(),bytes.size()); }
+protocol::Frame TcpSocket::receive_frame() const { std::array<std::byte,protocol::kHeaderSize> h{};recv_all(fd_,h.data(),h.size());const std::uint32_t size=(std::to_integer<unsigned>(h[12])<<24U)|(std::to_integer<unsigned>(h[13])<<16U)|(std::to_integer<unsigned>(h[14])<<8U)|std::to_integer<unsigned>(h[15]);if(size>protocol::kMaxPayloadSize)throw std::runtime_error("payload too large");std::vector<std::byte> all(h.begin(),h.end());all.resize(protocol::kHeaderSize+size);if(size)recv_all(fd_,all.data()+protocol::kHeaderSize,size);return protocol::decode(all);}
+TcpListener::TcpListener(const std::string& address,const std::uint16_t port,const int backlog){addrinfo hints{};hints.ai_socktype=SOCK_STREAM;hints.ai_family=AF_UNSPEC;hints.ai_flags=AI_PASSIVE;addrinfo* res=nullptr;const auto ps=std::to_string(port);if(::getaddrinfo(address.empty()?nullptr:address.c_str(),ps.c_str(),&hints,&res)!=0)throw std::runtime_error("listener getaddrinfo failed");for(auto* p=res;p;p=p->ai_next){fd_=::socket(p->ai_family,p->ai_socktype,p->ai_protocol);if(fd_<0)continue;int one=1;::setsockopt(fd_,SOL_SOCKET,SO_REUSEADDR,&one,sizeof(one));if(::bind(fd_,p->ai_addr,p->ai_addrlen)==0&&::listen(fd_,backlog)==0)break;::close(fd_);fd_=-1;}::freeaddrinfo(res);if(fd_<0)throw std::runtime_error("cannot bind listener");}
+TcpListener::~TcpListener(){if(fd_>=0)::close(fd_);} std::optional<TcpSocket> TcpListener::accept_for(const std::chrono::milliseconds timeout) const {pollfd p{fd_,POLLIN,0};const int r=::poll(&p,1,static_cast<int>(timeout.count()));if(r==0)return std::nullopt;if(r<0){if(errno==EINTR)return std::nullopt;throw std::runtime_error("poll failed");}const int c=::accept(fd_,nullptr,nullptr);if(c<0){if(errno==EINTR)return std::nullopt;throw std::runtime_error("accept failed");}return TcpSocket(c);}
 }
-
-void receive_all(const int fd, const std::span<std::byte> data) {
-    std::size_t received = 0;
-    while (received < data.size()) {
-        const auto result = ::recv(fd, data.data() + received, data.size() - received, 0);
-        if (result < 0) {
-            if (errno == EINTR) continue;
-            throw_socket_error("recv");
-        }
-        if (result == 0) {
-            throw std::runtime_error("recv: peer closed connection");
-        }
-        received += static_cast<std::size_t>(result);
-    }
-}
-
-std::uint32_t read_payload_size(const std::array<std::byte, protocol::kHeaderSize>& header) {
-    return (std::to_integer<std::uint32_t>(header[12]) << 24U) |
-           (std::to_integer<std::uint32_t>(header[13]) << 16U) |
-           (std::to_integer<std::uint32_t>(header[14]) << 8U) |
-           std::to_integer<std::uint32_t>(header[15]);
-}
-
-} // namespace
-
-TcpSocket::TcpSocket(const int fd) noexcept : fd_(fd) {}
-TcpSocket::~TcpSocket() { close_fd(fd_); }
-
-TcpSocket::TcpSocket(TcpSocket&& other) noexcept : fd_(std::exchange(other.fd_, -1)) {}
-TcpSocket& TcpSocket::operator=(TcpSocket&& other) noexcept {
-    if (this != &other) {
-        close_fd(fd_);
-        fd_ = std::exchange(other.fd_, -1);
-    }
-    return *this;
-}
-
-TcpSocket TcpSocket::connect(const std::string& host, const std::uint16_t port) {
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    addrinfo* raw_results = nullptr;
-    const auto service = std::to_string(port);
-    const auto rc = ::getaddrinfo(host.c_str(), service.c_str(), &hints, &raw_results);
-    if (rc != 0) {
-        throw std::runtime_error("getaddrinfo: " + std::string{gai_strerror(rc)});
-    }
-
-    struct Guard { addrinfo* p; ~Guard() { if (p) freeaddrinfo(p); } } guard{raw_results};
-    for (auto* current = raw_results; current != nullptr; current = current->ai_next) {
-        const int fd = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-        if (fd < 0) continue;
-        if (::connect(fd, current->ai_addr, current->ai_addrlen) == 0) {
-            return TcpSocket{fd};
-        }
-        ::close(fd);
-    }
-    throw_socket_error("connect");
-}
-
-void TcpSocket::send_frame(const protocol::Frame& frame) const {
-    if (!valid()) throw std::runtime_error("send_frame on invalid socket");
-    const auto bytes = protocol::encode(frame);
-    send_all(fd_, bytes);
-}
-
-protocol::Frame TcpSocket::receive_frame() const {
-    if (!valid()) throw std::runtime_error("receive_frame on invalid socket");
-    std::array<std::byte, protocol::kHeaderSize> header{};
-    receive_all(fd_, header);
-    const auto payload_size = read_payload_size(header);
-    if (payload_size > protocol::kMaxPayloadSize) {
-        throw std::runtime_error("Incoming OGL payload exceeds maximum size");
-    }
-    std::vector<std::byte> bytes(header.begin(), header.end());
-    bytes.resize(protocol::kHeaderSize + payload_size);
-    if (payload_size > 0) {
-        receive_all(fd_, std::span<std::byte>{bytes}.subspan(protocol::kHeaderSize));
-    }
-    return protocol::decode(bytes);
-}
-
-bool TcpSocket::valid() const noexcept { return fd_ >= 0; }
-
-TcpListener::TcpListener(const std::string& address, const std::uint16_t port) {
-    addrinfo hints{};
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;
-    addrinfo* raw_results = nullptr;
-    const auto service = std::to_string(port);
-    const char* host = (address.empty() || address == "0.0.0.0" || address == "::") ? nullptr : address.c_str();
-    const auto rc = ::getaddrinfo(host, service.c_str(), &hints, &raw_results);
-    if (rc != 0) {
-        throw std::runtime_error("listener getaddrinfo: " + std::string{gai_strerror(rc)});
-    }
-
-    struct Guard { addrinfo* p; ~Guard() { if (p) freeaddrinfo(p); } } guard{raw_results};
-    int last_errno = 0;
-    for (auto* current = raw_results; current != nullptr; current = current->ai_next) {
-        const int candidate = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-        if (candidate < 0) {
-            last_errno = errno;
-            continue;
-        }
-        const int reuse = 1;
-        (void)::setsockopt(candidate, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-        if (current->ai_family == AF_INET6) {
-            const int v6_only = 0;
-            (void)::setsockopt(candidate, IPPROTO_IPV6, IPV6_V6ONLY, &v6_only, sizeof(v6_only));
-        }
-        if (::bind(candidate, current->ai_addr, current->ai_addrlen) == 0 && ::listen(candidate, SOMAXCONN) == 0) {
-            fd_ = candidate;
-            return;
-        }
-        last_errno = errno;
-        ::close(candidate);
-    }
-    errno = last_errno;
-    throw_socket_error("bind/listen");
-}
-TcpListener::~TcpListener() { close_fd(fd_); }
-
-std::optional<TcpSocket> TcpListener::accept_for(const std::chrono::milliseconds timeout) const {
-    pollfd descriptor{.fd = fd_, .events = POLLIN, .revents = 0};
-    const auto timeout_ms = static_cast<int>(timeout.count());
-    const auto ready = ::poll(&descriptor, 1, timeout_ms);
-    if (ready < 0) {
-        if (errno == EINTR) return std::nullopt;
-        throw_socket_error("poll");
-    }
-    if (ready == 0) return std::nullopt;
-    const int client = ::accept(fd_, nullptr, nullptr);
-    if (client < 0) {
-        if (errno == EINTR) return std::nullopt;
-        throw_socket_error("accept");
-    }
-    return TcpSocket{client};
-}
-
-} // namespace opengenesis::network

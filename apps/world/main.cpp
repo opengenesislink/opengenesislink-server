@@ -77,6 +77,9 @@ int main(int argc, char** argv) {
         const auto lease = std::chrono::seconds{config.get_int("core.lease_seconds", 5)};
         const auto tick_hz = config.get_double("runtime.tick_hz", 45.0);
         const auto terrain_base = config.get_double("runtime.terrain_base_height", 21.0);
+        const auto scene_ticket_secret = config.get_string(
+            "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
+        if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
         const auto storage_root = std::filesystem::path{
             config.get_string("storage.root", "data/world")};
         const auto save_interval = std::chrono::seconds{
@@ -106,7 +109,11 @@ int main(int argc, char** argv) {
             persistence.push_back(std::move(store));
         }
 
-        world::SceneServer scene_server(scene_address, scene_port, runtimes);
+        world::SceneServer scene_server(scene_address, scene_port, runtimes, scene_ticket_secret);
+        if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
+            opengenesis::common::log(LogLevel::warning, "world.security",
+                                     "Using development scene-ticket secret; replace it before network exposure");
+        }
         scene_server.start();
 
         std::thread persistence_thread([&] {

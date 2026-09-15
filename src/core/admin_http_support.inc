@@ -1,6 +1,8 @@
 #include "opengenesis/core/admin_http.hpp"
 
 #include "opengenesis/common/log.hpp"
+#include "opengenesis/security/crypto.hpp"
+#include "opengenesis/security/scene_ticket.hpp"
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -166,6 +168,7 @@ std::string status_text(const int status) {
         case 201: return "201 Created";
         case 400: return "400 Bad Request";
         case 401: return "401 Unauthorized";
+        case 403: return "403 Forbidden";
         case 404: return "404 Not Found";
         case 405: return "405 Method Not Allowed";
         case 409: return "409 Conflict";
@@ -235,3 +238,26 @@ std::string users_json(const std::vector<UserInfo>& users) {
     return body.str();
 }
 
+
+std::string asset_json(const AssetInfo& asset, bool include_hash = true) {
+    std::ostringstream body;
+    body << "{\"id\":\"" << json_escape(asset.id) << "\",\"name\":\""
+         << json_escape(asset.name) << "\",\"mime_type\":\"" << json_escape(asset.mime_type)
+         << "\",\"size\":" << asset.size << ",\"created_unix\":" << asset.created_unix;
+    if (include_hash) body << ",\"content_hash\":\"" << json_escape(asset.content_hash) << "\"";
+    body << '}'; return body.str();
+}
+std::string assets_json(const std::vector<AssetInfo>& assets) {
+    std::ostringstream body; body << '[';
+    for (std::size_t i=0;i<assets.size();++i){ if(i)body<<','; body<<asset_json(assets[i]); }
+    body << ']'; return body.str();
+}
+std::string inventory_json(const UserInventory& inv) {
+    std::ostringstream body;
+    body << "{\"root\":{\"id\":\"" << json_escape(inv.root.id) << "\",\"name\":\""
+         << json_escape(inv.root.name) << "\"},\"folders\":[";
+    for(std::size_t i=0;i<inv.folders.size();++i){if(i)body<<',';const auto& f=inv.folders[i];body<<"{\"id\":\""<<json_escape(f.id)<<"\",\"parent_id\":\""<<json_escape(f.parent_id)<<"\",\"name\":\""<<json_escape(f.name)<<"\"}";}
+    body << "],\"items\":[";
+    for(std::size_t i=0;i<inv.items.size();++i){if(i)body<<',';const auto& item=inv.items[i];body<<"{\"id\":\""<<json_escape(item.id)<<"\",\"parent_id\":\""<<json_escape(item.parent_id)<<"\",\"asset_id\":\""<<json_escape(item.asset_id)<<"\",\"name\":\""<<json_escape(item.name)<<"\"}";}
+    body << "]}"; return body.str();
+}

@@ -39,20 +39,21 @@ void RegionRuntime::stop() {
     if (thread_.joinable()) thread_.join();
 }
 
-std::uint64_t RegionRuntime::spawn_object(std::string name, Transform transform, const bool physical) {
-    return spawn_entity(std::move(name), EntityKind::object, transform, physical);
+std::uint64_t RegionRuntime::spawn_object(std::string name, Transform transform, const bool physical,
+                                          std::string owner_user_id) {
+    return spawn_entity(std::move(name), std::move(owner_user_id), EntityKind::object, transform, physical);
 }
 
-std::uint64_t RegionRuntime::spawn_avatar(std::string name, Transform transform) {
-    return spawn_entity(std::move(name), EntityKind::avatar, transform, true);
+std::uint64_t RegionRuntime::spawn_avatar(std::string user_id, std::string name, Transform transform) {
+    return spawn_entity(std::move(name), std::move(user_id), EntityKind::avatar, transform, true);
 }
 
 bool RegionRuntime::restore_object(const std::uint64_t id, std::string name, Transform transform,
-                                   const bool physical) {
+                                   const bool physical, std::string owner_user_id) {
     if (id == 0) return false;
     std::scoped_lock lock(mutex_);
     if (entities_.contains(id)) return false;
-    Entity entity{.id = id, .name = std::move(name), .kind = EntityKind::object, .transform = transform};
+    Entity entity{.id = id, .name = std::move(name), .owner_user_id = std::move(owner_user_id), .kind = EntityKind::object, .transform = transform};
     if (physical) {
         const double radius = std::max(0.1, transform.scale.z * 0.5);
         entity.physics_body = physics_.add_body({.position = transform.position, .radius = radius});
@@ -63,8 +64,8 @@ bool RegionRuntime::restore_object(const std::uint64_t id, std::string name, Tra
     return true;
 }
 
-std::uint64_t RegionRuntime::spawn_entity(std::string name, const EntityKind kind, Transform transform,
-                                          const bool physical) {
+std::uint64_t RegionRuntime::spawn_entity(std::string name, std::string owner_user_id,
+                                          const EntityKind kind, Transform transform, const bool physical) {
     if (transform.position.z == 0.0) {
         transform.position.x = 128.0;
         transform.position.y = 128.0;
@@ -73,7 +74,7 @@ std::uint64_t RegionRuntime::spawn_entity(std::string name, const EntityKind kin
 
     std::scoped_lock lock(mutex_);
     const auto id = next_entity_++;
-    Entity entity{.id = id, .name = std::move(name), .kind = kind, .transform = transform};
+    Entity entity{.id = id, .name = std::move(name), .owner_user_id = std::move(owner_user_id), .kind = kind, .transform = transform};
     if (physical) {
         const double radius = kind == EntityKind::avatar ? 0.45 : std::max(0.1, transform.scale.z * 0.5);
         entity.physics_body = physics_.add_body({.position = transform.position, .radius = radius});

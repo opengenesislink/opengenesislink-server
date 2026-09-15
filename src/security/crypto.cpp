@@ -2,6 +2,7 @@
 
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
+#include <openssl/hmac.h>
 #include <openssl/rand.h>
 
 #include <array>
@@ -82,6 +83,47 @@ std::string sha256_hex(const std::string_view value) {
         throw std::runtime_error("SHA-256 failed");
     }
     return hex_encode(digest.data(), length);
+}
+
+
+std::string hmac_sha256_hex(const std::string_view key, const std::string_view value) {
+    std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+    unsigned int length = 0;
+    if (!HMAC(EVP_sha256(), key.data(), static_cast<int>(key.size()),
+              reinterpret_cast<const unsigned char*>(value.data()), value.size(),
+              digest.data(), &length)) {
+        throw std::runtime_error("HMAC-SHA256 failed");
+    }
+    return hex_encode(digest.data(), length);
+}
+
+std::string base64_encode(const std::string_view value) {
+    if (value.empty()) return {};
+    std::string output(4 * ((value.size() + 2) / 3), '\0');
+    const auto length = EVP_EncodeBlock(reinterpret_cast<unsigned char*>(output.data()),
+                                        reinterpret_cast<const unsigned char*>(value.data()),
+                                        static_cast<int>(value.size()));
+    if (length < 0) throw std::runtime_error("base64 encode failed");
+    output.resize(static_cast<std::size_t>(length));
+    return output;
+}
+
+std::string base64_decode(const std::string_view value, const std::size_t max_decoded_bytes) {
+    if (value.empty()) return {};
+    if ((value.size() % 4) != 0 || value.size() > (max_decoded_bytes + 2) / 3 * 4 + 4) {
+        throw std::runtime_error("invalid base64 size");
+    }
+    std::string output((value.size() / 4) * 3, '\0');
+    const auto length = EVP_DecodeBlock(reinterpret_cast<unsigned char*>(output.data()),
+                                        reinterpret_cast<const unsigned char*>(value.data()),
+                                        static_cast<int>(value.size()));
+    if (length < 0) throw std::runtime_error("invalid base64 data");
+    std::size_t actual = static_cast<std::size_t>(length);
+    if (!value.empty() && value.back() == '=') --actual;
+    if (value.size() >= 2 && value[value.size() - 2] == '=') --actual;
+    if (actual > max_decoded_bytes) throw std::runtime_error("decoded base64 exceeds limit");
+    output.resize(actual);
+    return output;
 }
 
 std::string hash_password(const std::string_view password, const std::uint32_t iterations) {

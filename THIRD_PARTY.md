@@ -9,5 +9,7 @@ Used by the Core Identity subsystem for:
 - cryptographically secure random salts and session tokens
 - PBKDF2-HMAC-SHA256 password verification
 - SHA-256 hashing of persisted session-token identifiers
+- HMAC-SHA256 Scene Ticket signatures
+- Base64 helpers for the development Asset Web API
 
 OpenSSL is dynamically linked through CMake `OpenSSL::Crypto`. See the OpenSSL project for its applicable license terms.

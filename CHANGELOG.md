@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.0-dev — 2026-09-15
+
+Authenticated viewer and first content-services milestone.
+
+- added short-lived HMAC-SHA256 signed Scene Tickets issued by Core
+- added region binding, expiry validation, random ticket nonce and runtime replay rejection
+- Scene join now requires a valid Core-issued ticket
+- Avatar user id and display name now originate from authenticated Core identity
+- added scene-object ownership and owner persistence
+- object update/delete now require ownership in the current Scene session
+- added persistent Asset metadata and content-addressed blob storage
+- added authenticated Asset upload/list/read Web API
+- added persistent Inventory roots, folders and asset-backed items
+- added authenticated Inventory Web API
+- expanded browser dashboard with content-service information
+- added `/v1/viewer/session` and content capability discovery
+- expanded end-to-end tests across Core and World restarts
+- added unit tests for ticket signing, region binding, tamper detection, Asset ownership and Inventory persistence
+
+
 ## 0.4.0-dev — 2026-09-15
 
 Identity, persistence and browser/API milestone.

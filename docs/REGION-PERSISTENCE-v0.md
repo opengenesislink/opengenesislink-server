@@ -1,6 +1,6 @@
 # Region Persistence v0
 
-OpenGenesisLINK `0.4.0-dev` introduces the first persistent World Runtime state.
+OpenGenesisLINK `0.4.0-dev` introduced the first persistent World Runtime state.
 
 Each region receives its own directory under the configured World Node storage root, for example:
 
