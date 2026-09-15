@@ -1,15 +1,21 @@
 # OGL Wire Foundation v0
 
-The current transport is intentionally a development protocol and carries no backwards-compatibility guarantee yet.
+OpenGenesisLINK currently uses a small binary frame envelope for early protocol work.
 
-Each frame has a 16-byte big-endian header:
+Header size: 16 bytes, network byte order.
 
-- 4 bytes magic: `OGL1`
-- 2 bytes protocol version
-- 2 bytes message type
-- 4 bytes request id
-- 4 bytes payload length
+- bytes 0..3: magic `OGL1`
+- bytes 4..5: protocol version
+- bytes 6..7: message type
+- bytes 8..11: request id
+- bytes 12..15: payload length
+- remaining bytes: payload
 
-The payload is currently a UTF-8 key/value envelope. The maximum payload is 1 MiB.
+Maximum payload: 1 MiB.
 
-Implemented message groups: handshake, World registration, leases, Region registration, Region lifecycle, runtime metrics, ping/pong and graceful disconnect.
+Two transports currently use this frame:
+
+1. Core ↔ World Node control-plane connection (registration, leases, region state, metrics)
+2. World Node Scene development endpoint (join, snapshots, entities, chat, events, terrain samples)
+
+The payload is still a UTF-8 key/value bootstrap format. The wire format and message schemas are not frozen and currently carry no backward-compatibility guarantee.

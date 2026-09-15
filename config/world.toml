@@ -4,6 +4,8 @@ name = "OpenGenesis World 01"
 
 [network]
 public_endpoint = "127.0.0.1:19100"
+scene_listen_address = "127.0.0.1"
+scene_port = 19100
 
 [core]
 endpoint = "127.0.0.1:19000"
@@ -12,6 +14,7 @@ lease_seconds = 5
 
 [runtime]
 tick_hz = 45.0
+terrain_base_height = 21.0
 
 [regions]
 count = 1

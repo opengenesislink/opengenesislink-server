@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0-dev — 2026-09-15
+
+First Scene Runtime milestone.
+
+- added persistent World-side Region Runtime independent of Core reconnects
+- added 256×256 heightfield Terrain foundation with revision tracking and bilinear sampling
+- connected OpenGenesis Physics ground contact to Region Terrain
+- expanded entities to typed objects/avatars with position, rotation and scale transforms
+- added object create/update/delete and velocity operations
+- added avatar presence as Scene entities
+- added sequenced Scene event journal with bounded retention
+- added local chat events
+- added TCP Scene development endpoint on the World Node
+- added SCENE_JOIN, snapshots, scene-event polling and terrain sampling
+- added ENTITY_CREATE/UPDATE/DELETE and CHAT_SEND protocol messages
+- added scene-event and terrain revision metrics to Core status
+- expanded unit tests for Terrain, Scene Runtime and terrain-aware Physics
+- expanded smoke test into a real Scene client plus Core restart/reconnect test
+
 ## 0.2.0-dev — 2026-09-15
 
 First larger runtime milestone.

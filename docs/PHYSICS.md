@@ -1,14 +1,15 @@
-# OpenGenesis Physics — Foundation
+# OpenGenesis Physics
 
-The 0.2.0-dev tree contains the first native OpenGenesis Physics implementation rather than a third-party physics wrapper.
+The server contains its own native C++ physics foundation.
 
-Current kernel features:
+Current `0.3.0-dev` capabilities:
 
 - rigid-body state
-- configurable gravity
-- semi-implicit Euler integration
-- static ground-plane contact
-- restitution
-- thread-safe body creation/removal/query
+- gravity
+- semi-implicit velocity/position integration
+- configurable restitution
+- body position and velocity mutation
+- terrain-aware ground contact through a height sampler
+- per-body collision radius used for ground contact
 
-This is an engineering foundation, not yet a production solver. Constraints, shapes, broadphase/narrowphase collision, vehicles, buoyancy, water and cross-region physics will be implemented on top of this subsystem.
+This is still an early solver kernel. Body-vs-body collision detection, broadphase/narrowphase, constraints, character controller, vehicles, water, buoyancy, ships and cross-region physics are not yet part of this implementation.

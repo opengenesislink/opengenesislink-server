@@ -1,8 +1,10 @@
-# Admin Status API
+# Core Status API
 
-The Core exposes a minimal read-only HTTP status service.
+The Core exposes a small development HTTP status endpoint (default `127.0.0.1:18080`).
 
 - `GET /health` — process health and version
-- `GET /v1/status` — World Nodes, session generations, Regions and runtime metrics
+- `GET /v1/status` — World Node and Region state
 
-The 0.2.0-dev endpoint is intentionally local by default (`127.0.0.1:18080`) and has no authentication. Do not expose it publicly. Authentication/TLS belongs to a later hardening milestone.
+Region status includes generation, lifecycle state, ticks, entities, avatars, physics bodies, Scene event sequence count, Terrain revision and simulation FPS.
+
+The endpoint is currently operational/diagnostic only and is not yet the final authenticated administration API.

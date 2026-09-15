@@ -1,5 +1,5 @@
-# Publication policy
+# Public repository policy
 
-This repository contains public source code, configuration examples and technical documentation only.
+This repository publishes source code, build/configuration files, licensing information, changelog entries and technical protocol/runtime documentation.
 
-Internal planning material, schedules, roadmaps, product strategy, private implementation notes and project-management documents are not part of this repository.
+Internal project planning, schedules, roadmaps, product strategy, unpublished architecture planning and development workflow documents are intentionally not part of this public repository.

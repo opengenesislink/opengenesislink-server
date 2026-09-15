@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 0.2.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,8 @@ add_library(opengenesis-foundation
     src/core/admin_http.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
+    src/world/terrain.cpp
+    src/world/scene_server.cpp
 )
 add_library(OpenGenesis::Foundation ALIAS opengenesis-foundation)
 

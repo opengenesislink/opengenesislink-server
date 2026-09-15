@@ -2,23 +2,28 @@
 
 OpenGenesisLINK is an independent C++23 server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **0.2.0-dev**.
+Current development version: **0.3.0-dev**.
 
 ## What already runs
 
 - Core and World Node processes
 - binary OGL foundation framing over TCP
 - persistent World Node and Region registries
-- generation-based reconnect sessions
-- node leases and stale-node handling
+- generation-based reconnect sessions and node leases
 - region registration and lifecycle
 - live Region Runtime with dedicated tick loop
-- entity/avatar foundation
-- first native OpenGenesis Physics kernel
+- 256×256 heightfield terrain foundation
+- Scene entities with position, rotation and scale transforms
+- avatar presence as runtime entities
+- object create/update/delete operations
+- sequenced local scene event stream and local chat events
+- first TCP Scene endpoint for development clients
+- native OpenGenesis Physics kernel with terrain-aware ground contact
 - region runtime metrics streamed to the Core
 - HTTP health/status API
+- Region Runtime continues while the Core is temporarily unavailable
 - automatic World Node reconnect after Core restart
-- Debug and Release tests
+- Debug and Release tests plus end-to-end scene/recovery smoke test
 
 ## Build
 
@@ -28,13 +33,19 @@ Requirements: Linux, CMake >= 3.25, Ninja, a C++23 compiler and pthreads.
 ./scripts/build.sh
 ```
 
-Run an end-to-end recovery test:
+Run the end-to-end scene/recovery test:
 
 ```bash
 ./scripts/smoke-test.sh
 ```
 
-The default status endpoint is `http://127.0.0.1:18080/v1/status`.
+Default endpoints:
+
+- Core World-Node transport: `127.0.0.1:19000`
+- World Scene development endpoint: `127.0.0.1:19100`
+- Core status API: `http://127.0.0.1:18080/v1/status`
+
+The Scene endpoint is an early development protocol and has no authentication yet. Do not expose it to untrusted networks.
 
 ## Supported architecture targets
 
