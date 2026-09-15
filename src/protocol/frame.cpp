@@ -41,8 +41,8 @@ std::vector<std::byte> encode(const Frame& frame) {
     output.insert(output.end(), kMagic.begin(), kMagic.end());
     put_u16(output, kProtocolVersion);
     put_u16(output, static_cast<std::uint16_t>(frame.type));
-    put_u32(output, static_cast<std::uint32_t>(frame.payload.size()));
     put_u32(output, frame.request_id);
+    put_u32(output, static_cast<std::uint32_t>(frame.payload.size()));
     output.insert(output.end(), frame.payload.begin(), frame.payload.end());
     return output;
 }
@@ -60,7 +60,7 @@ Frame decode(const std::span<const std::byte> bytes) {
     if (version != kProtocolVersion) {
         throw std::runtime_error("Unsupported OGL protocol version");
     }
-    const auto payload_size = get_u32(bytes, 8);
+    const auto payload_size = get_u32(bytes, 12);
     if (payload_size > kMaxPayloadSize) {
         throw std::runtime_error("OGL frame payload exceeds maximum size");
     }
@@ -70,7 +70,7 @@ Frame decode(const std::span<const std::byte> bytes) {
 
     Frame frame;
     frame.type = static_cast<MessageType>(get_u16(bytes, 6));
-    frame.request_id = get_u32(bytes, 12);
+    frame.request_id = get_u32(bytes, 8);
     frame.payload.assign(bytes.begin() + static_cast<std::ptrdiff_t>(kHeaderSize), bytes.end());
     return frame;
 }
