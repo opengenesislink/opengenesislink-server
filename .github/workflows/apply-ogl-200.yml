@@ -4,7 +4,7 @@ on:
   push:
     branches: [sync-2.0.0-dev]
     paths:
-      - '.github/ogl-200-payload.part02'
+      - '.github/ogl-200-payload.part12'
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .github/ogl-200-payload.part00 .github/ogl-200-payload.part01 .github/ogl-200-payload.part02 > /tmp/ogl200.b64
+          cat .github/ogl-200-payload.part* > /tmp/ogl200.b64
           base64 -d /tmp/ogl200.b64 > /tmp/ogl200.tar.xz
           echo "8bf19d5e8289f194a61a816a7dcf4f6610f9be3c3b4c72db93af62e8e8a6d0d3  /tmp/ogl200.tar.xz" | sha256sum -c -
           find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
