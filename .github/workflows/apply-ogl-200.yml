@@ -4,7 +4,7 @@ on:
   push:
     branches: [sync-2.0.0-dev]
     paths:
-      - '.github/ogl-200-payload.part01'
+      - '.github/ogl-200-payload.part01b'
 
 permissions:
   contents: write
