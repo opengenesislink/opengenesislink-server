@@ -4,7 +4,7 @@ on:
   push:
     branches: [sync-2.0.0-dev]
     paths:
-      - '.github/ogl-200-payload.part01b'
+      - 'VERSION'
 
 permissions:
   contents: write
@@ -23,12 +23,17 @@ jobs:
           cat .github/ogl-200-payload.part* > /tmp/ogl200.b64
           base64 -d /tmp/ogl200.b64 > /tmp/ogl200.tar.xz
           echo "8bf19d5e8289f194a61a816a7dcf4f6610f9be3c3b4c72db93af62e8e8a6d0d3  /tmp/ogl200.tar.xz" | sha256sum -c -
+          rm -rf /tmp/ogl200-src
+          mkdir -p /tmp/ogl200-src
+          tar -xJf /tmp/ogl200.tar.xz -C /tmp/ogl200-src
+          src=/tmp/ogl200-src/OpenGenesisLINK-Server-2.0.0-dev
           find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
-          find .github -mindepth 1 -maxdepth 1 ! -name workflows ! -name 'ogl-200-payload.part*' -exec rm -rf {} + 2>/dev/null || true
-          find .github/workflows -mindepth 1 -maxdepth 1 ! -name apply-ogl-200.yml -delete
-          tar -xJf /tmp/ogl200.tar.xz -C .
+          cp -a "$src"/.clang-format .
+          cp -a "$src"/.gitignore .
+          cp -a "$src"/CHANGELOG.md "$src"/CMakeLists.txt "$src"/CMakePresets.json "$src"/LICENSE "$src"/PUBLICATION.md "$src"/README.md "$src"/THIRD_PARTY.md "$src"/VERSION .
+          cp -a "$src"/apps "$src"/config "$src"/docs "$src"/include "$src"/scripts "$src"/src "$src"/tests .
           git config user.name "OpenGenesis (MPL 2.0)"
           git config user.email "153564363+opengenesislink@users.noreply.github.com"
-          git add -A
+          git add -A -- ':!.github'
           git commit -m "OpenGenesisLINK Server 2.0.0-dev world operations"
           git push origin HEAD:sync-2.0.0-dev
