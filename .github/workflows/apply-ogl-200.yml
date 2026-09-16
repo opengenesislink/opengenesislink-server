@@ -1,0 +1,39 @@
+name: Apply OpenGenesisLINK 2.0.0 payload
+
+on:
+  push:
+    branches: [sync-2.0.0-dev]
+    paths:
+      - 'VERSION'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply verified 2.0.0 source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .github/ogl-200-payload.part* > /tmp/ogl200.b64
+          base64 -d /tmp/ogl200.b64 > /tmp/ogl200.tar.xz
+          echo "8bf19d5e8289f194a61a816a7dcf4f6610f9be3c3b4c72db93af62e8e8a6d0d3  /tmp/ogl200.tar.xz" | sha256sum -c -
+          rm -rf /tmp/ogl200-src
+          mkdir -p /tmp/ogl200-src
+          tar -xJf /tmp/ogl200.tar.xz -C /tmp/ogl200-src
+          src=/tmp/ogl200-src
+          find . -mindepth 1 -maxdepth 1 ! -name .git ! -name .github -exec rm -rf {} +
+          cp -a "$src"/.clang-format .
+          cp -a "$src"/.gitignore .
+          cp -a "$src"/CHANGELOG.md "$src"/CMakeLists.txt "$src"/CMakePresets.json "$src"/LICENSE "$src"/PUBLICATION.md "$src"/README.md "$src"/THIRD_PARTY.md "$src"/VERSION .
+          cp -a "$src"/apps "$src"/config "$src"/docs "$src"/include "$src"/scripts "$src"/src "$src"/tests .
+          git config user.name "OpenGenesis (MPL 2.0)"
+          git config user.email "153564363+opengenesislink@users.noreply.github.com"
+          git add -A -- ':!.github'
+          git commit -m "OpenGenesisLINK Server 2.0.0-dev world operations"
+          git push origin HEAD:sync-2.0.0-dev

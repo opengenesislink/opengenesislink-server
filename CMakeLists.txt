@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 0.5.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 2.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,6 +26,17 @@ add_library(opengenesis-foundation
     src/core/session_store.cpp
     src/core/asset_store.cpp
     src/core/inventory_store.cpp
+    src/core/presence_store.cpp
+    src/core/friends_store.cpp
+    src/core/message_store.cpp
+    src/core/group_store.cpp
+    src/core/parcel_store.cpp
+    src/core/moderation_store.cpp
+    src/core/audit_store.cpp
+    src/core/estate_store.cpp
+    src/core/landmark_store.cpp
+    src/core/notification_store.cpp
+    src/core/group_channel_store.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
     src/world/region_persistence.cpp

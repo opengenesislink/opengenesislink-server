@@ -15,6 +15,7 @@ scene_ticket_lifetime_seconds = 60
 
 [security]
 scene_ticket_secret = "development-only-change-this-scene-ticket-secret"
+admin_api_key = "development-only-change-this-admin-api-key"
 
 [storage]
 worlds = "data/worlds.db"
@@ -24,6 +25,16 @@ sessions = "data/sessions.db"
 assets_metadata = "data/assets.db"
 assets_blobs = "data/assets"
 inventory = "data/inventory.db"
+friends = "data/friends.db"
+messages = "data/messages.db"
+groups = "data/groups.db"
+parcels = "data/parcels.db"
+moderation = "data/moderation.db"
+audit = "data/audit.log"
+estates = "data/estates.db"
+landmarks = "data/landmarks.db"
+notifications = "data/notifications.db"
+group_channels = "data/group_channels.db"
 
 [assets]
 max_bytes = 1048576

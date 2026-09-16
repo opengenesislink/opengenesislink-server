@@ -1,41 +1,58 @@
-# OGL Scene Protocol v0
+# Scene Protocol v0
 
-The development Scene endpoint uses the same 16-byte OGL1 frame header as the Core/World transport and runs on a separate TCP listener (default `127.0.0.1:19100`).
+The Scene endpoint is an early native OpenGenesisLINK protocol over the OGL binary frame transport.
 
-This protocol is experimental and may change without backward-compatibility guarantees.
+## Authentication and authorization
 
-## Authenticated connection flow
+A client first exchanges `HELLO`, then sends `SCENE_JOIN` with a Core-issued Scene Ticket. World verifies signature, expiry, Region binding, nonce replay and `scene.join`. It also checks moderation and Parcel entry policy.
 
-1. Client authenticates to Core HTTP API.
-2. Client requests `POST /v1/viewer/session` for a Region.
-3. Core returns the World Scene endpoint and a short-lived signed Scene Ticket.
-4. Client opens Scene TCP and sends `HELLO` → `HELLO_ACK`.
-5. Client sends `SCENE_JOIN` containing `region=<id>` and `ticket=<ogst1...>`.
-6. World validates signature, expiry, Region binding and replay nonce before creating Avatar Presence.
-7. `GOODBYE` or disconnect removes the temporary Avatar Presence.
+The ticket carries authenticated user id/display name, Group memberships, server-selected spawn coordinates and an explicit capability set. Clients cannot grant themselves Group membership or choose an unchecked spawn position.
 
-The Avatar display name and account id come from the signed Core ticket, not from untrusted client fields.
+Current capabilities include:
 
-## Scene messages
+```text
+scene.join
+scene.read
+scene.move
+scene.chat
+scene.object.create
+scene.object.modify.own
+scene.object.permissions
+scene.terrain.sample
+scene.terrain.modify
+```
 
-- `SCENE_JOIN` (100) / `SCENE_JOIN_ACK` (101)
-- `SCENE_SNAPSHOT_REQUEST` (102) / `SCENE_SNAPSHOT` (103)
-- `ENTITY_CREATE` (110) / `ENTITY_CREATE_ACK` (111)
-- `ENTITY_UPDATE` (112) / `ENTITY_UPDATE_ACK` (113)
-- `ENTITY_DELETE` (114) / `ENTITY_DELETE_ACK` (115)
-- `CHAT_SEND` (120) / `CHAT_EVENT` (121)
-- `SCENE_EVENTS_REQUEST` (130) / `SCENE_EVENTS` (131)
-- `TERRAIN_SAMPLE_REQUEST` (140) / `TERRAIN_SAMPLE` (141)
-- `TERRAIN_SET_REQUEST` (142) / `TERRAIN_SET_ACK` (143)
+Capability checks are combined with Parcel and object permission policy.
 
-Payloads currently use UTF-8 key/value lines. This is bootstrap encoding rather than the final high-frequency world-state representation.
+## Messages
 
-## Ownership
+| Message | Value | Direction |
+| --- | ---: | --- |
+| SCENE_JOIN | 100 | client → World |
+| SCENE_JOIN_ACK | 101 | World → client |
+| SCENE_SNAPSHOT_REQUEST | 102 | client → World |
+| SCENE_SNAPSHOT | 103 | World → client |
+| ENTITY_CREATE | 110 | client → World |
+| ENTITY_CREATE_ACK | 111 | World → client |
+| ENTITY_UPDATE | 112 | client → World |
+| ENTITY_UPDATE_ACK | 113 | World → client |
+| ENTITY_DELETE | 114 | client → World |
+| ENTITY_DELETE_ACK | 115 | World → client |
+| ENTITY_PERMISSIONS | 116 | client → World |
+| ENTITY_PERMISSIONS_ACK | 117 | World → client |
+| CHAT_SEND | 120 | client → World |
+| CHAT_EVENT | 121 | World → client |
+| SCENE_EVENTS_REQUEST | 130 | client → World |
+| SCENE_EVENTS | 131 | World → client |
+| TERRAIN_SAMPLE_REQUEST | 140 | client → World |
+| TERRAIN_SAMPLE | 141 | World → client |
+| TERRAIN_SET_REQUEST | 142 | client → World |
+| TERRAIN_SET_ACK | 143 | World → client |
+| AVATAR_MOVE | 150 | client → World |
+| AVATAR_MOVE_ACK | 151 | World → client |
 
-Objects created through an authenticated Scene session receive the account id from that session as owner. In `0.5.0-dev`, object update/delete through this Scene connection requires matching ownership. Object ownership is persisted with scene-object state.
+Object create/update/delete and terrain mutation are subject to signed capability claims plus land/object policy. Owners can change Group/everyone object permission masks through `ENTITY_PERMISSIONS`.
 
-Terrain editing is authenticated but does not yet have role/capability authorization.
+`AVATAR_MOVE` updates position/velocity and returns a boundary direction when an edge is crossed.
 
-## Security limits
-
-Ticket replay is rejected by an in-memory World-process nonce cache. A World process restart resets that cache, so distributed/persistent replay state remains future work. Keep the Scene listener on a trusted interface until TLS, roles and capability authorization are complete.
+The current text payload syntax remains a bootstrap format and is not a frozen long-term wire contract.

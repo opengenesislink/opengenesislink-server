@@ -31,6 +31,8 @@ enum class MessageType : std::uint16_t {
     region_state_ack = 33,
     region_metrics = 34,
     region_metrics_ack = 35,
+    presence_snapshot = 36,
+    presence_snapshot_ack = 37,
 
     ping = 40,
     pong = 41,
@@ -46,6 +48,8 @@ enum class MessageType : std::uint16_t {
     entity_update_ack = 113,
     entity_delete = 114,
     entity_delete_ack = 115,
+    entity_permissions = 116,
+    entity_permissions_ack = 117,
     chat_send = 120,
     chat_event = 121,
     scene_events_request = 130,
@@ -54,6 +58,8 @@ enum class MessageType : std::uint16_t {
     terrain_sample = 141,
     terrain_set_request = 142,
     terrain_set_ack = 143,
+    avatar_move = 150,
+    avatar_move_ack = 151,
 
     error = 255
 };

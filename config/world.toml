@@ -21,13 +21,22 @@ terrain_base_height = 21.0
 
 [storage]
 root = "data/world"
+parcels = "data/parcels.db"
+moderation = "data/moderation.db"
 save_interval_seconds = 2
 
 [regions]
-count = 1
+count = 2
 
 [region0]
 id = "genesis-central"
 name = "Genesis Central"
 grid_x = 1000
+grid_y = 1000
+
+
+[region1]
+id = "genesis-east"
+name = "Genesis East"
+grid_x = 1001
 grid_y = 1000
