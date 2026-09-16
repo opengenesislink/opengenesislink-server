@@ -104,6 +104,40 @@ std::optional<std::string> json_string(const std::string_view json, const std::s
     return std::nullopt;
 }
 
+
+std::optional<double> json_number(const std::string_view json, const std::string_view key) {
+    const std::string needle = "\"" + std::string(key) + "\"";
+    auto position = json.find(needle);
+    if (position == std::string_view::npos) return std::nullopt;
+    position = json.find(':', position + needle.size());
+    if (position == std::string_view::npos) return std::nullopt;
+    ++position;
+    while (position < json.size() && std::isspace(static_cast<unsigned char>(json[position]))) ++position;
+    std::size_t end = position;
+    while (end < json.size() && (std::isdigit(static_cast<unsigned char>(json[end])) || json[end]=='-' || json[end]=='+' || json[end]=='.' || json[end]=='e' || json[end]=='E')) ++end;
+    if (end == position) return std::nullopt;
+    try { return std::stod(std::string{json.substr(position,end-position)}); } catch (...) { return std::nullopt; }
+}
+
+std::optional<bool> json_bool(const std::string_view json, const std::string_view key) {
+    const std::string needle = "\"" + std::string(key) + "\"";
+    auto position = json.find(needle);
+    if (position == std::string_view::npos) return std::nullopt;
+    position = json.find(':', position + needle.size());
+    if (position == std::string_view::npos) return std::nullopt;
+    ++position;
+    while (position < json.size() && std::isspace(static_cast<unsigned char>(json[position]))) ++position;
+    if (json.substr(position,4)=="true") return true;
+    if (json.substr(position,5)=="false") return false;
+    return std::nullopt;
+}
+
+bool admin_authorized(const HttpRequest& request, std::string_view key) {
+    if (key.empty()) return false;
+    const auto it = request.headers.find("x-opengenesis-admin-key");
+    return it != request.headers.end() && it->second == key;
+}
+
 bool recv_more(const int fd, std::string& buffer) {
     char chunk[4096];
     const auto count = ::recv(fd, chunk, sizeof(chunk), 0);
@@ -243,7 +277,9 @@ std::string asset_json(const AssetInfo& asset, bool include_hash = true) {
     std::ostringstream body;
     body << "{\"id\":\"" << json_escape(asset.id) << "\",\"name\":\""
          << json_escape(asset.name) << "\",\"mime_type\":\"" << json_escape(asset.mime_type)
-         << "\",\"size\":" << asset.size << ",\"created_unix\":" << asset.created_unix;
+         << "\",\"size\":" << asset.size << ",\"permissions\":" << asset.permissions
+         << ",\"next_owner_permissions\":" << asset.next_owner_permissions
+         << ",\"created_unix\":" << asset.created_unix;
     if (include_hash) body << ",\"content_hash\":\"" << json_escape(asset.content_hash) << "\"";
     body << '}'; return body.str();
 }
@@ -261,3 +297,91 @@ std::string inventory_json(const UserInventory& inv) {
     for(std::size_t i=0;i<inv.items.size();++i){if(i)body<<',';const auto& item=inv.items[i];body<<"{\"id\":\""<<json_escape(item.id)<<"\",\"parent_id\":\""<<json_escape(item.parent_id)<<"\",\"asset_id\":\""<<json_escape(item.asset_id)<<"\",\"name\":\""<<json_escape(item.name)<<"\"}";}
     body << "]}"; return body.str();
 }
+
+std::string presences_json(const std::vector<PresenceInfo>& presences) {
+    std::ostringstream body;
+    body << '[';
+    for (std::size_t i = 0; i < presences.size(); ++i) {
+        if (i) body << ',';
+        const auto& p = presences[i];
+        body << "{\"user_id\":\"" << json_escape(p.user_id) << "\",\"display_name\":\""
+             << json_escape(p.display_name) << "\",\"region_id\":\"" << json_escape(p.region_id)
+             << "\",\"node_id\":\"" << json_escape(p.node_id) << "\",\"entity_id\":"
+             << p.entity_id << ",\"x\":" << p.x << ",\"y\":" << p.y << ",\"z\":" << p.z
+             << ",\"updated_unix\":" << p.updated_unix << '}';
+    }
+    body << ']';
+    return body.str();
+}
+
+std::string friends_json(const std::vector<FriendRelation>& relations, std::string_view current_user) {
+    std::ostringstream body;
+    body << '[';
+    for (std::size_t i = 0; i < relations.size(); ++i) {
+        if (i) body << ',';
+        const auto& r = relations[i];
+        const auto other = r.user_a == current_user ? r.user_b : r.user_a;
+        body << "{\"id\":\"" << json_escape(r.id) << "\",\"other_user_id\":\""
+             << json_escape(other) << "\",\"status\":\"" << json_escape(r.status)
+             << "\",\"requested_by\":\"" << json_escape(r.requested_by)
+             << "\",\"created_unix\":" << r.created_unix << ",\"updated_unix\":"
+             << r.updated_unix << '}';
+    }
+    body << ']';
+    return body.str();
+}
+
+std::string messages_json(const std::vector<DirectMessage>& messages, std::string_view current_user) {
+    std::ostringstream body;
+    body << '[';
+    for (std::size_t i = 0; i < messages.size(); ++i) {
+        if (i) body << ',';
+        const auto& m = messages[i];
+        body << "{\"id\":\"" << json_escape(m.id) << "\",\"sender_id\":\""
+             << json_escape(m.sender_id) << "\",\"recipient_id\":\""
+             << json_escape(m.recipient_id) << "\",\"direction\":\""
+             << (m.sender_id == current_user ? "out" : "in") << "\",\"text\":\""
+             << json_escape(m.text) << "\",\"sent_unix\":" << m.sent_unix
+             << ",\"read_unix\":" << m.read_unix << '}';
+    }
+    body << ']';
+    return body.str();
+}
+std::string groups_json(const std::vector<GroupInfo>& groups) {
+    std::ostringstream out; out << '[';
+    for (std::size_t i=0;i<groups.size();++i){if(i)out<<',';const auto& g=groups[i];out<<"{\"id\":\""<<json_escape(g.id)<<"\",\"name\":\""<<json_escape(g.name)<<"\",\"founder_user_id\":\""<<json_escape(g.founder_user_id)<<"\",\"created_unix\":"<<g.created_unix<<'}';}
+    out << ']'; return out.str();
+}
+std::string group_members_json(const std::vector<GroupMember>& members) {
+    std::ostringstream out; out << '[';
+    for(std::size_t i=0;i<members.size();++i){if(i)out<<',';const auto&m=members[i];out<<"{\"user_id\":\""<<json_escape(m.user_id)<<"\",\"role\":\""<<json_escape(m.role)<<"\",\"powers\":"<<m.powers<<",\"joined_unix\":"<<m.joined_unix<<'}';}
+    out<<']';return out.str();
+}
+std::string parcels_json(const std::vector<ParcelInfo>& parcels) {
+    std::ostringstream out; out << '[';
+    for(std::size_t i=0;i<parcels.size();++i){if(i)out<<',';const auto&p=parcels[i];out<<"{\"id\":\""<<json_escape(p.id)<<"\",\"region_id\":\""<<json_escape(p.region_id)<<"\",\"name\":\""<<json_escape(p.name)<<"\",\"owner_user_id\":\""<<json_escape(p.owner_user_id)<<"\",\"group_id\":\""<<json_escape(p.group_id)<<"\",\"x1\":"<<p.x1<<",\"y1\":"<<p.y1<<",\"x2\":"<<p.x2<<",\"y2\":"<<p.y2<<",\"public_entry\":"<<(p.public_entry?"true":"false")<<",\"public_build\":"<<(p.public_build?"true":"false")<<",\"group_build\":"<<(p.group_build?"true":"false")<<",\"group_terraform\":"<<(p.group_terraform?"true":"false")<<'}';}
+    out<<']';return out.str();
+}
+std::string bans_json(const std::vector<BanRecord>& bans) {
+    std::ostringstream out;out<<'[';for(std::size_t i=0;i<bans.size();++i){if(i)out<<',';const auto&b=bans[i];out<<"{\"id\":\""<<json_escape(b.id)<<"\",\"user_id\":\""<<json_escape(b.user_id)<<"\",\"scope\":\""<<json_escape(b.scope)<<"\",\"scope_id\":\""<<json_escape(b.scope_id)<<"\",\"reason\":\""<<json_escape(b.reason)<<"\",\"created_by\":\""<<json_escape(b.created_by)<<"\",\"created_unix\":"<<b.created_unix<<",\"expires_unix\":"<<b.expires_unix<<'}';}out<<']';return out.str();
+}
+
+std::string estates_json(const std::vector<EstateInfo>& estates) {
+    std::ostringstream out; out << '[';
+    for(std::size_t i=0;i<estates.size();++i){if(i)out<<',';const auto&e=estates[i];out<<"{\"id\":\""<<json_escape(e.id)<<"\",\"name\":\""<<json_escape(e.name)<<"\",\"owner_user_id\":\""<<json_escape(e.owner_user_id)<<"\",\"managers\":[";for(std::size_t j=0;j<e.manager_user_ids.size();++j){if(j)out<<',';out<<'\"'<<json_escape(e.manager_user_ids[j])<<'\"';}out<<"],\"created_unix\":"<<e.created_unix<<'}';}
+    out<<']';return out.str();
+}
+std::string estate_policies_json(const std::vector<RegionEstatePolicy>& policies) {
+    std::ostringstream out; out << '[';
+    for(std::size_t i=0;i<policies.size();++i){if(i)out<<',';const auto&p=policies[i];out<<"{\"region_id\":\""<<json_escape(p.region_id)<<"\",\"estate_id\":\""<<json_escape(p.estate_id)<<"\",\"public_access\":"<<(p.public_access?"true":"false")<<",\"allow_fly\":"<<(p.allow_fly?"true":"false")<<",\"allow_scripts\":"<<(p.allow_scripts?"true":"false")<<",\"allow_voice\":"<<(p.allow_voice?"true":"false")<<",\"max_agents\":"<<p.max_agents<<",\"maturity\":"<<static_cast<unsigned>(p.maturity)<<",\"landing\":{\"x\":"<<p.landing_x<<",\"y\":"<<p.landing_y<<",\"z\":"<<p.landing_z<<"}}";}
+    out<<']';return out.str();
+}
+std::string landmark_json(const LandmarkInfo& m){std::ostringstream out;out<<"{\"id\":\""<<json_escape(m.id)<<"\",\"name\":\""<<json_escape(m.name)<<"\",\"region_id\":\""<<json_escape(m.region_id)<<"\",\"x\":"<<m.x<<",\"y\":"<<m.y<<",\"z\":"<<m.z<<",\"created_unix\":"<<m.created_unix<<'}';return out.str();}
+std::string landmarks_json(const std::vector<LandmarkInfo>& items){std::ostringstream out;out<<'[';for(std::size_t i=0;i<items.size();++i){if(i)out<<',';out<<landmark_json(items[i]);}out<<']';return out.str();}
+std::string notifications_json(const std::vector<NotificationInfo>& items){std::ostringstream out;out<<'[';for(std::size_t i=0;i<items.size();++i){if(i)out<<',';const auto&n=items[i];out<<"{\"id\":\""<<json_escape(n.id)<<"\",\"type\":\""<<json_escape(n.type)<<"\",\"title\":\""<<json_escape(n.title)<<"\",\"body\":\""<<json_escape(n.body)<<"\",\"target\":\""<<json_escape(n.target)<<"\",\"created_unix\":"<<n.created_unix<<",\"read_unix\":"<<n.read_unix<<'}';}out<<']';return out.str();}
+std::string group_posts_json(const std::vector<GroupPost>& posts){std::ostringstream out;out<<'[';for(std::size_t i=0;i<posts.size();++i){if(i)out<<',';const auto&p=posts[i];out<<"{\"id\":\""<<json_escape(p.id)<<"\",\"group_id\":\""<<json_escape(p.group_id)<<"\",\"sender_id\":\""<<json_escape(p.sender_id)<<"\",\"kind\":\""<<json_escape(p.kind)<<"\",\"title\":\""<<json_escape(p.title)<<"\",\"text\":\""<<json_escape(p.text)<<"\",\"sent_unix\":"<<p.sent_unix<<'}';}out<<']';return out.str();}
+
+std::string audit_json(const std::vector<AuditEvent>& events) {
+    std::ostringstream out;out<<'[';for(std::size_t i=0;i<events.size();++i){if(i)out<<',';const auto&e=events[i];out<<"{\"sequence\":"<<e.sequence<<",\"actor\":\""<<json_escape(e.actor)<<"\",\"action\":\""<<json_escape(e.action)<<"\",\"target\":\""<<json_escape(e.target)<<"\",\"detail\":\""<<json_escape(e.detail)<<"\",\"unix_time\":"<<e.unix_time<<'}';}out<<']';return out.str();
+}
+

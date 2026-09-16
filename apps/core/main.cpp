@@ -2,9 +2,20 @@
 #include "opengenesis/config/toml_config.hpp"
 #include "opengenesis/core/admin_http.hpp"
 #include "opengenesis/core/asset_store.hpp"
+#include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/group_store.hpp"
+#include "opengenesis/core/group_channel_store.hpp"
+#include "opengenesis/core/notification_store.hpp"
+#include "opengenesis/core/landmark_store.hpp"
+#include "opengenesis/core/estate_store.hpp"
+#include "opengenesis/core/moderation_store.hpp"
+#include "opengenesis/core/parcel_store.hpp"
 #include "opengenesis/core/inventory_store.hpp"
 #include "opengenesis/core/identity_store.hpp"
 #include "opengenesis/core/node_sessions.hpp"
+#include "opengenesis/core/presence_store.hpp"
+#include "opengenesis/core/friends_store.hpp"
+#include "opengenesis/core/message_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
@@ -19,6 +30,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 using opengenesis::common::LogLevel;
 namespace protocol = opengenesis::protocol;
@@ -47,6 +59,39 @@ double number(const std::string& payload, const std::string& key) {
     const auto value = field(payload, key);
     return value.empty() ? 0.0 : std::stod(value);
 }
+
+std::vector<std::string> split_pipe(const std::string& text) {
+    std::vector<std::string> result;
+    std::size_t start = 0;
+    while (true) {
+        const auto end = text.find('|', start);
+        result.push_back(text.substr(start, end == std::string::npos ? std::string::npos : end - start));
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return result;
+}
+
+std::vector<core::PresenceInfo> parse_presences(const std::string& payload) {
+    std::vector<core::PresenceInfo> result;
+    std::istringstream input(payload);
+    std::string line;
+    while (std::getline(input, line)) {
+        if (!line.starts_with("presence=")) continue;
+        const auto parts = split_pipe(line.substr(9));
+        if (parts.size() != 6) continue;
+        try {
+            result.push_back({.user_id = parts[0],
+                              .display_name = parts[1],
+                              .entity_id = std::stoull(parts[2]),
+                              .x = std::stod(parts[3]),
+                              .y = std::stod(parts[4]),
+                              .z = std::stod(parts[5])});
+        } catch (...) {
+        }
+    }
+    return result;
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -64,7 +109,10 @@ int main(int argc, char** argv) {
             config.get_int("identity.scene_ticket_lifetime_seconds", 60)};
         const auto scene_ticket_secret = config.get_string(
             "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
+        const auto admin_api_key = config.get_string(
+            "security.admin_api_key", "development-only-change-this-admin-api-key");
         if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
+        if (admin_api_key.size() < 24) throw std::runtime_error("security.admin_api_key must contain at least 24 bytes");
 
         auto worlds = std::make_shared<core::WorldRegistry>(
             config.get_string("storage.worlds", "data/worlds.db"));
@@ -80,17 +128,44 @@ int main(int argc, char** argv) {
             static_cast<std::size_t>(config.get_int("assets.max_bytes", 1048576)));
         auto inventory = std::make_shared<core::InventoryStore>(
             config.get_string("storage.inventory", "data/inventory.db"));
+        auto presences = std::make_shared<core::PresenceStore>();
+        auto friends = std::make_shared<core::FriendsStore>(
+            config.get_string("storage.friends", "data/friends.db"));
+        auto messages = std::make_shared<core::MessageStore>(
+            config.get_string("storage.messages", "data/messages.db"));
+        auto groups = std::make_shared<core::GroupStore>(
+            config.get_string("storage.groups", "data/groups.db"));
+        auto parcels = std::make_shared<core::ParcelStore>(
+            config.get_string("storage.parcels", "data/parcels.db"));
+        auto moderation = std::make_shared<core::ModerationStore>(
+            config.get_string("storage.moderation", "data/moderation.db"));
+        auto audit = std::make_shared<core::AuditStore>(
+            config.get_string("storage.audit", "data/audit.log"));
+        auto estates = std::make_shared<core::EstateStore>(
+            config.get_string("storage.estates", "data/estates.db"));
+        auto landmarks = std::make_shared<core::LandmarkStore>(
+            config.get_string("storage.landmarks", "data/landmarks.db"));
+        auto notifications = std::make_shared<core::NotificationStore>(
+            config.get_string("storage.notifications", "data/notifications.db"));
+        auto group_channels = std::make_shared<core::GroupChannelStore>(
+            config.get_string("storage.group_channels", "data/group_channels.db"));
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "core.security",
                                      "Using development scene-ticket secret; replace it before network exposure");
         }
+        if (admin_api_key == "development-only-change-this-admin-api-key") {
+            opengenesis::common::log(LogLevel::warning, "core.security",
+                                     "Using development admin API key; replace it before network exposure");
+        }
 
         core::AdminHttpServer admin(
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
-            identities, auth_sessions, assets, inventory, scene_ticket_secret, scene_ticket_lifetime);
+            identities, auth_sessions, assets, inventory, presences, friends, messages, groups, parcels,
+            moderation, audit, estates, landmarks, notifications, group_channels, admin_api_key,
+            scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
 
         opengenesis::network::TcpListener listener(address, port);
@@ -103,6 +178,7 @@ int main(int argc, char** argv) {
                 for (const auto& session : node_sessions->expired(lease_timeout)) {
                     worlds->mark_offline(session.node_id, session.generation);
                     regions->mark_node_offline(session.node_id, session.generation);
+                    presences->mark_node_offline(session.node_id, session.generation);
                     node_sessions->close(session.node_id, session.generation);
                     opengenesis::common::log(LogLevel::warning, "core.lease",
                                              "Lease expired for " + session.node_id);
@@ -115,7 +191,7 @@ int main(int argc, char** argv) {
         while (running) {
             auto accepted = listener.accept_for(std::chrono::milliseconds{250});
             if (!accepted) continue;
-            std::thread([socket = std::move(*accepted), worlds, regions, node_sessions, lease_timeout]() mutable {
+            std::thread([socket = std::move(*accepted), worlds, regions, presences, node_sessions, lease_timeout]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -204,6 +280,20 @@ int main(int argc, char** argv) {
                                                frame.request_id,
                                                protocol::payload_from_string(ok ? "status=ok\n"
                                                                                 : "reason=" + reason + "\n")});
+                        } else if (frame.type == protocol::MessageType::presence_snapshot) {
+                            const auto region_id = field(body, "region");
+                            const auto region = regions->find(region_id);
+                            const bool ok = region && region->node_id == node_id &&
+                                            region->node_generation == generation;
+                            if (ok) {
+                                presences->replace_region_snapshot(region_id, node_id, generation,
+                                                                   parse_presences(body));
+                            }
+                            socket.send_frame({ok ? protocol::MessageType::presence_snapshot_ack
+                                                  : protocol::MessageType::error,
+                                               frame.request_id,
+                                               protocol::payload_from_string(
+                                                   ok ? "status=ok\n" : "reason=stale-region\n")});
                         } else if (frame.type == protocol::MessageType::goodbye) {
                             break;
                         } else {
@@ -219,6 +309,7 @@ int main(int argc, char** argv) {
                     node_sessions->close(node_id, generation);
                     worlds->mark_offline(node_id, generation);
                     regions->mark_node_offline(node_id, generation);
+                    presences->mark_node_offline(node_id, generation);
                 }
             }).detach();
         }

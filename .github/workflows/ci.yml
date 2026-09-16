@@ -4,6 +4,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+
 jobs:
   build:
     strategy:
@@ -12,11 +13,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-      - name: Configure
-        run: cmake --preset release
+      - name: Configure release (warnings as errors)
+        run: cmake --preset release -DOGL_ENABLE_WERROR=ON
       - name: Build
         run: cmake --build --preset release
       - name: Unit tests
         run: ctest --preset release
-      - name: Recovery smoke test
+      - name: Integrated world/social/handoff smoke test
         run: ./scripts/smoke-test.sh

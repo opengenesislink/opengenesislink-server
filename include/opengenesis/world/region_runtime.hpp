@@ -1,5 +1,6 @@
 #pragma once
 
+#include "opengenesis/core/permissions.hpp"
 #include "opengenesis/physics/physics_world.hpp"
 #include "opengenesis/world/terrain.hpp"
 
@@ -28,6 +29,10 @@ struct Entity {
     std::uint64_t id{0};
     std::string name;
     std::string owner_user_id;
+    std::string group_id;
+    core::PermissionMask owner_permissions{core::perm_all};
+    core::PermissionMask group_permissions{0};
+    core::PermissionMask everyone_permissions{0};
     EntityKind kind{EntityKind::object};
     Transform transform{};
     std::uint64_t physics_body{0};
@@ -62,13 +67,23 @@ public:
     void stop();
 
     std::uint64_t spawn_object(std::string name, Transform transform = {}, bool physical = true,
-                               std::string owner_user_id = {});
+                               std::string owner_user_id = {}, std::string group_id = {},
+                               core::PermissionMask group_permissions = 0,
+                               core::PermissionMask everyone_permissions = 0);
     std::uint64_t spawn_avatar(std::string user_id, std::string name, Transform transform = {});
     bool restore_object(std::uint64_t id, std::string name, Transform transform, bool physical,
-                        std::string owner_user_id = {});
+                        std::string owner_user_id = {}, std::string group_id = {},
+                        core::PermissionMask owner_permissions = core::perm_all,
+                        core::PermissionMask group_permissions = 0,
+                        core::PermissionMask everyone_permissions = 0);
     bool remove_entity(std::uint64_t id);
     bool update_transform(std::uint64_t id, Transform transform);
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
+    bool set_object_permissions(std::uint64_t id, std::string group_id,
+                                core::PermissionMask group_permissions,
+                                core::PermissionMask everyone_permissions);
+    bool move_avatar(std::uint64_t id, Transform transform, physics::Vec3 velocity,
+                     std::string& boundary);
     bool set_terrain_height(std::size_t x, std::size_t y, double value);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
@@ -85,7 +100,7 @@ public:
 
 private:
     void loop();
-    std::uint64_t spawn_entity(std::string name, std::string owner_user_id, EntityKind kind, Transform transform, bool physical);
+    std::uint64_t spawn_entity(std::string name, std::string owner_user_id, std::string group_id, EntityKind kind, Transform transform, bool physical, core::PermissionMask group_permissions = 0, core::PermissionMask everyone_permissions = 0);
     std::uint64_t append_event_locked(std::string type, std::uint64_t entity_id,
                                       const Transform& transform, std::string text = {});
 

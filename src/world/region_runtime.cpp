@@ -40,20 +40,25 @@ void RegionRuntime::stop() {
 }
 
 std::uint64_t RegionRuntime::spawn_object(std::string name, Transform transform, const bool physical,
-                                          std::string owner_user_id) {
-    return spawn_entity(std::move(name), std::move(owner_user_id), EntityKind::object, transform, physical);
+                                          std::string owner_user_id, std::string group_id,
+                                          const core::PermissionMask group_permissions,
+                                          const core::PermissionMask everyone_permissions) {
+    return spawn_entity(std::move(name), std::move(owner_user_id), std::move(group_id), EntityKind::object, transform, physical, group_permissions, everyone_permissions);
 }
 
 std::uint64_t RegionRuntime::spawn_avatar(std::string user_id, std::string name, Transform transform) {
-    return spawn_entity(std::move(name), std::move(user_id), EntityKind::avatar, transform, true);
+    return spawn_entity(std::move(name), std::move(user_id), {}, EntityKind::avatar, transform, true);
 }
 
 bool RegionRuntime::restore_object(const std::uint64_t id, std::string name, Transform transform,
-                                   const bool physical, std::string owner_user_id) {
+                                   const bool physical, std::string owner_user_id, std::string group_id,
+                                   const core::PermissionMask owner_permissions,
+                                   const core::PermissionMask group_permissions,
+                                   const core::PermissionMask everyone_permissions) {
     if (id == 0) return false;
     std::scoped_lock lock(mutex_);
     if (entities_.contains(id)) return false;
-    Entity entity{.id = id, .name = std::move(name), .owner_user_id = std::move(owner_user_id), .kind = EntityKind::object, .transform = transform};
+    Entity entity{.id = id, .name = std::move(name), .owner_user_id = std::move(owner_user_id), .group_id = std::move(group_id), .owner_permissions = owner_permissions, .group_permissions = group_permissions, .everyone_permissions = everyone_permissions, .kind = EntityKind::object, .transform = transform};
     if (physical) {
         const double radius = std::max(0.1, transform.scale.z * 0.5);
         entity.physics_body = physics_.add_body({.position = transform.position, .radius = radius});
@@ -64,8 +69,10 @@ bool RegionRuntime::restore_object(const std::uint64_t id, std::string name, Tra
     return true;
 }
 
-std::uint64_t RegionRuntime::spawn_entity(std::string name, std::string owner_user_id,
-                                          const EntityKind kind, Transform transform, const bool physical) {
+std::uint64_t RegionRuntime::spawn_entity(std::string name, std::string owner_user_id, std::string group_id,
+                                          const EntityKind kind, Transform transform, const bool physical,
+                                          const core::PermissionMask group_permissions,
+                                          const core::PermissionMask everyone_permissions) {
     if (transform.position.z == 0.0) {
         transform.position.x = 128.0;
         transform.position.y = 128.0;
@@ -74,7 +81,7 @@ std::uint64_t RegionRuntime::spawn_entity(std::string name, std::string owner_us
 
     std::scoped_lock lock(mutex_);
     const auto id = next_entity_++;
-    Entity entity{.id = id, .name = std::move(name), .owner_user_id = std::move(owner_user_id), .kind = kind, .transform = transform};
+    Entity entity{.id = id, .name = std::move(name), .owner_user_id = std::move(owner_user_id), .group_id = std::move(group_id), .owner_permissions = core::perm_all, .group_permissions = group_permissions, .everyone_permissions = everyone_permissions, .kind = kind, .transform = transform};
     if (physical) {
         const double radius = kind == EntityKind::avatar ? 0.45 : std::max(0.1, transform.scale.z * 0.5);
         entity.physics_body = physics_.add_body({.position = transform.position, .radius = radius});
@@ -109,6 +116,48 @@ bool RegionRuntime::set_velocity(const std::uint64_t id, const physics::Vec3 vel
     const auto it = entities_.find(id);
     if (it == entities_.end() || !it->second.physics_body) return false;
     return physics_.set_body_velocity(it->second.physics_body, velocity);
+}
+
+
+bool RegionRuntime::set_object_permissions(const std::uint64_t id, std::string group_id,
+                                           const core::PermissionMask group_permissions,
+                                           const core::PermissionMask everyone_permissions) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.kind != EntityKind::object) return false;
+    it->second.group_id = std::move(group_id);
+    it->second.group_permissions = group_permissions & core::perm_all;
+    it->second.everyone_permissions = everyone_permissions & core::perm_all;
+    append_event_locked("permissions_updated", id, it->second.transform);
+    return true;
+}
+
+bool RegionRuntime::move_avatar(const std::uint64_t id, Transform transform,
+                                const physics::Vec3 velocity, std::string& boundary) {
+    boundary.clear();
+    const double max_x = static_cast<double>(terrain_.width()) * terrain_.cell_size();
+    const double max_y = static_cast<double>(terrain_.height()) * terrain_.cell_size();
+    if (transform.position.x < 0.0) boundary = "west";
+    else if (transform.position.x >= max_x) boundary = "east";
+    else if (transform.position.y < 0.0) boundary = "south";
+    else if (transform.position.y >= max_y) boundary = "north";
+
+    transform.position.x = std::clamp(transform.position.x, 0.25, max_x - 0.25);
+    transform.position.y = std::clamp(transform.position.y, 0.25, max_y - 0.25);
+    const auto ground = terrain_.sample(transform.position.x, transform.position.y);
+    transform.position.z = std::max(transform.position.z, ground + 0.45);
+
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.kind != EntityKind::avatar || !it->second.physics_body) {
+        return false;
+    }
+    it->second.transform = transform;
+    (void)physics_.set_body_position(it->second.physics_body, transform.position);
+    (void)physics_.set_body_velocity(it->second.physics_body, velocity);
+    append_event_locked("avatar_move", id, transform);
+    if (!boundary.empty()) append_event_locked("region_boundary", id, transform, boundary);
+    return true;
 }
 
 bool RegionRuntime::set_terrain_height(const std::size_t x, const std::size_t y, const double value) {
