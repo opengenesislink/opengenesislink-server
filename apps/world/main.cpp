@@ -6,6 +6,7 @@
 #include "opengenesis/world/region_runtime.hpp"
 #include "opengenesis/world/scene_server.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -54,6 +55,31 @@ struct RegionConfig {
     int grid_x{0};
     int grid_y{0};
 };
+
+std::string clean_wire_field(std::string value) {
+    value.erase(std::remove_if(value.begin(), value.end(), [](const char c) {
+        return c == '\n' || c == '\r' || c == '|';
+    }), value.end());
+    if (value.size() > 96) value.resize(96);
+    return value;
+}
+
+std::string presence_snapshot_payload(const world::RegionRuntime& runtime) {
+    const auto entities = runtime.snapshot_entities();
+    std::ostringstream body;
+    body << std::fixed << std::setprecision(3) << "region=" << runtime.id() << '\n';
+    std::size_t count = 0;
+    for (const auto& entity : entities) {
+        if (entity.kind != world::EntityKind::avatar || entity.owner_user_id.empty()) continue;
+        ++count;
+        body << "presence=" << clean_wire_field(entity.owner_user_id) << '|'
+             << clean_wire_field(entity.name) << '|' << entity.id << '|'
+             << entity.transform.position.x << '|' << entity.transform.position.y << '|'
+             << entity.transform.position.z << '\n';
+    }
+    body << "count=" << count << '\n';
+    return body.str();
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -109,7 +135,9 @@ int main(int argc, char** argv) {
             persistence.push_back(std::move(store));
         }
 
-        world::SceneServer scene_server(scene_address, scene_port, runtimes, scene_ticket_secret);
+        world::SceneServer scene_server(scene_address, scene_port, runtimes, scene_ticket_secret,
+                                       config.get_string("storage.parcels", "data/parcels.db"),
+                                       config.get_string("storage.moderation", "data/moderation.db"));
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "world.security",
                                      "Using development scene-ticket secret; replace it before network exposure");
@@ -208,6 +236,13 @@ int main(int argc, char** argv) {
                                                protocol::payload_from_string(body.str())});
                             if (socket.receive_frame().type != protocol::MessageType::region_metrics_ack) {
                                 throw std::runtime_error("metrics rejected");
+                            }
+                            socket.send_frame({protocol::MessageType::presence_snapshot, ++request_id,
+                                               protocol::payload_from_string(
+                                                   presence_snapshot_payload(*runtime))});
+                            if (socket.receive_frame().type !=
+                                protocol::MessageType::presence_snapshot_ack) {
+                                throw std::runtime_error("presence snapshot rejected");
                             }
                         }
                         next_metrics = now + std::chrono::seconds{2};

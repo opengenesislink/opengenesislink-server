@@ -1,82 +1,104 @@
 # OpenGenesisLINK Core Web API v1
 
-`0.5.0-dev` extends the Core HTTP listener into a development Web/API surface covering runtime status, Identity/Auth, Viewer session handoff, Assets and Inventory. The default bind address remains `127.0.0.1:18080`.
+`2.0.0-dev` exposes a development browser dashboard and JSON API. The default bind address is `127.0.0.1:18080`.
 
 ## Browser dashboard
 
-`GET /` returns an HTML dashboard showing:
-
-- Core version and uptime
-- connected World Nodes and generations
-- Regions and grid coordinates
-- simulation FPS, entity/avatar and physics counts
-- terrain revision
-- identity and active-session counts
-- Asset and Inventory counts
+`GET /` displays Core version/uptime, World Nodes, Regions, simulation metrics, online Presence, identity/session, Social, content, Group/Parcel and moderation/audit counters.
 
 ## Discovery and status
 
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET | `/health` | lightweight health check |
-| GET | `/v1` | API discovery and capability document |
-| GET | `/v1/status` | combined Core/World/Region/content state |
-| GET | `/v1/worlds` | World Node list |
-| GET | `/v1/regions` | Region list and live metrics |
-| GET | `/v1/identity/stats` | identity/session counters |
-| GET | `/v1/content/stats` | Asset/Inventory counters |
+```text
+GET /health
+GET /v1
+GET /v1/status
+GET /v1/worlds
+GET /v1/regions
+GET /v1/regions/<region-id>/neighbors
+GET /metrics
+```
 
-## Identity
-
-`POST /v1/auth/register` and `POST /v1/auth/login` return a bearer token. `GET /v1/auth/me` resolves that token and `POST /v1/auth/logout` revokes it.
-
-Passwords are stored as PBKDF2-HMAC-SHA256 verifiers with random salts. Raw bearer tokens are never persisted; `sessions.db` stores SHA-256 token hashes.
-
-## Viewer session handoff
-
-`POST /v1/viewer/session`
+## Identity and world travel
 
 ```text
-Authorization: Bearer <token>
-Content-Type: application/json
+POST /v1/auth/register
+POST /v1/auth/login
+GET  /v1/auth/me
+POST /v1/auth/logout
+POST /v1/viewer/session
+POST /v1/viewer/teleport
+POST /v1/viewer/handoff
+GET  /v1/presence
 ```
 
-```json
-{
-  "region": "genesis-central"
-}
+Core checks account session, moderation state, Region availability and Parcel-entry policy before issuing a Scene Ticket. Tickets carry server-selected spawn coordinates and authenticated Group memberships.
+
+`viewer/handoff` additionally requires a cardinally adjacent online Region. The current handoff is client-driven rather than a seamless atomic simulator crossing.
+
+## Groups and land
+
+```text
+GET/POST /v1/groups
+GET      /v1/groups/<group-id>/members
+POST     /v1/groups/members
+POST     /v1/groups/role
+POST     /v1/groups/remove
+GET      /v1/groups/<group-id>/channel
+POST     /v1/groups/channel
+POST     /v1/parcels
+GET      /v1/regions/<region-id>/parcels
+GET      /v1/parcels/owned
+POST     /v1/parcels/policy
+GET/POST /v1/estates
+POST     /v1/estates/managers
+POST     /v1/estates/regions
+POST     /v1/estates/regions/policy
+GET      /v1/regions/<region-id>/estate
+GET/POST /v1/landmarks
+POST     /v1/landmarks/remove
 ```
 
-The response contains the resolved Scene endpoint plus a short-lived region-specific Scene Ticket. The client supplies that ticket to `SCENE_JOIN`.
+## Social
 
-## Assets
-
-Authenticated endpoints:
-
-- `GET /v1/assets`
-- `POST /v1/assets`
-- `GET /v1/assets/<asset-id>`
-
-Upload body:
-
-```json
-{
-  "name": "example.txt",
-  "mime_type": "text/plain",
-  "data_base64": "..."
-}
+```text
+GET  /v1/social/friends
+POST /v1/social/friends/request
+POST /v1/social/friends/accept
+POST /v1/social/friends/remove
+GET  /v1/social/messages
+POST /v1/social/messages
+POST /v1/social/messages/read
+GET  /v1/social/stats
+GET  /v1/notifications
+POST /v1/notifications/read
 ```
 
-## Inventory
+## Content
 
-Authenticated endpoints:
+```text
+GET  /v1/content/stats
+GET  /v1/assets
+POST /v1/assets
+GET  /v1/assets/<asset-id>
+POST /v1/assets/transfer
+GET  /v1/inventory
+POST /v1/inventory/folders
+POST /v1/inventory/items
+```
 
-- `GET /v1/inventory`
-- `POST /v1/inventory/folders`
-- `POST /v1/inventory/items`
+Asset JSON includes current and next-owner permission masks.
 
-Inventory items reference Asset ids and do not duplicate Asset payload data.
+## Moderation and audit
+
+The development admin routes require `X-OpenGenesis-Admin-Key`.
+
+```text
+GET  /v1/admin/moderation
+POST /v1/admin/moderation/ban
+POST /v1/admin/moderation/unban
+GET  /v1/admin/audit
+```
 
 ## Security status
 
-This remains a development interface. The listener is loopback-only by default. Scene Tickets now establish an authenticated handoff to the World Node, but TLS, roles, fine-grained capabilities, rate limiting and production key management are not yet complete.
+The interface has authenticated bearer sessions, signed Scene Tickets, server-side capabilities, Parcel/object policy enforcement, Estate admission/capacity checks and an admin-key boundary. It remains a development API. Keep it on trusted interfaces. TLS termination, key rotation, distributed replay state, mature admin roles and rate limiting are not complete.

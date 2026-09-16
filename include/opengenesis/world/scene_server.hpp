@@ -1,5 +1,7 @@
 #pragma once
 
+#include "opengenesis/core/moderation_store.hpp"
+#include "opengenesis/core/parcel_store.hpp"
 #include "opengenesis/world/region_runtime.hpp"
 
 #include <atomic>
@@ -18,7 +20,7 @@ class SceneServer final {
 public:
     SceneServer(std::string address, std::uint16_t port,
                 const std::vector<std::shared_ptr<RegionRuntime>>& regions,
-                std::string ticket_secret);
+                std::string ticket_secret, std::string parcel_path, std::string moderation_path);
     ~SceneServer();
     SceneServer(const SceneServer&) = delete;
     SceneServer& operator=(const SceneServer&) = delete;
@@ -33,6 +35,8 @@ private:
     std::uint16_t port_;
     std::unordered_map<std::string, std::shared_ptr<RegionRuntime>> regions_;
     std::shared_ptr<SceneAuthContext> auth_;
+    std::shared_ptr<core::ParcelStore> parcels_;
+    std::shared_ptr<core::ModerationStore> moderation_;
     std::atomic_bool running_{false};
     std::thread thread_;
 };

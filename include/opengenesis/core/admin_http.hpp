@@ -1,8 +1,19 @@
 #pragma once
 
 #include "opengenesis/core/asset_store.hpp"
+#include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/group_store.hpp"
+#include "opengenesis/core/group_channel_store.hpp"
+#include "opengenesis/core/notification_store.hpp"
+#include "opengenesis/core/landmark_store.hpp"
+#include "opengenesis/core/estate_store.hpp"
+#include "opengenesis/core/moderation_store.hpp"
+#include "opengenesis/core/parcel_store.hpp"
+#include "opengenesis/core/friends_store.hpp"
 #include "opengenesis/core/identity_store.hpp"
 #include "opengenesis/core/inventory_store.hpp"
+#include "opengenesis/core/message_store.hpp"
+#include "opengenesis/core/presence_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
@@ -25,6 +36,18 @@ public:
                     std::shared_ptr<SessionStore> sessions,
                     std::shared_ptr<AssetStore> assets,
                     std::shared_ptr<InventoryStore> inventory,
+                    std::shared_ptr<PresenceStore> presences,
+                    std::shared_ptr<FriendsStore> friends,
+                    std::shared_ptr<MessageStore> messages,
+                    std::shared_ptr<GroupStore> groups,
+                    std::shared_ptr<ParcelStore> parcels,
+                    std::shared_ptr<ModerationStore> moderation,
+                    std::shared_ptr<AuditStore> audit,
+                    std::shared_ptr<EstateStore> estates,
+                    std::shared_ptr<LandmarkStore> landmarks,
+                    std::shared_ptr<NotificationStore> notifications,
+                    std::shared_ptr<GroupChannelStore> group_channels,
+                    std::string admin_api_key,
                     std::string scene_ticket_secret,
                     std::chrono::seconds scene_ticket_lifetime);
     ~AdminHttpServer();
@@ -43,6 +66,18 @@ private:
     std::shared_ptr<SessionStore> sessions_;
     std::shared_ptr<AssetStore> assets_;
     std::shared_ptr<InventoryStore> inventory_;
+    std::shared_ptr<PresenceStore> presences_;
+    std::shared_ptr<FriendsStore> friends_;
+    std::shared_ptr<MessageStore> messages_;
+    std::shared_ptr<GroupStore> groups_;
+    std::shared_ptr<ParcelStore> parcels_;
+    std::shared_ptr<ModerationStore> moderation_;
+    std::shared_ptr<AuditStore> audit_;
+    std::shared_ptr<EstateStore> estates_;
+    std::shared_ptr<LandmarkStore> landmarks_;
+    std::shared_ptr<NotificationStore> notifications_;
+    std::shared_ptr<GroupChannelStore> group_channels_;
+    std::string admin_api_key_;
     std::string scene_ticket_secret_;
     std::chrono::seconds scene_ticket_lifetime_;
     std::chrono::steady_clock::time_point started_at_{std::chrono::steady_clock::now()};

@@ -1,5 +1,61 @@
 # Changelog
 
+## 2.0.0-dev — 2026-09-16
+
+World-operations, Estate, Landmark, notification and observability milestone.
+
+- added persistent Estates with owner and manager authorization
+- added persistent Region Estate policies for access, capacity, maturity and landing coordinates
+- enforced Estate public access and maximum Region capacity during session, teleport and handoff ticket issuance
+- added persistent user Landmarks and Landmark-driven authenticated teleport
+- added persistent Notifications with unread/read state
+- wired friend requests, friendship acceptance, direct messages, Group membership and Group notices into Notifications
+- added persistent Group channels and officer/owner Group notices
+- extended Group power masks with notice publication permission and migration from existing role records
+- added Prometheus-compatible `/metrics` endpoint with Core and per-Region gauges
+- expanded browser dashboard and API discovery for world-operations services
+- expanded unit tests for Estates, Landmarks, Notifications and Group channels
+- expanded integrated smoke coverage across Estates, Landmarks, Notifications, Group notices and metrics
+- hardened process-stop handling in recovery tests to avoid unbounded waits
+
+## 1.5.0-dev — 2026-09-16
+
+World-governance, permissions and controlled-travel milestone.
+
+- added persistent Groups with owner/officer/member roles and power masks
+- added persistent rectangular Parcels with owner/group/public entry, build and terraform policy
+- embedded authenticated group memberships and server-selected spawn coordinates in signed Scene Tickets
+- enforced Parcel policy at Scene join, object creation/movement and terrain mutation
+- added owner/group/everyone scene-object permission masks and runtime permission updates
+- added Asset copy/modify/transfer masks, next-owner permission reduction and ownership transfer without blob duplication
+- added authenticated Core teleport tickets with moderation and Parcel-entry checks
+- strengthened adjacent-Region handoff with target spawn selection and governance checks
+- added Region/global moderation bans checked by Core and World Node
+- added append-only audit events for sensitive governance operations
+- expanded browser status with Group, Parcel, moderation and audit counters
+- expanded unit tests for Groups, Parcels, Asset transfer permissions, moderation, audit and object permissions
+- expanded end-to-end smoke test across Social, Groups, Parcels, transfer, ban/unban, teleport, handoff and restart persistence
+- kept development admin keys and shared single-host policy files explicitly non-production
+
+## 1.0.0-dev — 2026-09-16
+
+Integrated Presence, Social, Movement and Region-handoff development milestone.
+
+- added live World-to-Core Presence snapshots with authenticated user, Region, entity and position information
+- added persistent friend requests, acceptance/removal and friendship queries
+- added persistent direct messaging with unread/read state
+- added Scene Ticket capability claims and server-side capability enforcement
+- added native `AVATAR_MOVE` protocol messages and avatar velocity/transform updates
+- added Region boundary detection for north/south/east/west exits
+- added Core Region-neighbor discovery from grid coordinates
+- added authenticated adjacent-Region handoff ticket endpoint
+- added handoff origin claims to Scene Tickets
+- expanded Core status and browser dashboard with Presence and Social metrics
+- default World configuration now demonstrates two adjacent Regions
+- expanded unit tests for Presence, Social persistence, capabilities, movement and adjacency
+- expanded end-to-end smoke test across two accounts, messaging, Presence, movement, handoff, Core restart and World restart
+- verified Debug, Release and warnings-as-errors builds
+
 ## 0.5.0-dev — 2026-09-15
 
 Authenticated viewer and first content-services milestone.

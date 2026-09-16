@@ -1,57 +1,47 @@
 # Authenticated Viewer Flow v0
 
-OpenGenesisLINK `0.5.0-dev` introduces the first authenticated path from Core identity to World Scene.
+OpenGenesisLINK `1.5.0-dev` uses a Core-issued Scene Ticket to connect an authenticated account to a World Region.
 
 ## Flow
 
 1. A client registers or logs in through Core HTTP API.
 2. Core returns a persistent bearer session token.
-3. The client requests `POST /v1/viewer/session` with the bearer token and a target Region id.
-4. Core verifies the account session, resolves the online Region and its World Node, and creates a short-lived Scene Ticket.
-5. The client connects to the returned Scene endpoint and sends `SCENE_JOIN` with that ticket.
-6. The World Node validates signature, expiry and Region binding, then consumes the ticket nonce and creates Avatar Presence.
-
-The World Node does not trust a client-supplied avatar display name. Account id and display name come from signed ticket claims.
+3. The client requests `POST /v1/viewer/session` with a target Region id.
+4. Core verifies account session and Region availability and creates a short-lived Scene Ticket.
+5. The client connects to the returned Scene endpoint and sends `SCENE_JOIN` with the ticket.
+6. The World Node validates signature, expiry, Region binding, capability claims and nonce replay.
+7. Avatar Presence is created from authenticated ticket identity, not from client-supplied avatar identity.
 
 ## Scene Ticket
 
 Development token prefix: `ogst1.`
 
-The token contains signed claims for:
+Signed claims include:
 
 - user id
 - display name
 - Region id
 - random nonce
+- Scene capability list
+- optional handoff source Region
 - issued timestamp
 - expiration timestamp
 
-The signature uses HMAC-SHA256 with the shared `security.scene_ticket_secret` configured on Core and World Node.
+The signature uses HMAC-SHA256 with `security.scene_ticket_secret` configured on Core and World Node.
 
 Ticket lifetime is constrained to 10–300 seconds. The default Core setting is 60 seconds.
 
-A nonce may only be consumed once by a running World process. Replay attempts are rejected. Persistent/distributed replay state is not implemented yet, so a World process restart resets the in-memory replay cache.
+A nonce is consumed once by a running World process. A World restart currently resets the in-memory replay cache.
 
-## Configuration
+## Capabilities
 
-Core:
+The default development ticket contains explicit capabilities for Scene join/read, movement, chat, own-object editing and terrain access. The World Node checks those capabilities for every corresponding Scene operation.
 
-```toml
-[identity]
-scene_ticket_lifetime_seconds = 60
+The capability mechanism is implemented; final role, land/parcel and administrator policy is not.
 
-[security]
-scene_ticket_secret = "replace-with-a-long-random-secret"
-```
+## Region handoff
 
-World Node:
-
-```toml
-[security]
-scene_ticket_secret = "replace-with-the-same-long-random-secret"
-```
-
-The repository default is intentionally marked as a development secret and must be replaced before network exposure.
+`POST /v1/viewer/handoff` issues a new target-Region ticket only when the target is a known online cardinal neighbor. The ticket carries `handoff_from` so the target Scene can distinguish a handoff from a normal login.
 
 ## Current security boundary
 
@@ -60,16 +50,18 @@ Implemented:
 - password hashing
 - persistent bearer sessions
 - signed Scene Tickets
-- ticket Region binding and expiry
+- Region binding and expiry
 - runtime replay rejection
 - authenticated Avatar identity
+- Scene capabilities
 - basic scene-object ownership
+- adjacent-Region handoff ticketing
 
 Not yet production complete:
 
 - TLS termination
 - key rotation / asymmetric signing
 - distributed replay state
-- roles and granular capabilities
+- land/parcel permission policy
 - rate limiting / abuse controls
 - remote federation identity

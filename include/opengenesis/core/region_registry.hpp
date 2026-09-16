@@ -32,6 +32,7 @@ public:
     void mark_node_offline(const std::string& node_id, std::uint64_t generation);
     [[nodiscard]] std::optional<RegionInfo> find(const std::string& id) const;
     [[nodiscard]] std::vector<RegionInfo> list() const;
+    [[nodiscard]] std::vector<RegionInfo> neighbors(const std::string& id) const;
 
 private:
     static bool valid_transition(const std::string& from, const std::string& to);

@@ -5,53 +5,772 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<SessionStore> sessions,
                                  std::shared_ptr<AssetStore> assets,
                                  std::shared_ptr<InventoryStore> inventory,
+                                 std::shared_ptr<PresenceStore> presences,
+                                 std::shared_ptr<FriendsStore> friends,
+                                 std::shared_ptr<MessageStore> messages,
+                                 std::shared_ptr<GroupStore> groups,
+                                 std::shared_ptr<ParcelStore> parcels,
+                                 std::shared_ptr<ModerationStore> moderation,
+                                 std::shared_ptr<AuditStore> audit,
+                                 std::shared_ptr<EstateStore> estates,
+                                 std::shared_ptr<LandmarkStore> landmarks,
+                                 std::shared_ptr<NotificationStore> notifications,
+                                 std::shared_ptr<GroupChannelStore> group_channels,
+                                 std::string admin_api_key,
                                  std::string scene_ticket_secret,
                                  std::chrono::seconds scene_ticket_lifetime)
     : address_(std::move(address)), port_(port), worlds_(std::move(worlds)), regions_(std::move(regions)),
       identities_(std::move(identities)), sessions_(std::move(sessions)), assets_(std::move(assets)),
-      inventory_(std::move(inventory)), scene_ticket_secret_(std::move(scene_ticket_secret)),
+      inventory_(std::move(inventory)), presences_(std::move(presences)), friends_(std::move(friends)),
+      messages_(std::move(messages)), groups_(std::move(groups)), parcels_(std::move(parcels)),
+      moderation_(std::move(moderation)), audit_(std::move(audit)), estates_(std::move(estates)),
+      landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
+      group_channels_(std::move(group_channels)), admin_api_key_(std::move(admin_api_key)),
+      scene_ticket_secret_(std::move(scene_ticket_secret)),
       scene_ticket_lifetime_(scene_ticket_lifetime) {}
 
 AdminHttpServer::~AdminHttpServer() { stop(); }
-void AdminHttpServer::start(){if(running_.exchange(true))return;started_at_=std::chrono::steady_clock::now();thread_=std::thread(&AdminHttpServer::run,this);}
-void AdminHttpServer::stop(){if(!running_.exchange(false))return;if(listen_fd_>=0){::shutdown(listen_fd_,SHUT_RDWR);::close(listen_fd_);listen_fd_=-1;}if(thread_.joinable())thread_.join();}
 
-void AdminHttpServer::run(){
- try{
-  addrinfo hints{};hints.ai_socktype=SOCK_STREAM;hints.ai_family=AF_UNSPEC;hints.ai_flags=AI_PASSIVE;addrinfo* results=nullptr;const auto port_text=std::to_string(port_);
-  if(::getaddrinfo(address_.c_str(),port_text.c_str(),&hints,&results)!=0)throw std::runtime_error("admin getaddrinfo failed");
-  for(auto* cur=results;cur;cur=cur->ai_next){listen_fd_=::socket(cur->ai_family,cur->ai_socktype,cur->ai_protocol);if(listen_fd_<0)continue;const int reuse=1;(void)::setsockopt(listen_fd_,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse));if(::bind(listen_fd_,cur->ai_addr,cur->ai_addrlen)==0&&::listen(listen_fd_,64)==0)break;::close(listen_fd_);listen_fd_=-1;}::freeaddrinfo(results);if(listen_fd_<0)throw std::runtime_error("admin bind failed");
-  common::log(common::LogLevel::info,"core.admin","Web/API interface listening on http://"+address_+':'+port_text);
-  while(running_){const int fd=::accept(listen_fd_,nullptr,nullptr);if(fd<0){if(!running_)break;if(errno==EINTR)continue;continue;}try{
-    const auto request=read_request(fd);if(!request){send_response(fd,{.status=400,.body="{\"error\":\"bad-request\"}"});::close(fd);continue;}
-    HttpResponse response;const auto& method=request->method;const auto& path=request->path;
-    const auto auth=[&]()->std::pair<std::optional<AuthSession>,std::optional<UserInfo>>{const auto session=sessions_->find(bearer_token(*request));const auto user=session?identities_->find_by_id(session->user_id):std::nullopt;return {session,user};};
-    if(method=="GET"&&path=="/"){response.content_type="text/html; charset=utf-8";response.body=dashboard_html();}
-    else if(method=="GET"&&path=="/health")response.body="{\"status\":\"ok\",\"version\":\""+std::string(OGL_VERSION)+"\"}";
-    else if(method=="GET"&&path=="/v1")response.body=R"JSON({"service":"OpenGenesisLINK Core","version":")JSON"+std::string(OGL_VERSION)+R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v1","assets-v1","inventory-v1","world-status"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","content_stats":"/v1/content/stats","viewer_session":"POST /v1/viewer/session","assets":"GET|POST /v1/assets","inventory":"GET /v1/inventory","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
-    else if(method=="GET"&&path=="/v1/worlds")response.body="{\"world_nodes\":"+worlds_json(worlds_->list())+"}";
-    else if(method=="GET"&&path=="/v1/regions")response.body="{\"regions\":"+regions_json(regions_->list())+"}";
-    else if(method=="GET"&&path=="/v1/identity/stats")response.body="{\"users\":"+std::to_string(identities_->count())+",\"active_sessions\":"+std::to_string(sessions_->active_count())+"}";
-    else if(method=="GET"&&path=="/v1/identity/users")response.body="{\"users\":"+users_json(identities_->list())+"}";
-    else if(method=="GET"&&path=="/v1/content/stats")response.body="{\"assets\":"+std::to_string(assets_->count())+",\"asset_bytes\":"+std::to_string(assets_->total_bytes())+",\"inventory_folders\":"+std::to_string(inventory_->folder_count())+",\"inventory_items\":"+std::to_string(inventory_->item_count())+"}";
-    else if(method=="GET"&&path=="/v1/status"){const auto uptime=std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now()-started_at_).count();response.body="{\"version\":\""+std::string(OGL_VERSION)+"\",\"uptime_seconds\":"+std::to_string(uptime)+",\"world_nodes\":"+worlds_json(worlds_->list())+",\"regions\":"+regions_json(regions_->list())+",\"identities\":"+std::to_string(identities_->count())+",\"active_sessions\":"+std::to_string(sessions_->active_count())+",\"assets\":"+std::to_string(assets_->count())+",\"inventory_items\":"+std::to_string(inventory_->item_count())+"}";}
-    else if(method=="POST"&&path=="/v1/auth/register"){const auto username=json_string(request->body,"username"),display=json_string(request->body,"display_name"),password=json_string(request->body,"password");if(!username||!display||!password)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else{std::string reason;const auto user=identities_->register_user(*username,*display,*password,reason);if(!user)response={.status=reason=="username-exists"?409:400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{(void)inventory_->ensure_root(user->id);const auto created=sessions_->create(user->id);response.status=201;response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"username\":\""+json_escape(user->username)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"token\":\""+created.token+"\",\"expires_unix\":"+std::to_string(created.session.expires_unix)+"}";}}}
-    else if(method=="POST"&&path=="/v1/auth/login"){const auto username=json_string(request->body,"username"),password=json_string(request->body,"password");if(!username||!password)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else if(const auto user=identities_->authenticate(*username,*password)){(void)inventory_->ensure_root(user->id);const auto created=sessions_->create(user->id);response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"username\":\""+json_escape(user->username)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"token\":\""+created.token+"\",\"expires_unix\":"+std::to_string(created.session.expires_unix)+"}";}else response={.status=401,.body="{\"error\":\"invalid-credentials\"}"};}
-    else if(method=="GET"&&path=="/v1/auth/me"){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"username\":\""+json_escape(user->username)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"session\":{\"id\":\""+json_escape(session->id)+"\",\"expires_unix\":"+std::to_string(session->expires_unix)+"}}";}
-    else if(method=="POST"&&path=="/v1/auth/logout"){const auto token=bearer_token(*request);if(token.empty()||!sessions_->revoke(token))response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"status\":\"logged-out\"}";}
-    else if(method=="POST"&&path=="/v1/viewer/session"){auto[session,user]=auth();const auto region_id=json_string(request->body,"region");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!region_id)response={.status=400,.body="{\"error\":\"missing-region\"}"};else{const auto region=regions_->find(*region_id);const auto world=region?worlds_->find(region->node_id):std::nullopt;if(!region||!world||region->state!="online"||world->state!="online")response={.status=409,.body="{\"error\":\"region-offline-or-unknown\"}"};else{const auto ticket=security::issue_scene_ticket(scene_ticket_secret_,user->id,user->display_name,region->id,scene_ticket_lifetime_);response.body="{\"user\":{\"id\":\""+json_escape(user->id)+"\",\"display_name\":\""+json_escape(user->display_name)+"\"},\"region\":{\"id\":\""+json_escape(region->id)+"\",\"name\":\""+json_escape(region->name)+"\"},\"scene_endpoint\":\""+json_escape(world->endpoint)+"\",\"scene_ticket\":\""+ticket.token+"\",\"expires_unix\":"+std::to_string(ticket.claims.expires_unix)+"}";}}}
-    else if(method=="GET"&&path=="/v1/assets"){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"assets\":"+assets_json(assets_->list_for_user(user->id))+"}";}
-    else if(method=="POST"&&path=="/v1/assets"){auto[session,user]=auth();const auto name=json_string(request->body,"name"),mime=json_string(request->body,"mime_type"),encoded=json_string(request->body,"data_base64");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name||!mime||!encoded)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else{try{auto data=security::base64_decode(*encoded);std::string reason;const auto asset=assets_->create(user->id,*name,*mime,std::move(data),reason);if(!asset)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{response.status=201;response.body="{\"asset\":"+asset_json(*asset)+"}";}}catch(const std::exception&){response={.status=400,.body="{\"error\":\"invalid-asset-data\"}"};}}}
-    else if(method=="GET"&&path.starts_with("/v1/assets/")&&path.size()>11){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else{const auto id=path.substr(11);const auto asset=assets_->find(id);const auto data=asset?assets_->read(id,user->id):std::nullopt;if(!asset||!data)response={.status=404,.body="{\"error\":\"asset-not-found\"}"};else response.body="{\"asset\":"+asset_json(*asset)+",\"data_base64\":\""+security::base64_encode(*data)+"\"}";}}
-    else if(method=="GET"&&path=="/v1/inventory"){auto[session,user]=auth();if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body=inventory_json(inventory_->list(user->id));}
-    else if(method=="POST"&&path=="/v1/inventory/folders"){auto[session,user]=auth();const auto name=json_string(request->body,"name"),parent=json_string(request->body,"parent_id");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name)response={.status=400,.body="{\"error\":\"missing-name\"}"};else{std::string reason;const auto folder=inventory_->create_folder(user->id,parent.value_or(""),*name,reason);if(!folder)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{response.status=201;response.body="{\"folder\":{\"id\":\""+folder->id+"\",\"parent_id\":\""+folder->parent_id+"\",\"name\":\""+json_escape(folder->name)+"\"}}";}}}
-    else if(method=="POST"&&path=="/v1/inventory/items"){auto[session,user]=auth();const auto name=json_string(request->body,"name"),parent=json_string(request->body,"parent_id"),asset_id=json_string(request->body,"asset_id");if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name||!asset_id)response={.status=400,.body="{\"error\":\"invalid-json-fields\"}"};else{const auto asset=assets_->find(*asset_id);if(!asset||asset->owner_user_id!=user->id)response={.status=403,.body="{\"error\":\"asset-not-owned\"}"};else{std::string reason;const auto item=inventory_->create_item(user->id,parent.value_or(""),*asset_id,*name,reason);if(!item)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{response.status=201;response.body="{\"item\":{\"id\":\""+item->id+"\",\"asset_id\":\""+item->asset_id+"\",\"name\":\""+json_escape(item->name)+"\"}}";}}}}
-    else if(path=="/v1/auth/register"||path=="/v1/auth/login"||path=="/v1/auth/logout"||path=="/v1/viewer/session"||path=="/v1/assets"||path=="/v1/inventory/folders"||path=="/v1/inventory/items")response={.status=405,.body="{\"error\":\"method-not-allowed\"}"};
-    else response={.status=404,.body="{\"error\":\"not-found\"}"};
-    send_response(fd,response);
-  }catch(const std::exception& e){common::log(common::LogLevel::warning,"core.admin.client",e.what());send_response(fd,{.status=500,.body="{\"error\":\"internal-error\"}"});}::close(fd);
-  }
- }catch(const std::exception& e){if(running_)common::log(common::LogLevel::error,"core.admin",e.what());}
+void AdminHttpServer::start() {
+    if (running_.exchange(true)) return;
+    started_at_ = std::chrono::steady_clock::now();
+    thread_ = std::thread(&AdminHttpServer::run, this);
+}
+
+void AdminHttpServer::stop() {
+    if (!running_.exchange(false)) return;
+    if (listen_fd_ >= 0) {
+        ::shutdown(listen_fd_, SHUT_RDWR);
+        ::close(listen_fd_);
+        listen_fd_ = -1;
+    }
+    if (thread_.joinable()) thread_.join();
+}
+
+void AdminHttpServer::run() {
+    try {
+        addrinfo hints{};
+        hints.ai_socktype = SOCK_STREAM;
+        hints.ai_family = AF_UNSPEC;
+        hints.ai_flags = AI_PASSIVE;
+        addrinfo* results = nullptr;
+        const auto port_text = std::to_string(port_);
+        if (::getaddrinfo(address_.c_str(), port_text.c_str(), &hints, &results) != 0) {
+            throw std::runtime_error("admin getaddrinfo failed");
+        }
+        for (auto* current = results; current; current = current->ai_next) {
+            listen_fd_ = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
+            if (listen_fd_ < 0) continue;
+            const int reuse = 1;
+            (void)::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+            if (::bind(listen_fd_, current->ai_addr, current->ai_addrlen) == 0 &&
+                ::listen(listen_fd_, 64) == 0) {
+                break;
+            }
+            ::close(listen_fd_);
+            listen_fd_ = -1;
+        }
+        ::freeaddrinfo(results);
+        if (listen_fd_ < 0) throw std::runtime_error("admin bind failed");
+
+        common::log(common::LogLevel::info, "core.admin",
+                    "Web/API interface listening on http://" + address_ + ':' + port_text);
+
+        while (running_) {
+            const int fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (fd < 0) {
+                if (!running_) break;
+                if (errno == EINTR) continue;
+                continue;
+            }
+            try {
+                const auto request = read_request(fd);
+                if (!request) {
+                    send_response(fd, {.status = 400, .body = "{\"error\":\"bad-request\"}"});
+                    ::close(fd);
+                    continue;
+                }
+
+                HttpResponse response;
+                const auto& method = request->method;
+                const auto& path = request->path;
+                const auto auth = [&]() -> std::pair<std::optional<AuthSession>, std::optional<UserInfo>> {
+                    const auto session = sessions_->find(bearer_token(*request));
+                    const auto user = session ? identities_->find_by_id(session->user_id) : std::nullopt;
+                    return {session, user};
+                };
+                const auto estate_entry_error = [&](const UserInfo& user, const RegionInfo& region) -> std::string {
+                    const auto policy = estates_->policy_for_region(region.id);
+                    if (!policy) return {};
+                    if (!policy->public_access && !estates_->can_manage(policy->estate_id, user.id)) {
+                        return "estate-entry-denied";
+                    }
+                    const auto current = presences_->find_user(user.id);
+                    const bool already_here = current && current->region_id == region.id;
+                    if (!already_here && presences_->count_region(region.id) >= policy->max_agents) {
+                        return "region-capacity-reached";
+                    }
+                    return {};
+                };
+                const auto viewer_response = [&](const UserInfo& user, const RegionInfo& region,
+                                                 const WorldNodeInfo& world,
+                                                 std::string handoff_from = {},
+                                                 double spawn_x = 128.0, double spawn_y = 128.0,
+                                                 double spawn_z = 0.0) {
+                    const auto group_ids = groups_->group_ids_for_user(user.id);
+                    std::string groups_csv;
+                    for (std::size_t i = 0; i < group_ids.size(); ++i) {
+                        if (i) groups_csv += ',';
+                        groups_csv += group_ids[i];
+                    }
+                    const auto ticket = security::issue_scene_ticket(
+                        scene_ticket_secret_, user.id, user.display_name, region.id,
+                        scene_ticket_lifetime_, std::string{security::kDefaultSceneCapabilities},
+                        std::move(handoff_from), groups_csv, spawn_x, spawn_y, spawn_z);
+                    return "{\"user\":{\"id\":\"" + json_escape(user.id) +
+                           "\",\"display_name\":\"" + json_escape(user.display_name) +
+                           "\"},\"region\":{\"id\":\"" + json_escape(region.id) +
+                           "\",\"name\":\"" + json_escape(region.name) +
+                           "\"},\"scene_endpoint\":\"" + json_escape(world.endpoint) +
+                           "\",\"scene_ticket\":\"" + ticket.token +
+                           "\",\"capabilities\":\"" + json_escape(ticket.claims.capabilities) +
+                           "\",\"handoff_from\":\"" + json_escape(ticket.claims.handoff_from_region) +
+                           "\",\"groups\":\"" + json_escape(ticket.claims.group_ids_csv) +
+                           "\",\"spawn\":{\"x\":" + std::to_string(ticket.claims.spawn_x) +
+                           ",\"y\":" + std::to_string(ticket.claims.spawn_y) +
+                           ",\"z\":" + std::to_string(ticket.claims.spawn_z) +
+                           "},\"expires_unix\":" + std::to_string(ticket.claims.expires_unix) + "}";
+                };
+
+                if (method == "GET" && path == "/") {
+                    response.content_type = "text/html; charset=utf-8";
+                    response.body = dashboard_html();
+                } else if (method == "GET" && path == "/health") {
+                    response.body = "{\"status\":\"ok\",\"version\":\"" +
+                                    std::string(OGL_VERSION) + "\"}";
+                } else if (method == "GET" && path == "/metrics") {
+                    const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::steady_clock::now() - started_at_).count();
+                    std::ostringstream out;
+                    out << "# HELP opengenesis_core_uptime_seconds Core process uptime.\n"
+                        << "# TYPE opengenesis_core_uptime_seconds gauge\n"
+                        << "opengenesis_core_uptime_seconds " << uptime << "\n"
+                        << "opengenesis_world_nodes " << worlds_->list().size() << "\n"
+                        << "opengenesis_regions " << regions_->list().size() << "\n"
+                        << "opengenesis_online_presences " << presences_->count() << "\n"
+                        << "opengenesis_active_sessions " << sessions_->active_count() << "\n"
+                        << "opengenesis_groups " << groups_->count() << "\n"
+                        << "opengenesis_parcels " << parcels_->count() << "\n"
+                        << "opengenesis_estates " << estates_->count() << "\n"
+                        << "opengenesis_landmarks " << landmarks_->count() << "\n"
+                        << "opengenesis_notifications " << notifications_->count() << "\n"
+                        << "opengenesis_group_posts " << group_channels_->count() << "\n"
+                        << "opengenesis_assets " << assets_->count() << "\n";
+                    for (const auto& region : regions_->list()) {
+                        out << "opengenesis_region_sim_fps{region=\"" << json_escape(region.id) << "\"} " << region.sim_fps << "\n"
+                            << "opengenesis_region_entities{region=\"" << json_escape(region.id) << "\"} " << region.entities << "\n"
+                            << "opengenesis_region_avatars{region=\"" << json_escape(region.id) << "\"} " << region.avatars << "\n";
+                    }
+                    response.content_type = "text/plain; version=0.0.4; charset=utf-8";
+                    response.body = out.str();
+                } else if (method == "GET" && path == "/v1") {
+                    response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
+                                    std::string(OGL_VERSION) +
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                } else if (method == "GET" && path == "/v1/worlds") {
+                    response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
+                } else if (method == "GET" && path == "/v1/regions") {
+                    response.body = "{\"regions\":" + regions_json(regions_->list()) + "}";
+                } else if (method == "GET" && path.starts_with("/v1/regions/") &&
+                           path.ends_with("/neighbors")) {
+                    constexpr std::string_view prefix = "/v1/regions/";
+                    constexpr std::string_view suffix = "/neighbors";
+                    const auto id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+                    if (!regions_->find(id)) {
+                        response = {.status = 404, .body = "{\"error\":\"region-not-found\"}"};
+                    } else {
+                        response.body = "{\"region_id\":\"" + json_escape(id) +
+                                        "\",\"neighbors\":" + regions_json(regions_->neighbors(id)) + "}";
+                    }
+                } else if (method == "GET" && path == "/v1/identity/stats") {
+                    response.body = "{\"users\":" + std::to_string(identities_->count()) +
+                                    ",\"active_sessions\":" + std::to_string(sessions_->active_count()) + "}";
+                } else if (method == "GET" && path == "/v1/identity/users") {
+                    response.body = "{\"users\":" + users_json(identities_->list()) + "}";
+                } else if (method == "GET" && path == "/v1/content/stats") {
+                    response.body = "{\"assets\":" + std::to_string(assets_->count()) +
+                                    ",\"asset_bytes\":" + std::to_string(assets_->total_bytes()) +
+                                    ",\"inventory_folders\":" + std::to_string(inventory_->folder_count()) +
+                                    ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                } else if (method == "GET" && path == "/v1/status") {
+                    const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
+                        std::chrono::steady_clock::now() - started_at_).count();
+                    response.body = "{\"version\":\"" + std::string(OGL_VERSION) +
+                                    "\",\"uptime_seconds\":" + std::to_string(uptime) +
+                                    ",\"world_nodes\":" + worlds_json(worlds_->list()) +
+                                    ",\"regions\":" + regions_json(regions_->list()) +
+                                    ",\"online_presences\":" + std::to_string(presences_->count()) +
+                                    ",\"identities\":" + std::to_string(identities_->count()) +
+                                    ",\"active_sessions\":" + std::to_string(sessions_->active_count()) +
+                                    ",\"friendships\":" + std::to_string(friends_->accepted_count()) +
+                                    ",\"pending_friend_requests\":" + std::to_string(friends_->pending_count()) +
+                                    ",\"messages\":" + std::to_string(messages_->count()) +
+                                    ",\"groups\":" + std::to_string(groups_->count()) +
+                                    ",\"parcels\":" + std::to_string(parcels_->count()) +
+                                    ",\"active_bans\":" + std::to_string(moderation_->active_count()) +
+                                    ",\"audit_events\":" + std::to_string(audit_->count()) +
+                                    ",\"estates\":" + std::to_string(estates_->count()) +
+                                    ",\"landmarks\":" + std::to_string(landmarks_->count()) +
+                                    ",\"notifications\":" + std::to_string(notifications_->count()) +
+                                    ",\"group_posts\":" + std::to_string(group_channels_->count()) +
+                                    ",\"assets\":" + std::to_string(assets_->count()) +
+                                    ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                } else if (method == "POST" && path == "/v1/auth/register") {
+                    const auto username = json_string(request->body, "username");
+                    const auto display = json_string(request->body, "display_name");
+                    const auto password = json_string(request->body, "password");
+                    if (!username || !display || !password) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto user = identities_->register_user(*username, *display, *password, reason);
+                        if (!user) {
+                            response = {.status = reason == "username-exists" ? 409 : 400,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            (void)inventory_->ensure_root(user->id);
+                            const auto created = sessions_->create(user->id);
+                            response.status = 201;
+                            response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
+                                            "\",\"username\":\"" + json_escape(user->username) +
+                                            "\",\"display_name\":\"" + json_escape(user->display_name) +
+                                            "\"},\"token\":\"" + created.token +
+                                            "\",\"expires_unix\":" +
+                                            std::to_string(created.session.expires_unix) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/auth/login") {
+                    const auto username = json_string(request->body, "username");
+                    const auto password = json_string(request->body, "password");
+                    if (!username || !password) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
+                    } else if (const auto user = identities_->authenticate(*username, *password)) {
+                        (void)inventory_->ensure_root(user->id);
+                        const auto created = sessions_->create(user->id);
+                        response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
+                                        "\",\"username\":\"" + json_escape(user->username) +
+                                        "\",\"display_name\":\"" + json_escape(user->display_name) +
+                                        "\"},\"token\":\"" + created.token +
+                                        "\",\"expires_unix\":" +
+                                        std::to_string(created.session.expires_unix) + "}";
+                    } else {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-credentials\"}"};
+                    }
+                } else if (method == "GET" && path == "/v1/auth/me") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
+                                        "\",\"username\":\"" + json_escape(user->username) +
+                                        "\",\"display_name\":\"" + json_escape(user->display_name) +
+                                        "\"},\"session\":{\"id\":\"" + json_escape(session->id) +
+                                        "\",\"expires_unix\":" + std::to_string(session->expires_unix) +
+                                        "},\"online\":" +
+                                        (presences_->find_user(user->id).has_value() ? "true" : "false") + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/auth/logout") {
+                    const auto token = bearer_token(*request);
+                    if (token.empty() || !sessions_->revoke(token)) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else response.body = "{\"status\":\"logged-out\"}";
+                } else if (method == "POST" && path == "/v1/viewer/session") {
+                    auto [session, user] = auth();
+                    const auto region_id = json_string(request->body, "region");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!region_id) {
+                        response = {.status = 400, .body = "{\"error\":\"missing-region\"}"};
+                    } else {
+                        const auto region = regions_->find(*region_id);
+                        const auto world = region ? worlds_->find(region->node_id) : std::nullopt;
+                        const auto x = json_number(request->body, "x").value_or(128.0);
+                        const auto y = json_number(request->body, "y").value_or(128.0);
+                        const auto z = json_number(request->body, "z").value_or(0.0);
+                        const auto group_ids = groups_->group_ids_for_user(user->id);
+                        if (!region || !world || region->state != "online" || world->state != "online") {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"region-offline-or-unknown\"}"};
+                        } else if (moderation_->is_banned(user->id, region->id)) {
+                            response = {.status = 403, .body = "{\"error\":\"user-banned\"}"};
+                        } else if (const auto error = estate_entry_error(*user, *region); !error.empty()) {
+                            response = {.status = 403, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
+                        } else if (!parcels_->can_enter(region->id, x, y, user->id, group_ids)) {
+                            response = {.status = 403, .body = "{\"error\":\"parcel-entry-denied\"}"};
+                        } else response.body = viewer_response(*user, *region, *world, {}, x, y, z);
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/teleport") {
+                    auto [session, user] = auth();
+                    const auto landmark_id = json_string(request->body, "landmark_id");
+                    auto region_id = json_string(request->body, "region");
+                    std::optional<LandmarkInfo> landmark;
+                    if (landmark_id) landmark = landmarks_->find(*landmark_id);
+                    if (landmark && user && landmark->user_id == user->id) region_id = landmark->region_id;
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (landmark_id && (!landmark || landmark->user_id != user->id)) response = {.status = 404, .body = "{\"error\":\"landmark-not-found\"}"};
+                    else if (!region_id) response = {.status = 400, .body = "{\"error\":\"missing-region\"}"};
+                    else {
+                        const auto region = regions_->find(*region_id);
+                        const auto world = region ? worlds_->find(region->node_id) : std::nullopt;
+                        double x = landmark ? landmark->x : json_number(request->body, "x").value_or(128.0);
+                        double y = landmark ? landmark->y : json_number(request->body, "y").value_or(128.0);
+                        double z = landmark ? landmark->z : json_number(request->body, "z").value_or(0.0);
+                        if (!landmark && region && !json_number(request->body, "x") && !json_number(request->body, "y")) {
+                            if (const auto policy = estates_->policy_for_region(region->id)) {
+                                x = policy->landing_x; y = policy->landing_y; z = policy->landing_z;
+                            }
+                        }
+                        const auto group_ids = groups_->group_ids_for_user(user->id);
+                        if (!region || !world || region->state != "online" || world->state != "online") response = {.status = 409, .body = "{\"error\":\"region-offline-or-unknown\"}"};
+                        else if (moderation_->is_banned(user->id, region->id)) response = {.status = 403, .body = "{\"error\":\"user-banned\"}"};
+                        else if (const auto error = estate_entry_error(*user, *region); !error.empty()) response = {.status = 403, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
+                        else if (!parcels_->can_enter(region->id, x, y, user->id, group_ids)) response = {.status = 403, .body = "{\"error\":\"parcel-entry-denied\"}"};
+                        else { audit_->append(user->id, landmark ? "teleport.landmark" : "teleport.ticket", region->id, landmark ? landmark->id : std::string{}); response.body = viewer_response(*user,*region,*world,{},x,y,z); }
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/handoff") {
+                    auto [session, user] = auth();
+                    const auto from = json_string(request->body, "from_region");
+                    const auto to = json_string(request->body, "to_region");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!from || !to) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
+                    } else {
+                        bool adjacent = false;
+                        for (const auto& candidate : regions_->neighbors(*from)) {
+                            if (candidate.id == *to) adjacent = true;
+                        }
+                        const auto region = adjacent ? regions_->find(*to) : std::nullopt;
+                        const auto world = region ? worlds_->find(region->node_id) : std::nullopt;
+                        if (!adjacent || !region || !world || region->state != "online" ||
+                            world->state != "online") {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"handoff-target-not-adjacent-or-offline\"}"};
+                        } else {
+                            const auto source = regions_->find(*from);
+                            double x = 128.0, y = 128.0;
+                            if (source) {
+                                if (region->grid_x > source->grid_x) x = 0.5;
+                                else if (region->grid_x < source->grid_x) x = 255.5;
+                                if (region->grid_y > source->grid_y) y = 0.5;
+                                else if (region->grid_y < source->grid_y) y = 255.5;
+                            }
+                            const auto group_ids = groups_->group_ids_for_user(user->id);
+                            if (moderation_->is_banned(user->id, region->id)) response = {.status = 403, .body = "{\"error\":\"user-banned\"}"};
+                            else if (const auto error = estate_entry_error(*user, *region); !error.empty()) response = {.status = 403, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
+                            else if (!parcels_->can_enter(region->id, x, y, user->id, group_ids)) response = {.status = 403, .body = "{\"error\":\"parcel-entry-denied\"}"};
+                            else { audit_->append(user->id, "region.handoff", *from + "->" + *to); response.body = viewer_response(*user, *region, *world, *from, x, y, 0.0); }
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/groups") {
+                    auto [session, user] = auth();
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else response.body = "{\"groups\":" + groups_json(groups_->list_for_user(user->id)) + "}";
+                } else if (method == "POST" && path == "/v1/groups") {
+                    auto [session, user] = auth();
+                    const auto name = json_string(request->body, "name");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!name) response = {.status = 400, .body = "{\"error\":\"missing-name\"}"};
+                    else {
+                        std::string reason;
+                        const auto group = groups_->create(user->id, *name, reason);
+                        if (!group) response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else { audit_->append(user->id, "group.create", group->id, group->name); response.status = 201; response.body = "{\"group_id\":\"" + group->id + "\"}"; }
+                    }
+                } else if (method == "GET" && path.starts_with("/v1/groups/") && path.ends_with("/members")) {
+                    auto [session, user] = auth();
+                    constexpr std::string_view prefix = "/v1/groups/";
+                    constexpr std::string_view suffix = "/members";
+                    const auto id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!groups_->is_member(id, user->id)) response = {.status = 403, .body = "{\"error\":\"not-group-member\"}"};
+                    else response.body = "{\"members\":" + group_members_json(groups_->members(id)) + "}";
+                } else if (method == "POST" && path == "/v1/groups/members") {
+                    auto [session, user] = auth();
+                    const auto group_id = json_string(request->body, "group_id");
+                    const auto member_id = json_string(request->body, "user_id");
+                    const auto role = json_string(request->body, "role");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!group_id || !member_id || !identities_->find_by_id(*member_id)) response = {.status = 400, .body = "{\"error\":\"invalid-member\"}"};
+                    else {
+                        std::string reason;
+                        const auto member = groups_->add_member(user->id, *group_id, *member_id, role.value_or("member"), reason);
+                        if (!member) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else { notifications_->push(*member_id, "group_membership", "Added to group", "You were added to a group.", *group_id); audit_->append(user->id, "group.member.add", *group_id, *member_id); response.status = 201; response.body = "{\"status\":\"added\"}"; }
+                    }
+                } else if (method == "POST" && path == "/v1/groups/role") {
+                    auto [session, user] = auth();
+                    const auto group_id = json_string(request->body, "group_id");
+                    const auto member_id = json_string(request->body, "user_id");
+                    const auto role = json_string(request->body, "role");
+                    std::string reason;
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!group_id || !member_id || !role || !groups_->set_role(user->id, *group_id, *member_id, *role, reason)) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                    else { audit_->append(user->id, "group.role", *group_id, *member_id + ":" + *role); response.body = "{\"status\":\"updated\"}"; }
+                } else if (method == "POST" && path == "/v1/groups/remove") {
+                    auto [session, user] = auth();
+                    const auto group_id = json_string(request->body, "group_id");
+                    const auto member_id = json_string(request->body, "user_id");
+                    std::string reason;
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!group_id || !member_id || !groups_->remove_member(user->id, *group_id, *member_id, reason)) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                    else { audit_->append(user->id, "group.member.remove", *group_id, *member_id); response.body = "{\"status\":\"removed\"}"; }
+                } else if (method == "POST" && path == "/v1/parcels") {
+                    auto [session, user] = auth();
+                    const auto region_id = json_string(request->body, "region_id");
+                    const auto name = json_string(request->body, "name");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!region_id || !name || !regions_->find(*region_id)) response = {.status = 400, .body = "{\"error\":\"invalid-parcel-fields\"}"};
+                    else {
+                        const auto x1 = static_cast<std::uint16_t>(std::clamp(json_number(request->body, "x1").value_or(0.0), 0.0, 255.0));
+                        const auto y1 = static_cast<std::uint16_t>(std::clamp(json_number(request->body, "y1").value_or(0.0), 0.0, 255.0));
+                        const auto x2 = static_cast<std::uint16_t>(std::clamp(json_number(request->body, "x2").value_or(255.0), 0.0, 255.0));
+                        const auto y2 = static_cast<std::uint16_t>(std::clamp(json_number(request->body, "y2").value_or(255.0), 0.0, 255.0));
+                        std::string reason;
+                        const auto parcel = parcels_->create(user->id, *region_id, *name, x1, y1, x2, y2, reason);
+                        if (!parcel) response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else { audit_->append(user->id, "parcel.create", parcel->id, parcel->region_id); response.status = 201; response.body = "{\"parcel_id\":\"" + parcel->id + "\"}"; }
+                    }
+                } else if (method == "GET" && path.starts_with("/v1/regions/") && path.ends_with("/parcels")) {
+                    constexpr std::string_view prefix = "/v1/regions/";
+                    constexpr std::string_view suffix = "/parcels";
+                    const auto id = path.substr(prefix.size(), path.size() - prefix.size() - suffix.size());
+                    response.body = "{\"parcels\":" + parcels_json(parcels_->list_region(id)) + "}";
+                } else if (method == "GET" && path == "/v1/parcels/owned") {
+                    auto [session, user] = auth();
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else response.body = "{\"parcels\":" + parcels_json(parcels_->list_owner(user->id)) + "}";
+                } else if (method == "POST" && path == "/v1/parcels/policy") {
+                    auto [session, user] = auth();
+                    const auto parcel_id = json_string(request->body, "parcel_id");
+                    const auto group_id = json_string(request->body, "group_id");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!parcel_id) response = {.status = 400, .body = "{\"error\":\"missing-parcel-id\"}"};
+                    else if (group_id && !group_id->empty() && !groups_->is_member(*group_id, user->id)) response = {.status = 403, .body = "{\"error\":\"not-group-member\"}"};
+                    else {
+                        std::string reason;
+                        const bool ok = parcels_->update_policy(user->id, *parcel_id, group_id.value_or(""),
+                            json_bool(request->body, "public_entry").value_or(true),
+                            json_bool(request->body, "public_build").value_or(false),
+                            json_bool(request->body, "group_build").value_or(true),
+                            json_bool(request->body, "group_terraform").value_or(false), reason);
+                        if (!ok) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else { audit_->append(user->id, "parcel.policy", *parcel_id); response.body = "{\"status\":\"updated\"}"; }
+                    }
+                } else if (method == "GET" && path == "/v1/estates") {
+                    auto [session, user] = auth();
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else response.body = "{\"estates\":" + estates_json(estates_->list_for_user(user->id)) + "}";
+                } else if (method == "POST" && path == "/v1/estates") {
+                    auto [session, user] = auth();
+                    const auto name = json_string(request->body, "name");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!name) response = {.status = 400, .body = "{\"error\":\"missing-name\"}"};
+                    else { std::string reason; const auto estate = estates_->create(user->id, *name, reason); if(!estate) response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"}; else { audit_->append(user->id,"estate.create",estate->id,estate->name); response.status=201; response.body="{\"estate_id\":\""+estate->id+"\"}"; } }
+                } else if (method == "POST" && path == "/v1/estates/managers") {
+                    auto [session, user] = auth();
+                    const auto estate_id=json_string(request->body,"estate_id"), manager=json_string(request->body,"user_id"), action=json_string(request->body,"action");
+                    if(!session||!user) response={.status=401,.body="{\"error\":\"invalid-session\"}"};
+                    else if(!estate_id||!manager||!action||!identities_->find_by_id(*manager)) response={.status=400,.body="{\"error\":\"invalid-manager-fields\"}"};
+                    else { std::string reason; bool ok=*action=="add"?estates_->add_manager(user->id,*estate_id,*manager,reason):(*action=="remove"?estates_->remove_manager(user->id,*estate_id,*manager,reason):false); if(!ok) response={.status=403,.body="{\"error\":\""+json_escape(reason.empty()?"invalid-action":reason)+"\"}"}; else {audit_->append(user->id,"estate.manager."+*action,*estate_id,*manager);response.body="{\"status\":\"ok\"}";} }
+                } else if (method == "POST" && path == "/v1/estates/regions") {
+                    auto [session, user] = auth(); const auto estate_id=json_string(request->body,"estate_id"), region_id=json_string(request->body,"region_id");
+                    if(!session||!user) response={.status=401,.body="{\"error\":\"invalid-session\"}"};
+                    else if(!estate_id||!region_id||!regions_->find(*region_id)) response={.status=400,.body="{\"error\":\"invalid-region-fields\"}"};
+                    else {std::string reason;if(!estates_->attach_region(user->id,*estate_id,*region_id,reason))response={.status=403,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{audit_->append(user->id,"estate.region.attach",*estate_id,*region_id);response.body="{\"status\":\"attached\"}";}}
+                } else if (method == "POST" && path == "/v1/estates/regions/policy") {
+                    auto [session, user] = auth(); const auto estate_id=json_string(request->body,"estate_id"), region_id=json_string(request->body,"region_id");
+                    if(!session||!user) response={.status=401,.body="{\"error\":\"invalid-session\"}"};
+                    else if(!estate_id||!region_id) response={.status=400,.body="{\"error\":\"invalid-policy-fields\"}"};
+                    else { RegionEstatePolicy policy{.region_id=*region_id,.estate_id=*estate_id,.public_access=json_bool(request->body,"public_access").value_or(true),.allow_fly=json_bool(request->body,"allow_fly").value_or(true),.allow_scripts=json_bool(request->body,"allow_scripts").value_or(true),.allow_voice=json_bool(request->body,"allow_voice").value_or(true),.max_agents=static_cast<std::uint32_t>(std::clamp(json_number(request->body,"max_agents").value_or(100.0),1.0,1000.0)),.maturity=static_cast<std::uint8_t>(std::clamp(json_number(request->body,"maturity").value_or(0.0),0.0,2.0)),.landing_x=json_number(request->body,"landing_x").value_or(128.0),.landing_y=json_number(request->body,"landing_y").value_or(128.0),.landing_z=json_number(request->body,"landing_z").value_or(0.0)}; std::string reason; if(!estates_->update_region_policy(user->id,policy,reason)) response={.status=403,.body="{\"error\":\""+json_escape(reason)+"\"}"}; else {audit_->append(user->id,"estate.region.policy",*estate_id,*region_id);response.body="{\"status\":\"updated\"}";} }
+                } else if (method == "GET" && path.starts_with("/v1/regions/") && path.ends_with("/estate")) {
+                    constexpr std::string_view prefix="/v1/regions/", suffix="/estate"; const auto id=path.substr(prefix.size(),path.size()-prefix.size()-suffix.size()); const auto policy=estates_->policy_for_region(id); if(!policy) response={.status=404,.body="{\"error\":\"estate-policy-not-found\"}"}; else response.body="{\"policies\":"+estate_policies_json({*policy})+"}";
+                } else if (method == "GET" && path == "/v1/landmarks") {
+                    auto [session,user]=auth(); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"landmarks\":"+landmarks_json(landmarks_->list_for_user(user->id))+"}";
+                } else if (method == "POST" && path == "/v1/landmarks") {
+                    auto [session,user]=auth(); const auto name=json_string(request->body,"name"),region_id=json_string(request->body,"region_id"); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!name||!region_id||!regions_->find(*region_id))response={.status=400,.body="{\"error\":\"invalid-landmark-fields\"}"};else{std::string reason;auto item=landmarks_->create(user->id,*name,*region_id,json_number(request->body,"x").value_or(128.0),json_number(request->body,"y").value_or(128.0),json_number(request->body,"z").value_or(0.0),reason);if(!item)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{audit_->append(user->id,"landmark.create",item->id,item->region_id);response.status=201;response.body="{\"landmark\":"+landmark_json(*item)+"}";}}
+                } else if (method == "POST" && path == "/v1/landmarks/remove") {
+                    auto [session,user]=auth(); const auto id=json_string(request->body,"landmark_id"); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!id||!landmarks_->remove(user->id,*id))response={.status=404,.body="{\"error\":\"landmark-not-found\"}"};else{audit_->append(user->id,"landmark.remove",*id);response.body="{\"status\":\"removed\"}";}
+                } else if (method == "GET" && path == "/v1/notifications") {
+                    auto [session,user]=auth(); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else response.body="{\"unread\":"+std::to_string(notifications_->unread_count(user->id))+",\"notifications\":"+notifications_json(notifications_->list_for_user(user->id))+"}";
+                } else if (method == "POST" && path == "/v1/notifications/read") {
+                    auto [session,user]=auth(); const auto id=json_string(request->body,"notification_id"); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!id||!notifications_->mark_read(user->id,*id))response={.status=404,.body="{\"error\":\"notification-not-found\"}"};else response.body="{\"status\":\"read\"}";
+                } else if (method == "GET" && path.starts_with("/v1/groups/") && path.ends_with("/channel")) {
+                    auto [session,user]=auth(); constexpr std::string_view prefix="/v1/groups/",suffix="/channel"; const auto id=path.substr(prefix.size(),path.size()-prefix.size()-suffix.size()); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!groups_->is_member(id,user->id))response={.status=403,.body="{\"error\":\"not-group-member\"}"};else response.body="{\"posts\":"+group_posts_json(group_channels_->list(id))+"}";
+                } else if (method == "POST" && path == "/v1/groups/channel") {
+                    auto [session,user]=auth(); const auto group_id=json_string(request->body,"group_id"),kind=json_string(request->body,"kind"),title=json_string(request->body,"title"),text=json_string(request->body,"text"); if(!session||!user)response={.status=401,.body="{\"error\":\"invalid-session\"}"};else if(!group_id||!kind||!text)response={.status=400,.body="{\"error\":\"invalid-group-post-fields\"}"};else if(!groups_->is_member(*group_id,user->id)||!groups_->has_power(*group_id,user->id,*kind=="notice"?GroupPower::notice:GroupPower::chat))response={.status=403,.body="{\"error\":\"permission-denied\"}"};else{std::string reason;auto post=group_channels_->send(*group_id,user->id,*kind,title.value_or(""),*text,reason);if(!post)response={.status=400,.body="{\"error\":\""+json_escape(reason)+"\"}"};else{if(*kind=="notice")for(const auto&m:groups_->members(*group_id))if(m.user_id!=user->id)notifications_->push(m.user_id,"group_notice",title.value_or("Group notice"),*text,*group_id);audit_->append(user->id,"group."+*kind,*group_id,post->id);response.status=201;response.body="{\"post_id\":\""+post->id+"\"}";}}
+                } else if (method == "GET" && path == "/v1/presence") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else response.body = "{\"presences\":" + presences_json(presences_->list()) + "}";
+                } else if (method == "GET" && path == "/v1/social/friends") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else response.body = "{\"friends\":" +
+                                            friends_json(friends_->list_for_user(user->id), user->id) + "}";
+                } else if (method == "POST" && path == "/v1/social/friends/request") {
+                    auto [session, user] = auth();
+                    const auto target_id = json_string(request->body, "user_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!target_id || !identities_->find_by_id(*target_id)) {
+                        response = {.status = 404, .body = "{\"error\":\"user-not-found\"}"};
+                    } else {
+                        std::string reason;
+                        const auto relation = friends_->request(user->id, *target_id, reason);
+                        if (!relation) response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else {
+                            notifications_->push(*target_id, "friend_request", "Friend request", user->display_name + " sent you a friend request.", relation->id);
+                            response.status = 201;
+                            response.body = "{\"status\":\"pending\",\"relation_id\":\"" + relation->id + "\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/social/friends/accept") {
+                    auto [session, user] = auth();
+                    const auto other_id = json_string(request->body, "user_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!other_id) {
+                        response = {.status = 400, .body = "{\"error\":\"missing-user-id\"}"};
+                    } else {
+                        std::string reason;
+                        const auto relation = friends_->accept(user->id, *other_id, reason);
+                        if (!relation) response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else { notifications_->push(*other_id, "friend_accept", "Friend request accepted", user->display_name + " accepted your friend request.", relation->id); response.body = "{\"status\":\"accepted\",\"relation_id\":\"" + relation->id + "\"}"; }
+                    }
+                } else if (method == "POST" && path == "/v1/social/friends/remove") {
+                    auto [session, user] = auth();
+                    const auto other_id = json_string(request->body, "user_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!other_id || !friends_->remove(user->id, *other_id)) {
+                        response = {.status = 404, .body = "{\"error\":\"friend-relation-not-found\"}"};
+                    } else response.body = "{\"status\":\"removed\"}";
+                } else if (method == "GET" && path == "/v1/social/messages") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body = "{\"unread\":" + std::to_string(messages_->unread_count(user->id)) +
+                                        ",\"messages\":" + messages_json(messages_->list_for_user(user->id), user->id) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/social/messages") {
+                    auto [session, user] = auth();
+                    const auto recipient = json_string(request->body, "recipient_id");
+                    const auto text = json_string(request->body, "text");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!recipient || !text || !identities_->find_by_id(*recipient)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-message-fields\"}"};
+                    } else if (!friends_->are_friends(user->id, *recipient)) {
+                        response = {.status = 403, .body = "{\"error\":\"recipient-not-friend\"}"};
+                    } else {
+                        std::string reason;
+                        const auto message = messages_->send(user->id, *recipient, *text, reason);
+                        if (!message) response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else {
+                            notifications_->push(*recipient, "direct_message", "Message from " + user->display_name, *text, message->id);
+                            response.status = 201;
+                            response.body = "{\"message_id\":\"" + message->id + "\",\"sent_unix\":" +
+                                            std::to_string(message->sent_unix) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/social/messages/read") {
+                    auto [session, user] = auth();
+                    const auto message_id = json_string(request->body, "message_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!message_id || !messages_->mark_read(user->id, *message_id)) {
+                        response = {.status = 404, .body = "{\"error\":\"message-not-found\"}"};
+                    } else response.body = "{\"status\":\"read\"}";
+                } else if (method == "GET" && path == "/v1/social/stats") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        const auto relations = friends_->list_for_user(user->id);
+                        std::size_t accepted = 0;
+                        std::size_t pending = 0;
+                        for (const auto& relation : relations) {
+                            if (relation.status == "accepted") ++accepted;
+                            else if (relation.status == "pending") ++pending;
+                        }
+                        response.body = "{\"friends\":" + std::to_string(accepted) +
+                                        ",\"pending\":" + std::to_string(pending) +
+                                        ",\"unread_messages\":" +
+                                        std::to_string(messages_->unread_count(user->id)) +
+                                        ",\"unread_notifications\":" +
+                                        std::to_string(notifications_->unread_count(user->id)) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/assets/transfer") {
+                    auto [session, user] = auth();
+                    const auto asset_id = json_string(request->body, "asset_id");
+                    const auto recipient = json_string(request->body, "recipient_id");
+                    const bool keep_copy = json_bool(request->body, "keep_copy").value_or(true);
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!asset_id || !recipient || !identities_->find_by_id(*recipient)) response = {.status = 400, .body = "{\"error\":\"invalid-transfer\"}"};
+                    else {
+                        std::string reason;
+                        const auto moved = assets_->transfer(*asset_id, user->id, *recipient, keep_copy, reason);
+                        if (!moved) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else {
+                            const auto root = inventory_->ensure_root(*recipient);
+                            const auto item = inventory_->create_item(*recipient, root.id, moved->id, moved->name, reason);
+                            audit_->append(user->id, "asset.transfer", moved->id, *recipient);
+                            response.body = "{\"asset\":" + asset_json(*moved) + ",\"inventory_delivered\":" + (item ? "true" : "false") + "}";
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/assets") {
+                    auto [session, user] = auth();
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else response.body = "{\"assets\":" + assets_json(assets_->list_for_user(user->id)) + "}";
+                } else if (method == "POST" && path == "/v1/assets") {
+                    auto [session, user] = auth();
+                    const auto name = json_string(request->body, "name");
+                    const auto mime = json_string(request->body, "mime_type");
+                    const auto encoded = json_string(request->body, "data_base64");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!name || !mime || !encoded) response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
+                    else {
+                        try {
+                            auto data = security::base64_decode(*encoded);
+                            std::string reason;
+                            const auto asset = assets_->create(user->id, *name, *mime, std::move(data), reason);
+                            if (!asset) response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            else {
+                                response.status = 201;
+                                response.body = "{\"asset\":" + asset_json(*asset) + "}";
+                            }
+                        } catch (const std::exception&) {
+                            response = {.status = 400, .body = "{\"error\":\"invalid-asset-data\"}"};
+                        }
+                    }
+                } else if (method == "GET" && path.starts_with("/v1/assets/") && path.size() > 11) {
+                    auto [session, user] = auth();
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else {
+                        const auto id = path.substr(11);
+                        const auto asset = assets_->find(id);
+                        const auto data = asset ? assets_->read(id, user->id) : std::nullopt;
+                        if (!asset || !data) response = {.status = 404, .body = "{\"error\":\"asset-not-found\"}"};
+                        else response.body = "{\"asset\":" + asset_json(*asset) +
+                                             ",\"data_base64\":\"" + security::base64_encode(*data) + "\"}";
+                    }
+                } else if (method == "GET" && path == "/v1/inventory") {
+                    auto [session, user] = auth();
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else response.body = inventory_json(inventory_->list(user->id));
+                } else if (method == "POST" && path == "/v1/inventory/folders") {
+                    auto [session, user] = auth();
+                    const auto name = json_string(request->body, "name");
+                    const auto parent = json_string(request->body, "parent_id");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!name) response = {.status = 400, .body = "{\"error\":\"missing-name\"}"};
+                    else {
+                        std::string reason;
+                        const auto folder = inventory_->create_folder(user->id, parent.value_or(""), *name, reason);
+                        if (!folder) response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        else {
+                            response.status = 201;
+                            response.body = "{\"folder\":{\"id\":\"" + folder->id +
+                                            "\",\"parent_id\":\"" + folder->parent_id +
+                                            "\",\"name\":\"" + json_escape(folder->name) + "\"}}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/inventory/items") {
+                    auto [session, user] = auth();
+                    const auto name = json_string(request->body, "name");
+                    const auto parent = json_string(request->body, "parent_id");
+                    const auto asset_id = json_string(request->body, "asset_id");
+                    if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    else if (!name || !asset_id) response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
+                    else {
+                        const auto asset = assets_->find(*asset_id);
+                        if (!asset || asset->owner_user_id != user->id) {
+                            response = {.status = 403, .body = "{\"error\":\"asset-not-owned\"}"};
+                        } else {
+                            std::string reason;
+                            const auto item = inventory_->create_item(user->id, parent.value_or(""), *asset_id, *name, reason);
+                            if (!item) response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            else {
+                                response.status = 201;
+                                response.body = "{\"item\":{\"id\":\"" + item->id +
+                                                "\",\"asset_id\":\"" + item->asset_id +
+                                                "\",\"name\":\"" + json_escape(item->name) + "\"}}";
+                            }
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/admin/moderation") {
+                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    else response.body = "{\"bans\":" + bans_json(moderation_->list()) + "}";
+                } else if (method == "POST" && path == "/v1/admin/moderation/ban") {
+                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    else {
+                        const auto user_id = json_string(request->body, "user_id");
+                        const auto scope = json_string(request->body, "scope");
+                        const auto scope_id = json_string(request->body, "scope_id");
+                        const auto reason = json_string(request->body, "reason");
+                        const auto expires = static_cast<std::int64_t>(json_number(request->body, "expires_unix").value_or(0.0));
+                        std::string error;
+                        if (!user_id || !scope || !identities_->find_by_id(*user_id)) response = {.status = 400, .body = "{\"error\":\"invalid-ban\"}"};
+                        else {
+                            const auto ban = moderation_->ban("admin-api", *user_id, *scope, scope_id.value_or(""), reason.value_or(""), expires, error);
+                            if (!ban) response = {.status = 400, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
+                            else { audit_->append("admin-api", "moderation.ban", *user_id, *scope + ":" + scope_id.value_or("")); response.status = 201; response.body = "{\"ban_id\":\"" + ban->id + "\"}"; }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/admin/moderation/unban") {
+                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    else {
+                        const auto ban_id = json_string(request->body, "ban_id");
+                        if (!ban_id || !moderation_->unban(*ban_id)) response = {.status = 404, .body = "{\"error\":\"ban-not-found\"}"};
+                        else { audit_->append("admin-api", "moderation.unban", *ban_id); response.body = "{\"status\":\"removed\"}"; }
+                    }
+                } else if (method == "GET" && path == "/v1/admin/audit") {
+                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    else response.body = "{\"events\":" + audit_json(audit_->recent()) + "}";
+                } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
+                           path == "/v1/auth/logout" || path == "/v1/viewer/session" ||
+                           path == "/v1/viewer/teleport" || path == "/v1/viewer/handoff" ||
+                           path == "/v1/groups" || path == "/v1/groups/members" ||
+                           path == "/v1/groups/role" || path == "/v1/groups/remove" ||
+                           path == "/v1/parcels" || path == "/v1/parcels/policy" ||
+                           path == "/v1/estates" || path == "/v1/estates/managers" ||
+                           path == "/v1/estates/regions" || path == "/v1/estates/regions/policy" ||
+                           path == "/v1/landmarks" || path == "/v1/landmarks/remove" ||
+                           path == "/v1/notifications/read" || path == "/v1/groups/channel" ||
+                           path == "/v1/assets/transfer" || path == "/v1/admin/moderation/ban" ||
+                           path == "/v1/admin/moderation/unban" || path == "/v1/social/friends/request" ||
+                           path == "/v1/social/friends/accept" || path == "/v1/social/friends/remove" ||
+                           path == "/v1/social/messages" || path == "/v1/social/messages/read" ||
+                           path == "/v1/assets" || path == "/v1/inventory/folders" ||
+                           path == "/v1/inventory/items") {
+                    response = {.status = 405, .body = "{\"error\":\"method-not-allowed\"}"};
+                } else {
+                    response = {.status = 404, .body = "{\"error\":\"not-found\"}"};
+                }
+                send_response(fd, response);
+            } catch (const std::exception& error) {
+                common::log(common::LogLevel::warning, "core.admin.client", error.what());
+                send_response(fd, {.status = 500, .body = "{\"error\":\"internal-error\"}"});
+            }
+            ::close(fd);
+        }
+    } catch (const std::exception& error) {
+        if (running_) common::log(common::LogLevel::error, "core.admin", error.what());
+    }
 }
 
 } // namespace opengenesis::core

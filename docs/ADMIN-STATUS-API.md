@@ -1,13 +1,30 @@
 # Core Admin / Status API
 
-The original status-only endpoint has evolved into the OpenGenesisLINK Core Web API starting in `0.4.0-dev`; `0.5.0-dev` adds Viewer/content status.
+The Core development HTTP surface is available on loopback by default at `http://127.0.0.1:18080`.
 
-See [`WEB-API-v1.md`](WEB-API-v1.md) for the current endpoint list, Identity/Auth requests and browser dashboard behavior.
+`1.5.0-dev` exposes a browser dashboard plus JSON status for:
 
-The default development listener is:
+- Core uptime and version
+- World Node state/generation
+- Region state and simulation metrics
+- live authenticated Presence count
+- identities and sessions
+- friendship/message aggregates
+- Asset and Inventory counts
+- Group and Parcel counts
+- active moderation bans and audit-event count
+
+Primary endpoints:
 
 ```text
-http://127.0.0.1:18080/
+GET /health
+GET /v1
+GET /v1/status
+GET /v1/worlds
+GET /v1/regions
+GET /v1/content/stats
 ```
 
-Keep this listener on a trusted interface until the production TLS/authorization layer is implemented.
+Governance and moderation endpoints are documented in `WEB-API-v1.md`, `WORLD-GOVERNANCE-v1.md` and `MODERATION-AUDIT-v1.md`.
+
+This remains a development interface. It should not be bound directly to an untrusted public network without TLS termination, replacement of development secrets, mature admin authorization and rate limiting.
