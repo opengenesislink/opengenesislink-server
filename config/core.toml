@@ -38,6 +38,7 @@ group_channels = "data/group_channels.db"
 federation_identity = "data/federation-identity.db"
 federation_trust = "data/federation-trust.db"
 federation_sessions = "data/federation-sessions.db"
+hypergrid_sessions = "data/hypergrid-sessions.db"
 
 [assets]
 max_bytes = 1048576
@@ -48,9 +49,14 @@ base_url = "http://127.0.0.1:18080"
 
 [hypergrid]
 enabled = false
-external_name = "http://127.0.0.1:18080"
-home_uri = "http://127.0.0.1:18080"
-asset_uri = "http://127.0.0.1:18080"
-inventory_uri = "http://127.0.0.1:18080"
-friends_uri = "http://127.0.0.1:18080"
-im_uri = "http://127.0.0.1:18080"
+listen_address = "127.0.0.1"
+port = 18081
+external_name = "http://127.0.0.1:18081"
+home_uri = "http://127.0.0.1:18081"
+asset_uri = ""
+inventory_uri = ""
+friends_uri = ""
+im_uri = ""
+region_host = "127.0.0.1"
+region_http_port = 19100
+region_internal_port = 19100
