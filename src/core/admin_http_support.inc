@@ -3,19 +3,15 @@
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include "opengenesis/security/scene_ticket.hpp"
+#include "opengenesis/platform/socket.hpp"
 
-#include <arpa/inet.h>
-#include <cerrno>
 #include <charconv>
 #include <cctype>
 #include <cstring>
-#include <netdb.h>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
-#include <sys/socket.h>
-#include <unistd.h>
 #include <unordered_map>
 
 namespace opengenesis::core {
@@ -138,15 +134,15 @@ bool admin_authorized(const HttpRequest& request, std::string_view key) {
     return it != request.headers.end() && it->second == key;
 }
 
-bool recv_more(const int fd, std::string& buffer) {
+bool recv_more(const platform::SocketHandle fd, std::string& buffer) {
     char chunk[4096];
-    const auto count = ::recv(fd, chunk, sizeof(chunk), 0);
+    const auto count = platform::receive_bytes(fd, chunk, sizeof(chunk));
     if (count <= 0) return false;
     buffer.append(chunk, static_cast<std::size_t>(count));
     return true;
 }
 
-std::optional<HttpRequest> read_request(const int fd) {
+std::optional<HttpRequest> read_request(const platform::SocketHandle fd) {
     constexpr std::size_t kMaxHeader = 32768;
     constexpr std::size_t kMaxBody = 65536;
     std::string data;
@@ -210,7 +206,7 @@ std::string status_text(const int status) {
     }
 }
 
-void send_response(const int fd, const HttpResponse& response) {
+void send_response(const platform::SocketHandle fd, const HttpResponse& response) {
     std::ostringstream headers;
     headers << "HTTP/1.1 " << status_text(response.status) << "\r\n"
             << "Content-Type: " << response.content_type << "\r\n"
@@ -219,8 +215,8 @@ void send_response(const int fd, const HttpResponse& response) {
             << "X-Content-Type-Options: nosniff\r\n"
             << "Connection: close\r\n\r\n";
     const auto head = headers.str();
-    (void)::send(fd, head.data(), head.size(), MSG_NOSIGNAL);
-    (void)::send(fd, response.body.data(), response.body.size(), MSG_NOSIGNAL);
+    (void)platform::send_bytes(fd, head.data(), head.size());
+    (void)platform::send_bytes(fd, response.body.data(), response.body.size());
 }
 
 std::string worlds_json(const std::vector<WorldNodeInfo>& worlds) {
