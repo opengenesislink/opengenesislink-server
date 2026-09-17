@@ -144,7 +144,12 @@ void FederationTrustStore::persist_locked() const {
     if (!output) throw std::runtime_error("cannot write federation trust store");
 
     output << "# OpenGenesisLINK OGL-FED trust store v1\n";
-    auto peers = list();
+    std::vector<FederationPeer> peers;
+    peers.reserve(peers_.size());
+    for (const auto& [_, peer] : peers_) peers.push_back(peer);
+    std::sort(peers.begin(), peers.end(), [](const FederationPeer& a, const FederationPeer& b) {
+        return a.grid_id < b.grid_id;
+    });
     for (const auto& peer : peers) {
         output << peer.grid_id << '\t' << peer.base_url << '\t' << peer.public_key_hex << '\t'
                << (peer.trusted ? '1' : '0') << '\t' << (peer.revoked ? '1' : '0') << '\t'
