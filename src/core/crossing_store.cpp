@@ -176,7 +176,7 @@ void CrossingStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 16) continue;
+        if (fields.size() != 14) continue;
         try {
             RegionCrossing crossing{
                 .id = fields[0],
@@ -219,7 +219,7 @@ void CrossingStore::persist_locked() const {
                << crossing.velocity.x << '\t' << crossing.velocity.y << '\t' << crossing.velocity.z << '\t'
                << crossing_state_name(crossing.state) << '\t'
                << crossing.created_unix << '\t' << crossing.expires_unix << '\t'
-               << crossing.completed_unix << "\t0\t0\n";
+               << crossing.completed_unix << '\n';
     }
 
     output.close();
