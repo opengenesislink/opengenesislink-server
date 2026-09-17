@@ -16,5 +16,10 @@ struct XmlRpcCall {
 [[nodiscard]] std::string xmlrpc_struct_response(
     const std::unordered_map<std::string, std::string>& fields);
 [[nodiscard]] std::string xmlrpc_fault_response(int code, std::string_view message);
+[[nodiscard]] std::optional<std::unordered_map<std::string, std::string>>
+parse_xmlrpc_struct_response(std::string_view xml);
+[[nodiscard]] std::string xmlrpc_struct_call(
+    std::string_view method,
+    const std::unordered_map<std::string, std::string>& fields);
 
 } // namespace opengenesis::compat::hypergrid
