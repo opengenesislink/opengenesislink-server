@@ -52,7 +52,10 @@ int main() {
             .display_name = "Alice",
             .origin_region = "region-a",
             .destination_region = "region-b",
-            .session_id = "session-123"};
+            .session_id = "session-123",
+            .nonce = {},
+            .issued_unix = 0,
+            .expires_unix = 0};
 
         const auto issued = opengenesis::federation::issue_travel_token(
             keys.private_key_hex, claims, std::chrono::seconds{90});
@@ -82,7 +85,10 @@ int main() {
             std::string reason;
             require(trust.trust({.grid_id = "grid-a.example",
                                  .base_url = "https://grid-a.example",
-                                 .public_key_hex = keys.public_key_hex},
+                                 .public_key_hex = keys.public_key_hex,
+                                 .trusted = true,
+                                 .revoked = false,
+                                 .updated_unix = 0},
                                 reason),
                     "peer trust succeeds");
             require(trust.is_trusted("grid-a.example", keys.public_key_hex),
@@ -122,7 +128,14 @@ int main() {
             require(scripts.upsert({.id = "script-1",
                                     .object_id = "object-1",
                                     .owner_user_id = "user-1",
-                                    .source_hash = "sha256:test"},
+                                    .source_hash = "sha256:test",
+                                    .state = "default",
+                                    .enabled = true,
+                                    .timer_interval_ms = 0,
+                                    .next_timer_unix_ms = 0,
+                                    .chat_channel = 0,
+                                    .chat_enabled = false,
+                                    .event_count = 0},
                                    reason),
                     "script persisted");
             require(scripts.set_timer("script-1", 1000, 10000), "script timer configured");
