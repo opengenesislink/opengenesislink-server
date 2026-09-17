@@ -20,9 +20,11 @@ namespace opengenesis::platform {
 
 #ifdef _WIN32
 using SocketHandle = SOCKET;
+using SocketLength = int;
 inline constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
 #else
 using SocketHandle = int;
+using SocketLength = socklen_t;
 inline constexpr SocketHandle kInvalidSocket = -1;
 #endif
 
