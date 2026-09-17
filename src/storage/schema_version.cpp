@@ -1,4 +1,5 @@
 #include "opengenesis/storage/schema_version.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -62,14 +63,7 @@ void SchemaVersionStore::persist() const {
     output.close();
     if (!output) throw std::runtime_error("cannot flush schema version");
 
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-    }
-    if (error) throw std::runtime_error("cannot replace schema version");
+    opengenesis::platform::replace_file(temp, path);
 }
 
 } // namespace opengenesis::storage
