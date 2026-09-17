@@ -1,4 +1,5 @@
 #include "opengenesis/core/moderation_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include <algorithm>
 #include <chrono>
@@ -21,5 +22,5 @@ bool ModerationStore::is_banned(std::string_view u,std::string_view region)const
 std::vector<BanRecord> ModerationStore::list()const{std::scoped_lock l(mutex_);std::vector<BanRecord>r;for(auto&[_,b]:bans_)r.push_back(b);std::sort(r.begin(),r.end(),[](auto&a,auto&b){return a.created_unix>b.created_unix;});return r;}
 std::size_t ModerationStore::active_count()const{auto t=now();std::scoped_lock l(mutex_);return static_cast<std::size_t>(std::count_if(bans_.begin(),bans_.end(),[&](auto&e){return e.second.expires_unix==0||e.second.expires_unix>t;}));}
 void ModerationStore::load_locked(){bans_.clear();std::ifstream in(path_);if(!in)return;std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;auto f=tabs(line);if(f.size()!=8 && f.size()!=9)continue;try{BanRecord b{.id=f[0],.user_id=f[1],.scope=f[2],.scope_id=f[3],.reason=unhex(f[4]),.created_by=f[5],.created_unix=std::stoll(f[6]),.expires_unix=std::stoll(f[7])};bans_[b.id]=b;}catch(...){}}}
-void ModerationStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write moderation");out<<"# OpenGenesisLINK moderation v1\n";for(auto&[_,b]:bans_)out<<b.id<<'\t'<<b.user_id<<'\t'<<b.scope<<'\t'<<b.scope_id<<'\t'<<hex(b.reason)<<'\t'<<b.created_by<<'\t'<<b.created_unix<<'\t'<<b.expires_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush moderation");std::filesystem::rename(t,p);}
+void ModerationStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write moderation");out<<"# OpenGenesisLINK moderation v1\n";for(auto&[_,b]:bans_)out<<b.id<<'\t'<<b.user_id<<'\t'<<b.scope<<'\t'<<b.scope_id<<'\t'<<hex(b.reason)<<'\t'<<b.created_by<<'\t'<<b.created_unix<<'\t'<<b.expires_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush moderation");opengenesis::platform::replace_file(t,p);}
 }
