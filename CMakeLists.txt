@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 2.5.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 3.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,9 +42,14 @@ add_library(opengenesis-foundation
     src/core/group_channel_store.cpp
     src/core/crossing_store.cpp
     src/federation/grid_identity.cpp
+    src/federation/grid_identity_store.cpp
     src/federation/travel_token.cpp
     src/federation/replay_cache.cpp
     src/federation/trust_store.cpp
+    src/federation/session_store.cpp
+    src/federation/runtime.cpp
+    src/compat/hypergrid/xmlrpc.cpp
+    src/compat/hypergrid/service.cpp
     src/scripting/script_runtime.cpp
     src/storage/schema_version.cpp
     src/voice/voice_provider.cpp
