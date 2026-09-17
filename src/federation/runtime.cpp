@@ -3,6 +3,8 @@
 #include "opengenesis/security/crypto.hpp"
 
 #include <algorithm>
+#include <stdexcept>
+#include <utility>
 
 namespace opengenesis::federation {
 
