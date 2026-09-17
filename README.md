@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **2.0.0-dev**.
+Current development version: **2.5.0-dev**.
 
-`2.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`2.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -31,7 +31,14 @@ Current development version: **2.0.0-dev**.
 - persistent Group channels and Group notices
 - Prometheus-compatible `/metrics` endpoint with low-cardinality Core/Region gauges
 - browser-readable Core dashboard and JSON API
-- x86_64 and ARM64/aarch64 CI
+- native OGL-FED foundation with Ed25519 Grid identities, signed Travel Tokens, Audience Binding and replay protection
+- persistent Federation trust/revocation store
+- transactional one-time Region Crossing records with position and velocity state
+- persistent Script Event Runtime foundation with states, timers and chat dispatch
+- reusable runtime Rate Limiter and storage Schema Version guard
+- provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
+- cross-platform socket layer for Linux/POSIX and Windows Winsock
+- Linux x86_64, Linux ARM64/aarch64 and Windows x86_64 CI targets
 
 ## Browser interface
 
@@ -115,11 +122,17 @@ The admin/API and Scene listeners bind to loopback by default. Replace all devel
 7. Core can issue a teleport or adjacent-Region handoff ticket after target policy checks.
 8. The destination Region validates the new ticket and creates the authenticated Presence there.
 
-The current adjacent-Region handoff remains client-driven. Seamless cross-World transfer of velocity, attachments and transactional state is not complete yet.
+The existing viewer handoff remains client-driven. The 2.5 foundation adds a persistent one-time crossing transaction record carrying position and velocity, but it is not yet wired into every Scene handoff path. Attachment and full script-state transfer remain incomplete.
+
+## Federation and Voice foundations
+
+`OGL-FED/1` is the native Federation direction. The 2.5 foundation provides Ed25519 Grid keys, signed short-lived Travel Tokens, audience binding, a persistent trust/revocation store and replay protection. OpenSimulator Hypergrid remains a separate legacy compatibility layer and is not mixed into OGL-FED.
+
+Voice is provider-neutral. The server exposes the `OGL-VOICE/1` and `OGL-VOICE-CAP/1` contracts so a Grid can later use the hosted OpenGenesisLINK Voice service, another compatible provider or a self-hosted implementation. Provider credentials stay server-side; the Viewer receives only short-lived destination capabilities.
 
 ## Build
 
-Requirements: Linux, CMake >= 3.25, Ninja, a C++23 compiler, pthreads and OpenSSL development headers.
+Supported build targets are Linux x86_64, Linux ARM64/aarch64 and Windows x86_64 / Windows Server x86_64. CMake >= 3.25, a C++23 compiler and OpenSSL are required. Linux builds use pthreads; Windows uses Winsock through the platform abstraction.
 
 Debian/Ubuntu example:
 
@@ -128,13 +141,15 @@ sudo apt install build-essential cmake ninja-build libssl-dev
 ./scripts/build.sh
 ```
 
-Run the full end-to-end test:
+Windows development builds use MSVC, CMake/Ninja and OpenSSL. See `docs/BUILD.md` for the vcpkg example.
+
+Run the full Linux process-level test:
 
 ```bash
 ./scripts/smoke-test.sh
 ```
 
-The smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery.
+The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, crossing transactions, Script Runtime, rate limiting, schema versioning and Voice provider validation.
 
 ## Documentation
 
@@ -152,6 +167,8 @@ The smoke test covers two accounts, Social, Groups, Group notices, Notifications
 - `docs/REGION-RUNTIME.md`
 - `docs/REGION-PERSISTENCE-v0.md`
 - `docs/PHYSICS.md`
+- `docs/OGL-FED-v0.md`
+- `docs/VOICE-PROVIDER-v0.md`
 
 ## License
 
