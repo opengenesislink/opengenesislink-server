@@ -1,4 +1,5 @@
 #include "opengenesis/core/friends_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include "opengenesis/security/crypto.hpp"
 
@@ -173,7 +174,7 @@ void FriendsStore::persist_locked() const {
     }
     output.close();
     if (!output) throw std::runtime_error("cannot flush friends store");
-    std::filesystem::rename(temp, path);
+    opengenesis::platform::replace_file(temp, path);
 }
 
 } // namespace opengenesis::core

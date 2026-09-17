@@ -17,6 +17,7 @@
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
+#include "opengenesis/platform/socket.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -83,7 +84,7 @@ private:
     std::chrono::steady_clock::time_point started_at_{std::chrono::steady_clock::now()};
     std::atomic_bool running_{false};
     std::thread thread_;
-    int listen_fd_{-1};
+    platform::SocketHandle listen_fd_{platform::kInvalidSocket};
 };
 
 } // namespace opengenesis::core

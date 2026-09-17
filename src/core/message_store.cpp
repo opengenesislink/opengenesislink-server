@@ -1,4 +1,5 @@
 #include "opengenesis/core/message_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include "opengenesis/security/crypto.hpp"
 
@@ -137,7 +138,7 @@ void MessageStore::persist_locked() const {
     }
     output.close();
     if (!output) throw std::runtime_error("cannot flush message store");
-    std::filesystem::rename(temp, path);
+    opengenesis::platform::replace_file(temp, path);
 }
 
 } // namespace opengenesis::core

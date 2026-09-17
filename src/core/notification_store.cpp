@@ -1,4 +1,5 @@
 #include "opengenesis/core/notification_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include <algorithm>
 #include <chrono>
@@ -15,5 +16,5 @@ bool NotificationStore::mark_read(std::string_view user,std::string_view id){std
 std::size_t NotificationStore::unread_count(std::string_view user)const{std::scoped_lock l(mutex_);return static_cast<std::size_t>(std::count_if(items_.begin(),items_.end(),[&](auto&n){return n.user_id==user&&n.read_unix==0;}));}
 std::size_t NotificationStore::count()const{std::scoped_lock l(mutex_);return items_.size();}
 void NotificationStore::load(){std::scoped_lock l(mutex_);items_.clear();std::ifstream in(path_);std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;std::istringstream s(line);std::vector<std::string>f;std::string v;while(std::getline(s,v,'\t'))f.push_back(v);if(f.size()!=8)continue;try{items_.push_back({.id=f[0],.user_id=f[1],.type=f[2],.title=f[3],.body=f[4],.target=f[5],.created_unix=std::stoll(f[6]),.read_unix=std::stoll(f[7])});}catch(...){}}}
-void NotificationStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write notifications");out<<"# OpenGenesisLINK notifications v1\n";for(auto&n:items_)out<<n.id<<'\t'<<n.user_id<<'\t'<<n.type<<'\t'<<n.title<<'\t'<<n.body<<'\t'<<n.target<<'\t'<<n.created_unix<<'\t'<<n.read_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush notifications");std::filesystem::rename(t,p);}
+void NotificationStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write notifications");out<<"# OpenGenesisLINK notifications v1\n";for(auto&n:items_)out<<n.id<<'\t'<<n.user_id<<'\t'<<n.type<<'\t'<<n.title<<'\t'<<n.body<<'\t'<<n.target<<'\t'<<n.created_unix<<'\t'<<n.read_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush notifications");opengenesis::platform::replace_file(t,p);}
 }

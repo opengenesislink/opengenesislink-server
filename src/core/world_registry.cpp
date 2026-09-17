@@ -1,4 +1,5 @@
 #include "opengenesis/core/world_registry.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -14,5 +15,5 @@ std::optional<WorldNodeInfo> WorldRegistry::find(const std::string& id)const{std
 std::vector<WorldNodeInfo> WorldRegistry::list()const{std::scoped_lock lock(mutex_);std::vector<WorldNodeInfo> out;out.reserve(nodes_.size());for(const auto& [_,n]:nodes_)out.push_back(n);return out;}
 std::size_t WorldRegistry::size()const{std::scoped_lock lock(mutex_);return nodes_.size();}
 void WorldRegistry::load(){if(storage_path_.empty())return;std::ifstream in(storage_path_);std::string line;while(std::getline(in,line)){std::istringstream s(line);WorldNodeInfo n;long long reg=0,last=0;s>>std::quoted(n.id)>>std::quoted(n.name)>>std::quoted(n.endpoint)>>std::quoted(n.state)>>n.generation>>reg>>last;if(!n.id.empty()){n.registered_at=from_ms(reg);n.last_seen=from_ms(last);n.state="offline";nodes_[n.id]=std::move(n);}}}
-void WorldRegistry::persist_locked()const{if(storage_path_.empty())return;const std::filesystem::path p(storage_path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());const auto tmp=storage_path_+".tmp";std::ofstream out(tmp,std::ios::trunc);if(!out)throw std::runtime_error("cannot persist world registry");for(const auto& [_,n]:nodes_)out<<std::quoted(n.id)<<' '<<std::quoted(n.name)<<' '<<std::quoted(n.endpoint)<<' '<<std::quoted(n.state)<<' '<<n.generation<<' '<<epoch_ms(n.registered_at)<<' '<<epoch_ms(n.last_seen)<<'\n';out.close();std::filesystem::rename(tmp,storage_path_);}
+void WorldRegistry::persist_locked()const{if(storage_path_.empty())return;const std::filesystem::path p(storage_path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());const auto tmp=storage_path_+".tmp";std::ofstream out(tmp,std::ios::trunc);if(!out)throw std::runtime_error("cannot persist world registry");for(const auto& [_,n]:nodes_)out<<std::quoted(n.id)<<' '<<std::quoted(n.name)<<' '<<std::quoted(n.endpoint)<<' '<<std::quoted(n.state)<<' '<<n.generation<<' '<<epoch_ms(n.registered_at)<<' '<<epoch_ms(n.last_seen)<<'\n';out.close();opengenesis::platform::replace_file(tmp,storage_path_);}
 }

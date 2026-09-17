@@ -1,0 +1,35 @@
+name: Windows C++ CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: windows-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x86_64:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Install OpenSSL
+        shell: pwsh
+        run: vcpkg install openssl:x64-windows
+      - name: Configure release (MSVC warnings as errors)
+        shell: pwsh
+        run: >
+          cmake -S . -B build/windows -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DOGL_BUILD_TESTS=ON
+          -DOGL_ENABLE_WERROR=ON
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Build Core, World and tests
+        shell: pwsh
+        run: cmake --build build/windows
+      - name: Unit tests
+        shell: pwsh
+        run: ctest --test-dir build/windows --output-on-failure

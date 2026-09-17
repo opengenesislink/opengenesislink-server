@@ -1,4 +1,5 @@
 #include "opengenesis/core/identity_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include "opengenesis/security/crypto.hpp"
 
@@ -178,7 +179,7 @@ void IdentityStore::persist_locked() const {
     }
     output.close();
     if (!output) throw std::runtime_error("cannot flush identity store");
-    std::filesystem::rename(temporary, path);
+    opengenesis::platform::replace_file(temporary, path);
 }
 
 } // namespace opengenesis::core

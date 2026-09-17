@@ -1,4 +1,5 @@
 #include "opengenesis/core/region_registry.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -182,7 +183,7 @@ void RegionRegistry::persist_locked() const {
     }
     output.close();
     if (!output) throw std::runtime_error("cannot flush region registry");
-    std::filesystem::rename(temp, storage_path_);
+    opengenesis::platform::replace_file(temp, storage_path_);
 }
 
 } // namespace opengenesis::core

@@ -1,4 +1,5 @@
 #include "opengenesis/core/group_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include <algorithm>
 #include <chrono>
@@ -29,5 +30,5 @@ std::vector<GroupMember> GroupStore::members(std::string_view g)const{std::scope
 std::vector<std::string> GroupStore::group_ids_for_user(std::string_view u)const{std::scoped_lock l(mutex_);std::vector<std::string>r;for(auto&[_,m]:members_)if(m.user_id==u)r.push_back(m.group_id);std::sort(r.begin(),r.end());return r;}
 std::size_t GroupStore::count()const{std::scoped_lock l(mutex_);return groups_.size();}
 void GroupStore::load(){std::scoped_lock l(mutex_);groups_.clear();members_.clear();std::ifstream in(path_);if(!in)return;std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;auto f=tabs(line);try{if(f.size()==5&&f[0]=="G"){GroupInfo g{.id=f[1],.name=unhex(f[2]),.founder_user_id=f[3],.created_unix=std::stoll(f[4])};groups_[g.id]=g;}else if(f.size()==6&&f[0]=="M"){GroupMember m{.group_id=f[1],.user_id=f[2],.role=f[3],.powers=role_powers(f[3]),.joined_unix=std::stoll(f[5])};members_[key(m.group_id,m.user_id)]=m;}}catch(...){}}}
-void GroupStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write groups");out<<"# OpenGenesisLINK groups v1\n";for(auto&[_,g]:groups_)out<<"G\t"<<g.id<<'\t'<<hex(g.name)<<'\t'<<g.founder_user_id<<'\t'<<g.created_unix<<'\n';for(auto&[_,m]:members_)out<<"M\t"<<m.group_id<<'\t'<<m.user_id<<'\t'<<m.role<<'\t'<<m.powers<<'\t'<<m.joined_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush groups");std::filesystem::rename(t,p);}
+void GroupStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write groups");out<<"# OpenGenesisLINK groups v1\n";for(auto&[_,g]:groups_)out<<"G\t"<<g.id<<'\t'<<hex(g.name)<<'\t'<<g.founder_user_id<<'\t'<<g.created_unix<<'\n';for(auto&[_,m]:members_)out<<"M\t"<<m.group_id<<'\t'<<m.user_id<<'\t'<<m.role<<'\t'<<m.powers<<'\t'<<m.joined_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush groups");opengenesis::platform::replace_file(t,p);}
 }

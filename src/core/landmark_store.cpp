@@ -1,4 +1,5 @@
 #include "opengenesis/core/landmark_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include <algorithm>
 #include <chrono>
@@ -15,5 +16,5 @@ std::vector<LandmarkInfo> LandmarkStore::list_for_user(std::string_view user)con
 bool LandmarkStore::remove(std::string_view user,std::string_view id){std::scoped_lock l(mutex_);auto n=std::erase_if(items_,[&](auto&m){return m.user_id==user&&m.id==id;});if(n)persist_locked();return n>0;}
 std::size_t LandmarkStore::count()const{std::scoped_lock l(mutex_);return items_.size();}
 void LandmarkStore::load(){std::scoped_lock l(mutex_);items_.clear();std::ifstream in(path_);std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;std::istringstream s(line);std::vector<std::string>f;std::string v;while(std::getline(s,v,'\t'))f.push_back(v);if(f.size()!=8)continue;try{items_.push_back({.id=f[0],.user_id=f[1],.name=f[2],.region_id=f[3],.x=std::stod(f[4]),.y=std::stod(f[5]),.z=std::stod(f[6]),.created_unix=std::stoll(f[7])});}catch(...){}}}
-void LandmarkStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write landmarks");out<<"# OpenGenesisLINK landmarks v1\n";for(auto&m:items_)out<<m.id<<'\t'<<m.user_id<<'\t'<<m.name<<'\t'<<m.region_id<<'\t'<<m.x<<'\t'<<m.y<<'\t'<<m.z<<'\t'<<m.created_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush landmarks");std::filesystem::rename(t,p);}
+void LandmarkStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write landmarks");out<<"# OpenGenesisLINK landmarks v1\n";for(auto&m:items_)out<<m.id<<'\t'<<m.user_id<<'\t'<<m.name<<'\t'<<m.region_id<<'\t'<<m.x<<'\t'<<m.y<<'\t'<<m.z<<'\t'<<m.created_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush landmarks");opengenesis::platform::replace_file(t,p);}
 }
