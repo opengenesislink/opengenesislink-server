@@ -1,4 +1,5 @@
 #include "opengenesis/core/group_channel_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include <chrono>
 #include <filesystem>
@@ -12,5 +13,5 @@ std::optional<GroupPost> GroupChannelStore::send(std::string group,std::string s
 std::vector<GroupPost> GroupChannelStore::list(std::string_view group,std::size_t limit)const{std::scoped_lock l(mutex_);std::vector<GroupPost>o;for(auto it=posts_.rbegin();it!=posts_.rend()&&o.size()<limit;++it)if(it->group_id==group)o.push_back(*it);return o;}
 std::size_t GroupChannelStore::count()const{std::scoped_lock l(mutex_);return posts_.size();}
 void GroupChannelStore::load(){std::scoped_lock l(mutex_);posts_.clear();std::ifstream in(path_);std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;std::istringstream s(line);std::vector<std::string>f;std::string v;while(std::getline(s,v,'\t'))f.push_back(v);if(f.size()!=7)continue;try{posts_.push_back({.id=f[0],.group_id=f[1],.sender_id=f[2],.kind=f[3],.title=f[4],.text=f[5],.sent_unix=std::stoll(f[6])});}catch(...){}}}
-void GroupChannelStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write group channels");out<<"# OpenGenesisLINK group channels v1\n";for(auto&post:posts_)out<<post.id<<'\t'<<post.group_id<<'\t'<<post.sender_id<<'\t'<<post.kind<<'\t'<<post.title<<'\t'<<post.text<<'\t'<<post.sent_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush group channels");std::filesystem::rename(t,p);}
+void GroupChannelStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write group channels");out<<"# OpenGenesisLINK group channels v1\n";for(auto&post:posts_)out<<post.id<<'\t'<<post.group_id<<'\t'<<post.sender_id<<'\t'<<post.kind<<'\t'<<post.title<<'\t'<<post.text<<'\t'<<post.sent_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush group channels");opengenesis::platform::replace_file(t,p);}
 }
