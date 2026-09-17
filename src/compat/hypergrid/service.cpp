@@ -3,8 +3,7 @@
 #include "opengenesis/security/crypto.hpp"
 
 #include <algorithm>
-#include <iomanip>
-#include <sstream>
+#include <cctype>
 #include <stdexcept>
 
 namespace opengenesis::compat::hypergrid {
@@ -14,9 +13,11 @@ std::string format_uuid(std::string hex) {
     if (hex.size() < 32) throw std::runtime_error("hash too short for UUID");
     hex.resize(32);
     hex[12] = '5';
-    const unsigned variant = static_cast<unsigned>(
-        (hex[16] >= '0' && hex[16] <= '9') ? hex[16] - '0'
-                                           : 10 + std::tolower(static_cast<unsigned char>(hex[16])) - 'a');
+    const char variant_char = static_cast<char>(
+        std::tolower(static_cast<unsigned char>(hex[16])));
+    const unsigned variant = variant_char >= '0' && variant_char <= '9'
+                                 ? static_cast<unsigned>(variant_char - '0')
+                                 : static_cast<unsigned>(10 + variant_char - 'a');
     constexpr char digits[] = "0123456789abcdef";
     hex[16] = digits[(variant & 0x3U) | 0x8U];
     return hex.substr(0, 8) + "-" + hex.substr(8, 4) + "-" + hex.substr(12, 4) + "-" +
