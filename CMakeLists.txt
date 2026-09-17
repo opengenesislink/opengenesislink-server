@@ -112,4 +112,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-federation-hypergrid-tests tests/federation_hypergrid_tests.cpp)
     target_link_libraries(ogl-federation-hypergrid-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME federation-hypergrid COMMAND ogl-federation-hypergrid-tests)
+
+    add_executable(ogl-hypergrid-session-tests tests/hypergrid_session_tests.cpp)
+    target_link_libraries(ogl-hypergrid-session-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME hypergrid-session COMMAND ogl-hypergrid-session-tests)
 endif()
