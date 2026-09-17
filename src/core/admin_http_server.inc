@@ -39,16 +39,16 @@ void AdminHttpServer::start() {
 
 void AdminHttpServer::stop() {
     if (!running_.exchange(false)) return;
-    if (listen_fd_ >= 0) {
-        ::shutdown(listen_fd_, SHUT_RDWR);
-        ::close(listen_fd_);
-        listen_fd_ = -1;
+    if (platform::socket_valid(listen_fd_)) {
+        platform::shutdown_socket(listen_fd_);
+        platform::close_socket(listen_fd_);
     }
     if (thread_.joinable()) thread_.join();
 }
 
 void AdminHttpServer::run() {
     try {
+        platform::initialize_sockets();
         addrinfo hints{};
         hints.ai_socktype = SOCK_STREAM;
         hints.ai_family = AF_UNSPEC;
@@ -60,34 +60,33 @@ void AdminHttpServer::run() {
         }
         for (auto* current = results; current; current = current->ai_next) {
             listen_fd_ = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
-            if (listen_fd_ < 0) continue;
-            const int reuse = 1;
-            (void)::setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+            if (!platform::socket_valid(listen_fd_)) continue;
+            platform::set_reuse_address(listen_fd_);
             if (::bind(listen_fd_, current->ai_addr, current->ai_addrlen) == 0 &&
                 ::listen(listen_fd_, 64) == 0) {
                 break;
             }
-            ::close(listen_fd_);
-            listen_fd_ = -1;
+            platform::close_socket(listen_fd_);
         }
         ::freeaddrinfo(results);
-        if (listen_fd_ < 0) throw std::runtime_error("admin bind failed");
+        if (!platform::socket_valid(listen_fd_)) throw std::runtime_error("admin bind failed");
 
         common::log(common::LogLevel::info, "core.admin",
                     "Web/API interface listening on http://" + address_ + ':' + port_text);
 
         while (running_) {
-            const int fd = ::accept(listen_fd_, nullptr, nullptr);
-            if (fd < 0) {
+            auto fd = ::accept(listen_fd_, nullptr, nullptr);
+            if (!platform::socket_valid(fd)) {
                 if (!running_) break;
-                if (errno == EINTR) continue;
+                const int error = platform::last_socket_error();
+                if (platform::socket_error_interrupted(error)) continue;
                 continue;
             }
             try {
                 const auto request = read_request(fd);
                 if (!request) {
                     send_response(fd, {.status = 400, .body = "{\"error\":\"bad-request\"}"});
-                    ::close(fd);
+                    platform::close_socket(fd);
                     continue;
                 }
 
@@ -766,7 +765,7 @@ void AdminHttpServer::run() {
                 common::log(common::LogLevel::warning, "core.admin.client", error.what());
                 send_response(fd, {.status = 500, .body = "{\"error\":\"internal-error\"}"});
             }
-            ::close(fd);
+            platform::close_socket(fd);
         }
     } catch (const std::exception& error) {
         if (running_) common::log(common::LogLevel::error, "core.admin", error.what());
