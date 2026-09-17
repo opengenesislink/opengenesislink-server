@@ -79,7 +79,8 @@ std::optional<RegionCrossing> CrossingStore::prepare(
         .velocity = velocity,
         .state = CrossingState::prepared,
         .created_unix = now,
-        .expires_unix = expires_unix};
+        .expires_unix = expires_unix,
+        .completed_unix = 0};
 
     std::scoped_lock lock(mutex_);
     crossings_[crossing.id] = crossing;
