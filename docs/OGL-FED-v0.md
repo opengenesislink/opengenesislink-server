@@ -27,7 +27,7 @@ The destination verifies the Ed25519 signature, issuer, audience and lifetime. A
 
 ## Trust
 
-The 2.5 foundation includes a persistent peer trust store with explicit revocation. A revoked peer is not accepted merely because it presents a previously known public key.
+The 3.0 runtime includes a persistent peer trust store with explicit revocation. A revoked peer is not accepted merely because it presents a previously known public key.
 
 HTTPS is required for peers added through the trust-store API foundation. Certificate validation and transport policy belong to the HTTP/TLS transport layer and remain part of later production hardening.
 
@@ -52,7 +52,7 @@ OpenSimulator Hypergrid support is a legacy interoperability adapter. Hypergrid 
 
 ## Current milestone boundary
 
-2.5.0-dev provides the cryptographic, trust, replay and crossing foundations. It does not claim:
+3.0.0-dev provides cryptographic identity, trust, replay protection, outbound Travel Token issuance, inbound visitor acceptance, persistent foreign sessions and destination Scene-Ticket issuance. It does not claim:
 
 - complete multi-Grid production federation
 - complete remote Inventory/Asset federation

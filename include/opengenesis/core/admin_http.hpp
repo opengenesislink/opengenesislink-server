@@ -17,6 +17,7 @@
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
+#include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/platform/socket.hpp"
 
 #include <atomic>
@@ -48,6 +49,7 @@ public:
                     std::shared_ptr<LandmarkStore> landmarks,
                     std::shared_ptr<NotificationStore> notifications,
                     std::shared_ptr<GroupChannelStore> group_channels,
+                    std::shared_ptr<federation::FederationRuntime> federation_runtime,
                     std::string admin_api_key,
                     std::string scene_ticket_secret,
                     std::chrono::seconds scene_ticket_lifetime);
@@ -78,6 +80,7 @@ private:
     std::shared_ptr<LandmarkStore> landmarks_;
     std::shared_ptr<NotificationStore> notifications_;
     std::shared_ptr<GroupChannelStore> group_channels_;
+    std::shared_ptr<federation::FederationRuntime> federation_runtime_;
     std::string admin_api_key_;
     std::string scene_ticket_secret_;
     std::chrono::seconds scene_ticket_lifetime_;

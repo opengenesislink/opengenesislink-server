@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **2.5.0-dev**.
+Current development version: **3.0.0-dev**.
 
-`2.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`3.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -31,12 +31,16 @@ Current development version: **2.5.0-dev**.
 - persistent Group channels and Group notices
 - Prometheus-compatible `/metrics` endpoint with low-cardinality Core/Region gauges
 - browser-readable Core dashboard and JSON API
-- native OGL-FED foundation with Ed25519 Grid identities, signed Travel Tokens, Audience Binding and replay protection
-- persistent Federation trust/revocation store
+- native OGL-FED runtime with persistent Grid identity, Ed25519 Travel Tokens, Audience Binding and replay protection
+- authenticated outbound Federation travel issuance and signed inbound visitor acceptance
+- persistent foreign visitor sessions with logout/expiry lifecycle
+- incoming OGL-FED visitors receive destination-bound Scene Tickets after Region/Parcel/Estate policy checks
+- persistent Federation trust/revocation store with Core admin API
 - transactional one-time Region Crossing records with position and velocity state
 - persistent Script Event Runtime foundation with states, timers and chat dispatch
 - reusable runtime Rate Limiter and storage Schema Version guard
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
+- OpenSimulator Hypergrid XML-RPC control-plane foundation for `link_region`, `get_region` and `get_server_urls`, kept separate from OGL-FED
 - cross-platform socket layer for Linux/POSIX and Windows Winsock
 - Linux x86_64, Linux ARM64/aarch64 and Windows x86_64 CI targets
 
@@ -107,6 +111,15 @@ GET  /v1/admin/moderation
 POST /v1/admin/moderation/ban
 POST /v1/admin/moderation/unban
 GET  /v1/admin/audit
+
+GET  /v1/federation/info
+POST /v1/federation/travel/issue
+POST /v1/federation/travel/accept
+GET  /v1/federation/peers
+POST /v1/federation/trust
+POST /v1/federation/revoke
+GET  /v1/federation/sessions
+POST /v1/federation/sessions/logout
 ```
 
 The admin/API and Scene listeners bind to loopback by default. Replace all development secrets before exposing anything beyond a trusted host. TLS termination, key rotation, distributed replay protection, mature admin roles and production abuse controls are not complete yet.
@@ -126,7 +139,7 @@ The existing viewer handoff remains client-driven. The 2.5 foundation adds a per
 
 ## Federation and Voice foundations
 
-`OGL-FED/1` is the native Federation direction. The 2.5 foundation provides Ed25519 Grid keys, signed short-lived Travel Tokens, audience binding, a persistent trust/revocation store and replay protection. OpenSimulator Hypergrid remains a separate legacy compatibility layer and is not mixed into OGL-FED.
+`OGL-FED/1` is the native Federation direction. 3.0 adds persistent local Grid identity, signed outbound travel, trusted inbound travel verification, replay protection, persistent foreign sessions and destination Scene-Ticket issuance. OpenSimulator Hypergrid remains a separate legacy compatibility layer and is not mixed into OGL-FED.
 
 Voice is provider-neutral. The server exposes the `OGL-VOICE/1` and `OGL-VOICE-CAP/1` contracts so a Grid can later use the hosted OpenGenesisLINK Voice service, another compatible provider or a self-hosted implementation. Provider credentials stay server-side; the Viewer receives only short-lived destination capabilities.
 
@@ -169,6 +182,7 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/PHYSICS.md`
 - `docs/OGL-FED-v0.md`
 - `docs/VOICE-PROVIDER-v0.md`
+- `docs/HYPERGRID-COMPAT-v0.md`
 
 ## License
 

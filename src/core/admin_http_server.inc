@@ -16,6 +16,7 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<LandmarkStore> landmarks,
                                  std::shared_ptr<NotificationStore> notifications,
                                  std::shared_ptr<GroupChannelStore> group_channels,
+                                 std::shared_ptr<federation::FederationRuntime> federation_runtime,
                                  std::string admin_api_key,
                                  std::string scene_ticket_secret,
                                  std::chrono::seconds scene_ticket_lifetime)
@@ -25,7 +26,8 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       messages_(std::move(messages)), groups_(std::move(groups)), parcels_(std::move(parcels)),
       moderation_(std::move(moderation)), audit_(std::move(audit)), estates_(std::move(estates)),
       landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
-      group_channels_(std::move(group_channels)), admin_api_key_(std::move(admin_api_key)),
+      group_channels_(std::move(group_channels)), federation_runtime_(std::move(federation_runtime)),
+      admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
       scene_ticket_lifetime_(scene_ticket_lifetime) {}
 
@@ -164,7 +166,9 @@ void AdminHttpServer::run() {
                         << "opengenesis_landmarks " << landmarks_->count() << "\n"
                         << "opengenesis_notifications " << notifications_->count() << "\n"
                         << "opengenesis_group_posts " << group_channels_->count() << "\n"
-                        << "opengenesis_assets " << assets_->count() << "\n";
+                        << "opengenesis_assets " << assets_->count() << "\n"
+                        << "opengenesis_federation_peers " << federation_runtime_->peers().size() << "\n"
+                        << "opengenesis_foreign_sessions " << federation_runtime_->sessions().size() << "\n";
                     for (const auto& region : regions_->list()) {
                         out << "opengenesis_region_sim_fps{region=\"" << json_escape(region.id) << "\"} " << region.sim_fps << "\n"
                             << "opengenesis_region_entities{region=\"" << json_escape(region.id) << "\"} " << region.entities << "\n"
@@ -175,7 +179,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -200,7 +204,9 @@ void AdminHttpServer::run() {
                     response.body = "{\"assets\":" + std::to_string(assets_->count()) +
                                     ",\"asset_bytes\":" + std::to_string(assets_->total_bytes()) +
                                     ",\"inventory_folders\":" + std::to_string(inventory_->folder_count()) +
-                                    ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                                    ",\"inventory_items\":" + std::to_string(inventory_->item_count()) +
+                                    ",\"federation_peers\":" + std::to_string(federation_runtime_->peers().size()) +
+                                    ",\"foreign_sessions\":" + std::to_string(federation_runtime_->sessions().size()) + "}";
                 } else if (method == "GET" && path == "/v1/status") {
                     const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::steady_clock::now() - started_at_).count();
@@ -224,6 +230,167 @@ void AdminHttpServer::run() {
                                     ",\"group_posts\":" + std::to_string(group_channels_->count()) +
                                     ",\"assets\":" + std::to_string(assets_->count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                } else if (method == "GET" && path == "/v1/federation/info") {
+                    const auto info = federation_runtime_->info();
+                    response.body = "{\"protocol\":\"" + json_escape(info.protocol) +
+                                    "\",\"grid_id\":\"" + json_escape(info.grid_id) +
+                                    "\",\"base_url\":\"" + json_escape(info.base_url) +
+                                    "\",\"public_key\":\"" + json_escape(info.public_key_hex) + "\"}";
+                } else if (method == "GET" && path == "/v1/federation/peers") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        response.body = "{\"peers\":" +
+                                        federation_peers_json(federation_runtime_->peers()) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/federation/trust") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        const auto grid_id = json_string(request->body, "grid_id");
+                        const auto base_url = json_string(request->body, "base_url");
+                        const auto public_key = json_string(request->body, "public_key");
+                        if (!grid_id || !base_url || !public_key) {
+                            response = {.status = 400, .body = "{\"error\":\"invalid-peer-fields\"}"};
+                        } else {
+                            std::string reason;
+                            const bool ok = federation_runtime_->trust_peer(
+                                {.grid_id = *grid_id,
+                                 .base_url = *base_url,
+                                 .public_key_hex = *public_key,
+                                 .trusted = true,
+                                 .revoked = false,
+                                 .updated_unix = 0},
+                                reason);
+                            if (!ok) {
+                                response = {.status = 400,
+                                            .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            } else {
+                                audit_->append("admin-api", "federation.trust", *grid_id, *base_url);
+                                response.status = 201;
+                                response.body = "{\"status\":\"trusted\"}";
+                            }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/federation/revoke") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        const auto grid_id = json_string(request->body, "grid_id");
+                        if (!grid_id || !federation_runtime_->revoke_peer(*grid_id)) {
+                            response = {.status = 404, .body = "{\"error\":\"peer-not-found\"}"};
+                        } else {
+                            audit_->append("admin-api", "federation.revoke", *grid_id);
+                            response.body = "{\"status\":\"revoked\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/federation/travel/issue") {
+                    auto [session, user] = auth();
+                    const auto audience = json_string(request->body, "audience_grid");
+                    const auto destination = json_string(request->body, "destination_region");
+                    const auto origin = json_string(request->body, "origin_region");
+                    const auto lifetime_value = json_number(request->body, "lifetime_seconds").value_or(120.0);
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!audience || !destination) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-travel-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto issued = federation_runtime_->issue_travel(
+                            {.subject_user = user->id,
+                             .display_name = user->display_name,
+                             .audience_grid = *audience,
+                             .origin_region = origin.value_or(""),
+                             .destination_region = *destination,
+                             .lifetime = std::chrono::seconds{
+                                 static_cast<std::int64_t>(lifetime_value)}},
+                            reason);
+                        if (!issued) {
+                            response = {.status = 403,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            response.status = 201;
+                            response.body = "{\"protocol\":\"OGL-FED/1\",\"travel_token\":\"" +
+                                            json_escape(issued->token) +
+                                            "\",\"audience_grid\":\"" +
+                                            json_escape(issued->claims.audience_grid) +
+                                            "\",\"destination_region\":\"" +
+                                            json_escape(issued->claims.destination_region) +
+                                            "\",\"expires_unix\":" +
+                                            std::to_string(issued->claims.expires_unix) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/federation/travel/accept") {
+                    const auto issuer = json_string(request->body, "issuer_grid");
+                    const auto token = json_string(request->body, "travel_token");
+                    if (!issuer || !token) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-travel-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto accepted = federation_runtime_->accept_travel(*issuer, *token, reason);
+                        if (!accepted) {
+                            response = {.status = 403,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            const auto region = regions_->find(accepted->claims.destination_region);
+                            const auto world = region ? worlds_->find(region->node_id) : std::nullopt;
+                            const auto estate = region ? estates_->policy_for_region(region->id) : std::nullopt;
+                            const bool estate_ok = !estate || estate->public_access;
+                            const bool parcel_ok = region && parcels_->can_enter(
+                                region->id, 128.0, 128.0, accepted->claims.subject_user, {});
+                            if (!region || region->state != "online" || !world ||
+                                world->state != "online" || !estate_ok || !parcel_ok) {
+                                (void)federation_runtime_->logout_session(accepted->session.id);
+                                response = {.status = 403, .body = "{\"error\":\"destination-unavailable\"}"};
+                            } else {
+                                const double spawn_x = estate ? estate->landing_x : 128.0;
+                                const double spawn_y = estate ? estate->landing_y : 128.0;
+                                const double spawn_z = estate ? estate->landing_z : 0.0;
+                                const auto ticket = security::issue_scene_ticket(
+                                    scene_ticket_secret_,
+                                    accepted->claims.subject_user,
+                                    accepted->claims.display_name,
+                                    region->id,
+                                    scene_ticket_lifetime_,
+                                    std::string{security::kDefaultSceneCapabilities},
+                                    accepted->claims.origin_region,
+                                    {},
+                                    spawn_x, spawn_y, spawn_z);
+                                response.status = 201;
+                                response.body = "{\"status\":\"accepted\",\"foreign\":true,"
+                                                "\"foreign_session_id\":\"" +
+                                                json_escape(accepted->session.id) +
+                                                "\",\"issuer_grid\":\"" +
+                                                json_escape(accepted->claims.issuer_grid) +
+                                                "\",\"scene_endpoint\":\"" +
+                                                json_escape(world->endpoint) +
+                                                "\",\"scene_ticket\":\"" +
+                                                json_escape(ticket.token) +
+                                                "\",\"destination_region\":\"" +
+                                                json_escape(region->id) +
+                                                "\",\"expires_unix\":" +
+                                                std::to_string(ticket.claims.expires_unix) + "}";
+                            }
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/federation/sessions") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        response.body = "{\"sessions\":" +
+                                        federation_sessions_json(federation_runtime_->sessions()) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/federation/sessions/logout") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        const auto session_id = json_string(request->body, "session_id");
+                        if (!session_id || !federation_runtime_->logout_session(*session_id)) {
+                            response = {.status = 404, .body = "{\"error\":\"session-not-found\"}"};
+                        } else {
+                            response.body = "{\"status\":\"logged-out\"}";
+                        }
+                    }
                 } else if (method == "POST" && path == "/v1/auth/register") {
                     const auto username = json_string(request->body, "username");
                     const auto display = json_string(request->body, "display_name");

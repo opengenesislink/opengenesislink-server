@@ -35,6 +35,22 @@ estates = "data/estates.db"
 landmarks = "data/landmarks.db"
 notifications = "data/notifications.db"
 group_channels = "data/group_channels.db"
+federation_identity = "data/federation-identity.db"
+federation_trust = "data/federation-trust.db"
+federation_sessions = "data/federation-sessions.db"
 
 [assets]
 max_bytes = 1048576
+
+[federation]
+grid_id = "local.opengenesislink"
+base_url = "http://127.0.0.1:18080"
+
+[hypergrid]
+enabled = false
+external_name = "http://127.0.0.1:18080"
+home_uri = "http://127.0.0.1:18080"
+asset_uri = "http://127.0.0.1:18080"
+inventory_uri = "http://127.0.0.1:18080"
+friends_uri = "http://127.0.0.1:18080"
+im_uri = "http://127.0.0.1:18080"

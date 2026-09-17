@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.0.0-dev — 2026-09-18
+
+Federation runtime and Hypergrid control-plane milestone.
+
+- added persistent local OGL-FED Grid identity and Ed25519 key storage
+- added native Federation runtime coordinator
+- added outbound signed Travel Token issuance for authenticated local users
+- added inbound trusted Travel Token acceptance with issuer/audience verification and replay rejection
+- added persistent foreign visitor sessions with logout and expiry lifecycle
+- added destination Region, Estate and Parcel checks before issuing foreign Scene Tickets
+- added public Federation info endpoint and admin peer trust/revocation/session APIs
+- added Federation metrics and API discovery
+- added OpenSimulator Hypergrid XML-RPC codec
+- added Hypergrid control-plane handlers for link_region, get_region and get_server_urls
+- added deterministic legacy UUID/Region-handle mapping without changing native Region IDs
+- added cross-platform Federation/Hypergrid tests
+- Hypergrid foreignagent, verify_agent, Friends, IM and Asset compatibility remain later compatibility work
+
 ## 2.5.0-dev — 2026-09-18
 
 Federation, runtime-foundation and cross-platform milestone.
