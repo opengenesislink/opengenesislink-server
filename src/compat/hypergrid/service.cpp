@@ -44,6 +44,16 @@ std::uint64_t HypergridService::legacy_region_handle(const std::int32_t grid_x,
     return (static_cast<std::uint64_t>(x) << 32U) | static_cast<std::uint64_t>(y);
 }
 
+
+std::optional<core::RegionInfo> HypergridService::region_by_legacy_uuid(
+    const std::string_view legacy_uuid) const {
+    const auto regions = regions_->list();
+    const auto it = std::find_if(regions.begin(), regions.end(), [&](const core::RegionInfo& region) {
+        return legacy_region_uuid(region.id) == legacy_uuid;
+    });
+    return it == regions.end() ? std::nullopt : std::optional<core::RegionInfo>{*it};
+}
+
 std::unordered_map<std::string, std::string> HypergridService::handle(
     const XmlRpcCall& call) const {
     if (!config_.enabled) return {{"result", "false"}, {"message", "Hypergrid disabled"}};
