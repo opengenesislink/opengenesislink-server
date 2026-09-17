@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 2.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 2.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,6 +16,8 @@ add_library(opengenesis-foundation
     src/config/toml_config.cpp
     src/security/crypto.cpp
     src/security/scene_ticket.cpp
+    src/security/rate_limiter.cpp
+    src/platform/socket.cpp
     src/network/tcp.cpp
     src/protocol/frame.cpp
     src/core/world_registry.cpp
@@ -37,6 +39,14 @@ add_library(opengenesis-foundation
     src/core/landmark_store.cpp
     src/core/notification_store.cpp
     src/core/group_channel_store.cpp
+    src/core/crossing_store.cpp
+    src/federation/grid_identity.cpp
+    src/federation/travel_token.cpp
+    src/federation/replay_cache.cpp
+    src/federation/trust_store.cpp
+    src/scripting/script_runtime.cpp
+    src/storage/schema_version.cpp
+    src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
     src/world/region_persistence.cpp
@@ -49,9 +59,20 @@ target_include_directories(opengenesis-foundation PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
 target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto)
+if(WIN32)
+    target_link_libraries(opengenesis-foundation PUBLIC ws2_32)
+endif()
 target_compile_definitions(opengenesis-foundation PUBLIC OGL_VERSION="${PROJECT_VERSION}")
+if(WIN32)
+    target_compile_definitions(opengenesis-foundation PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
 
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+if(MSVC)
+    target_compile_options(opengenesis-foundation PRIVATE /W4 /permissive- /Zc:__cplusplus)
+    if(OGL_ENABLE_WERROR)
+        target_compile_options(opengenesis-foundation PRIVATE /WX)
+    endif()
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(opengenesis-foundation PRIVATE -Wall -Wextra -Wpedantic -Wconversion -Wshadow)
     if(OGL_ENABLE_WERROR)
         target_compile_options(opengenesis-foundation PRIVATE -Werror)
@@ -73,4 +94,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-foundation-tests tests/foundation_tests.cpp)
     target_link_libraries(ogl-foundation-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME foundation COMMAND ogl-foundation-tests)
+
+    add_executable(ogl-federation-runtime-tests tests/federation_runtime_tests.cpp)
+    target_link_libraries(ogl-federation-runtime-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME federation-runtime COMMAND ogl-federation-runtime-tests)
 endif()
