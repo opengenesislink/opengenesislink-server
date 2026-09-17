@@ -5,7 +5,14 @@
 namespace opengenesis::voice {
 
 VoiceSession DisabledVoiceProvider::create_session(const VoiceSessionRequest&) {
-    return {.allowed = false, .provider = "disabled"};
+    return {.allowed = false,
+            .provider = "disabled",
+            .service_url = {},
+            .sip_domain = {},
+            .channel = {},
+            .token = {},
+            .session_id = {},
+            .expires_unix = 0};
 }
 
 void DisabledVoiceProvider::revoke_session(std::string_view) {}
