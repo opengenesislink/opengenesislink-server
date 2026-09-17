@@ -1,4 +1,5 @@
 #include "opengenesis/world/region_persistence.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/world/region_runtime.hpp"
@@ -172,7 +173,7 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
         for (const double value : runtime.terrain().snapshot_heights()) put_double(output, value);
         output.close();
         if (!output) throw std::runtime_error("cannot flush terrain persistence");
-        std::filesystem::rename(temporary, path);
+        opengenesis::platform::replace_file(temporary, path);
         saved_terrain_revision_ = terrain_revision;
     }
 
@@ -192,7 +193,7 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
         }
         output.close();
         if (!output) throw std::runtime_error("cannot flush scene persistence");
-        std::filesystem::rename(temporary, path);
+        opengenesis::platform::replace_file(temporary, path);
         saved_sequence_ = sequence;
     }
 }
