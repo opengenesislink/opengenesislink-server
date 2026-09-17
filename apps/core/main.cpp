@@ -19,6 +19,10 @@
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
+#include "opengenesis/federation/grid_identity_store.hpp"
+#include "opengenesis/federation/runtime.hpp"
+#include "opengenesis/federation/session_store.hpp"
+#include "opengenesis/federation/trust_store.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
 
@@ -149,6 +153,16 @@ int main(int argc, char** argv) {
             config.get_string("storage.notifications", "data/notifications.db"));
         auto group_channels = std::make_shared<core::GroupChannelStore>(
             config.get_string("storage.group_channels", "data/group_channels.db"));
+        auto federation_identity = std::make_shared<opengenesis::federation::GridIdentityStore>(
+            config.get_string("storage.federation_identity", "data/federation-identity.db"),
+            config.get_string("federation.grid_id", "local.opengenesislink"),
+            config.get_string("federation.base_url", "http://127.0.0.1:18080"));
+        auto federation_trust = std::make_shared<opengenesis::federation::FederationTrustStore>(
+            config.get_string("storage.federation_trust", "data/federation-trust.db"));
+        auto federation_sessions = std::make_shared<opengenesis::federation::FederationSessionStore>(
+            config.get_string("storage.federation_sessions", "data/federation-sessions.db"));
+        auto federation_runtime = std::make_shared<opengenesis::federation::FederationRuntime>(
+            federation_identity, federation_trust, federation_sessions);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
@@ -164,8 +178,8 @@ int main(int argc, char** argv) {
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
             identities, auth_sessions, assets, inventory, presences, friends, messages, groups, parcels,
-            moderation, audit, estates, landmarks, notifications, group_channels, admin_api_key,
-            scene_ticket_secret, scene_ticket_lifetime);
+            moderation, audit, estates, landmarks, notifications, group_channels, federation_runtime,
+            admin_api_key, scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
 
         opengenesis::network::TcpListener listener(address, port);
@@ -184,6 +198,9 @@ int main(int argc, char** argv) {
                                              "Lease expired for " + session.node_id);
                 }
                 (void)auth_sessions->purge_expired();
+                const auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+                (void)federation_runtime->maintenance(now_unix);
                 std::this_thread::sleep_for(std::chrono::seconds{1});
             }
         });
