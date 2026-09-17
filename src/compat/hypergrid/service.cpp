@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cctype>
 #include <stdexcept>
+#include <utility>
 
 namespace opengenesis::compat::hypergrid {
 namespace {
