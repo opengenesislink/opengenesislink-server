@@ -149,7 +149,7 @@ void FederationSessionStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 12) continue;
+        if (fields.size() != 11) continue;
         try {
             ForeignSession session{
                 .id = fields[0],
@@ -194,7 +194,7 @@ void FederationSessionStore::persist_locked() const {
                << session.destination_region << '\t' << session.remote_session_id << '\t'
                << foreign_session_state_name(session.state) << '\t'
                << session.created_unix << '\t' << session.expires_unix << '\t'
-               << session.ended_unix << "\t0\n";
+               << session.ended_unix << '\n';
     }
 
     output.close();
