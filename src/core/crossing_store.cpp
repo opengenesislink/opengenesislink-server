@@ -1,4 +1,5 @@
 #include "opengenesis/core/crossing_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include "opengenesis/security/crypto.hpp"
 
@@ -226,14 +227,7 @@ void CrossingStore::persist_locked() const {
     output.close();
     if (!output) throw std::runtime_error("cannot flush crossing store");
 
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-    }
-    if (error) throw std::runtime_error("cannot replace crossing store");
+    opengenesis::platform::replace_file(temp, path);
 }
 
 } // namespace opengenesis::core
