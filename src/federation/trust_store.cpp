@@ -1,4 +1,5 @@
 #include "opengenesis/federation/trust_store.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -158,14 +159,7 @@ void FederationTrustStore::persist_locked() const {
     output.close();
     if (!output) throw std::runtime_error("cannot flush federation trust store");
 
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-    }
-    if (error) throw std::runtime_error("cannot replace federation trust store");
+    opengenesis::platform::replace_file(temp, path);
 }
 
 } // namespace opengenesis::federation
