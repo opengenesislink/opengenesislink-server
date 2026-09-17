@@ -62,7 +62,7 @@ void AdminHttpServer::run() {
             listen_fd_ = ::socket(current->ai_family, current->ai_socktype, current->ai_protocol);
             if (!platform::socket_valid(listen_fd_)) continue;
             platform::set_reuse_address(listen_fd_);
-            if (::bind(listen_fd_, current->ai_addr, current->ai_addrlen) == 0 &&
+            if (::bind(listen_fd_, current->ai_addr, static_cast<platform::SocketLength>(current->ai_addrlen)) == 0 &&
                 ::listen(listen_fd_, 64) == 0) {
                 break;
             }
