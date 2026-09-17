@@ -114,7 +114,7 @@ IssuedTravelToken issue_travel_token(const std::string_view private_key_hex,
         throw std::runtime_error("incomplete OGL-FED travel claims");
     }
 
-    lifetime = std::clamp(lifetime, std::chrono::seconds{30}, std::chrono::minutes{15});
+    lifetime = std::clamp(lifetime, std::chrono::seconds{30}, std::chrono::seconds{900});
     const auto now = unix_now();
     claims.issued_unix = now;
     claims.expires_unix = now + lifetime.count();
