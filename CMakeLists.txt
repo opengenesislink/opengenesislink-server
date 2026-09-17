@@ -18,6 +18,7 @@ add_library(opengenesis-foundation
     src/security/scene_ticket.cpp
     src/security/rate_limiter.cpp
     src/platform/socket.cpp
+    src/platform/filesystem.cpp
     src/network/tcp.cpp
     src/protocol/frame.cpp
     src/core/world_registry.cpp
