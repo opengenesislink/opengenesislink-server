@@ -108,4 +108,41 @@ std::string xmlrpc_fault_response(const int code, const std::string_view message
            "</string></value></member></struct></value></fault></methodResponse>";
 }
 
+
+std::optional<std::unordered_map<std::string, std::string>>
+parse_xmlrpc_struct_response(const std::string_view xml) {
+    if (xml.find("<fault>") != std::string_view::npos) return std::nullopt;
+    std::unordered_map<std::string, std::string> result;
+    std::size_t cursor = 0;
+    while (true) {
+        const auto begin = xml.find("<member>", cursor);
+        if (begin == std::string_view::npos) break;
+        const auto end = xml.find("</member>", begin);
+        if (end == std::string_view::npos) return std::nullopt;
+        const auto member = xml.substr(begin, end + 9 - begin);
+        const auto name = tag_text(member, "name");
+        if (name && !name->empty()) result[*name] = value_text(member);
+        cursor = end + 9;
+    }
+    return result.empty() ? std::nullopt
+                          : std::optional<std::unordered_map<std::string, std::string>>{std::move(result)};
+}
+
+std::string xmlrpc_struct_call(
+    const std::string_view method,
+    const std::unordered_map<std::string, std::string>& fields) {
+    std::vector<std::pair<std::string, std::string>> ordered(fields.begin(), fields.end());
+    std::sort(ordered.begin(), ordered.end());
+    std::ostringstream output;
+    output << "<?xml version=\"1.0\"?><methodCall><methodName>" << xml_escape(method)
+           << "</methodName><params><param><value><struct>";
+    for (const auto& [name, value] : ordered) {
+        output << "<member><name>" << xml_escape(name)
+               << "</name><value><string>" << xml_escape(value)
+               << "</string></value></member>";
+    }
+    output << "</struct></value></param></params></methodCall>";
+    return output.str();
+}
+
 } // namespace opengenesis::compat::hypergrid
