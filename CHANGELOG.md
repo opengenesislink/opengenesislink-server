@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.5.0-dev — 2026-09-18
+
+Federation, runtime-foundation and cross-platform milestone.
+
+- added cross-platform socket abstraction for Linux/POSIX and Windows Winsock
+- added Windows Server x86_64 MSVC build/test CI with warnings-as-errors
+- added Ed25519 Grid key generation and detached signature verification
+- added OGL-FED/1 signed Travel Tokens with issuer/audience binding, expiry and nonce
+- added one-time Travel replay cache
+- added persistent Federation peer trust and revocation store
+- added persistent transactional Region Crossing records with one-time completion, position and velocity
+- added persistent Script Event Runtime foundation with states, timers and chat events
+- added reusable keyed runtime Rate Limiter
+- added persistent storage Schema Version guard and ordered upgrade support
+- added provider-neutral OGL-VOICE/1 and OGL-VOICE-CAP/1 server contracts
+- added cross-platform federation/runtime unit test suite
+- documented Windows build targets, OGL-FED and Voice-provider separation
+- OpenSimulator Hypergrid remains a separate legacy compatibility adapter and is not claimed complete in this milestone
+
 ## 2.0.0-dev — 2026-09-16
 
 World-operations, Estate, Landmark, notification and observability milestone.
