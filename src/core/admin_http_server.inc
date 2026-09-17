@@ -16,6 +16,7 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<LandmarkStore> landmarks,
                                  std::shared_ptr<NotificationStore> notifications,
                                  std::shared_ptr<GroupChannelStore> group_channels,
+                                 std::shared_ptr<federation::FederationRuntime> federation_runtime,
                                  std::string admin_api_key,
                                  std::string scene_ticket_secret,
                                  std::chrono::seconds scene_ticket_lifetime)
@@ -25,7 +26,8 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       messages_(std::move(messages)), groups_(std::move(groups)), parcels_(std::move(parcels)),
       moderation_(std::move(moderation)), audit_(std::move(audit)), estates_(std::move(estates)),
       landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
-      group_channels_(std::move(group_channels)), admin_api_key_(std::move(admin_api_key)),
+      group_channels_(std::move(group_channels)), federation_runtime_(std::move(federation_runtime)),
+      admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
       scene_ticket_lifetime_(scene_ticket_lifetime) {}
 
@@ -224,6 +226,167 @@ void AdminHttpServer::run() {
                                     ",\"group_posts\":" + std::to_string(group_channels_->count()) +
                                     ",\"assets\":" + std::to_string(assets_->count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                } else if (method == "GET" && path == "/v1/federation/info") {
+                    const auto info = federation_runtime_->info();
+                    response.body = "{\"protocol\":\"" + json_escape(info.protocol) +
+                                    "\",\"grid_id\":\"" + json_escape(info.grid_id) +
+                                    "\",\"base_url\":\"" + json_escape(info.base_url) +
+                                    "\",\"public_key\":\"" + json_escape(info.public_key_hex) + "\"}";
+                } else if (method == "GET" && path == "/v1/federation/peers") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        response.body = "{\"peers\":" +
+                                        federation_peers_json(federation_runtime_->peers()) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/federation/trust") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        const auto grid_id = json_string(request->body, "grid_id");
+                        const auto base_url = json_string(request->body, "base_url");
+                        const auto public_key = json_string(request->body, "public_key");
+                        if (!grid_id || !base_url || !public_key) {
+                            response = {.status = 400, .body = "{\"error\":\"invalid-peer-fields\"}"};
+                        } else {
+                            std::string reason;
+                            const bool ok = federation_runtime_->trust_peer(
+                                {.grid_id = *grid_id,
+                                 .base_url = *base_url,
+                                 .public_key_hex = *public_key,
+                                 .trusted = true,
+                                 .revoked = false,
+                                 .updated_unix = 0},
+                                reason);
+                            if (!ok) {
+                                response = {.status = 400,
+                                            .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            } else {
+                                audit_->append("admin-api", "federation.trust", *grid_id, *base_url);
+                                response.status = 201;
+                                response.body = "{\"status\":\"trusted\"}";
+                            }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/federation/revoke") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        const auto grid_id = json_string(request->body, "grid_id");
+                        if (!grid_id || !federation_runtime_->revoke_peer(*grid_id)) {
+                            response = {.status = 404, .body = "{\"error\":\"peer-not-found\"}"};
+                        } else {
+                            audit_->append("admin-api", "federation.revoke", *grid_id);
+                            response.body = "{\"status\":\"revoked\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/federation/travel/issue") {
+                    auto [session, user] = auth();
+                    const auto audience = json_string(request->body, "audience_grid");
+                    const auto destination = json_string(request->body, "destination_region");
+                    const auto origin = json_string(request->body, "origin_region");
+                    const auto lifetime_value = json_number(request->body, "lifetime_seconds").value_or(120.0);
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!audience || !destination) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-travel-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto issued = federation_runtime_->issue_travel(
+                            {.subject_user = user->id,
+                             .display_name = user->display_name,
+                             .audience_grid = *audience,
+                             .origin_region = origin.value_or(""),
+                             .destination_region = *destination,
+                             .lifetime = std::chrono::seconds{
+                                 static_cast<std::int64_t>(lifetime_value)}},
+                            reason);
+                        if (!issued) {
+                            response = {.status = 403,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            response.status = 201;
+                            response.body = "{\"protocol\":\"OGL-FED/1\",\"travel_token\":\"" +
+                                            json_escape(issued->token) +
+                                            "\",\"audience_grid\":\"" +
+                                            json_escape(issued->claims.audience_grid) +
+                                            "\",\"destination_region\":\"" +
+                                            json_escape(issued->claims.destination_region) +
+                                            "\",\"expires_unix\":" +
+                                            std::to_string(issued->claims.expires_unix) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/federation/travel/accept") {
+                    const auto issuer = json_string(request->body, "issuer_grid");
+                    const auto token = json_string(request->body, "travel_token");
+                    if (!issuer || !token) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-travel-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto accepted = federation_runtime_->accept_travel(*issuer, *token, reason);
+                        if (!accepted) {
+                            response = {.status = 403,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            const auto region = regions_->find(accepted->claims.destination_region);
+                            const auto world = region ? worlds_->find(region->node_id) : std::nullopt;
+                            const auto estate = region ? estates_->policy_for_region(region->id) : std::nullopt;
+                            const bool estate_ok = !estate || estate->public_access;
+                            const bool parcel_ok = region && parcels_->can_enter(
+                                region->id, 128.0, 128.0, accepted->claims.subject_user, {});
+                            if (!region || region->state != "online" || !world ||
+                                world->state != "online" || !estate_ok || !parcel_ok) {
+                                (void)federation_runtime_->logout_session(accepted->session.id);
+                                response = {.status = 403, .body = "{\"error\":\"destination-unavailable\"}"};
+                            } else {
+                                const double spawn_x = estate ? estate->landing_x : 128.0;
+                                const double spawn_y = estate ? estate->landing_y : 128.0;
+                                const double spawn_z = estate ? estate->landing_z : 0.0;
+                                const auto ticket = security::issue_scene_ticket(
+                                    scene_ticket_secret_,
+                                    accepted->claims.subject_user,
+                                    accepted->claims.display_name,
+                                    region->id,
+                                    scene_ticket_lifetime_,
+                                    std::string{security::kDefaultSceneCapabilities},
+                                    accepted->claims.origin_region,
+                                    {},
+                                    spawn_x, spawn_y, spawn_z);
+                                response.status = 201;
+                                response.body = "{\"status\":\"accepted\",\"foreign\":true,"
+                                                "\"foreign_session_id\":\"" +
+                                                json_escape(accepted->session.id) +
+                                                "\",\"issuer_grid\":\"" +
+                                                json_escape(accepted->claims.issuer_grid) +
+                                                "\",\"scene_endpoint\":\"" +
+                                                json_escape(world->endpoint) +
+                                                "\",\"scene_ticket\":\"" +
+                                                json_escape(ticket.token) +
+                                                "\",\"destination_region\":\"" +
+                                                json_escape(region->id) +
+                                                "\",\"expires_unix\":" +
+                                                std::to_string(ticket.claims.expires_unix) + "}";
+                            }
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/federation/sessions") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        response.body = "{\"sessions\":" +
+                                        federation_sessions_json(federation_runtime_->sessions()) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/federation/sessions/logout") {
+                    if (!admin_authorized(*request, admin_api_key_)) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    } else {
+                        const auto session_id = json_string(request->body, "session_id");
+                        if (!session_id || !federation_runtime_->logout_session(*session_id)) {
+                            response = {.status = 404, .body = "{\"error\":\"session-not-found\"}"};
+                        } else {
+                            response.body = "{\"status\":\"logged-out\"}";
+                        }
+                    }
                 } else if (method == "POST" && path == "/v1/auth/register") {
                     const auto username = json_string(request->body, "username");
                     const auto display = json_string(request->body, "display_name");
