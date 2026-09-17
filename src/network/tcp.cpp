@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstddef>
-#include <netdb.h>
 #include <stdexcept>
 #include <vector>
 
@@ -85,7 +84,7 @@ TcpSocket TcpSocket::connect(const std::string& host, const std::uint16_t port,
         if (!platform::socket_valid(fd)) continue;
 
         platform::set_socket_timeouts(fd, timeout);
-        if (::connect(fd, current->ai_addr, static_cast<int>(current->ai_addrlen)) == 0) {
+        if (::connect(fd, current->ai_addr, static_cast<platform::SocketLength>(current->ai_addrlen)) == 0) {
             ::freeaddrinfo(results);
             return TcpSocket(fd);
         }
@@ -139,7 +138,7 @@ TcpListener::TcpListener(const std::string& address, const std::uint16_t port, c
         if (!platform::socket_valid(fd_)) continue;
         platform::set_reuse_address(fd_);
 
-        if (::bind(fd_, current->ai_addr, static_cast<int>(current->ai_addrlen)) == 0 &&
+        if (::bind(fd_, current->ai_addr, static_cast<platform::SocketLength>(current->ai_addrlen)) == 0 &&
             ::listen(fd_, backlog) == 0) {
             break;
         }
