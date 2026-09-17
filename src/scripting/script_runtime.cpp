@@ -1,4 +1,5 @@
 #include "opengenesis/scripting/script_runtime.hpp"
+#include "opengenesis/platform/filesystem.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -213,14 +214,7 @@ void ScriptRuntime::persist_locked() const {
     output.close();
     if (!output) throw std::runtime_error("cannot flush script runtime store");
 
-    std::error_code error;
-    std::filesystem::rename(temp, path, error);
-    if (error) {
-        std::filesystem::remove(path, error);
-        error.clear();
-        std::filesystem::rename(temp, path, error);
-    }
-    if (error) throw std::runtime_error("cannot replace script runtime store");
+    opengenesis::platform::replace_file(temp, path);
 }
 
 } // namespace opengenesis::scripting
