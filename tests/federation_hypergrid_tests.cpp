@@ -12,6 +12,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -120,7 +121,14 @@ int main() {
                      .state = "registered",
                      .grid_x = 1000,
                      .grid_y = 1001,
-                     .node_generation = 1},
+                     .node_generation = 1,
+                     .ticks = 0,
+                     .entities = 0,
+                     .avatars = 0,
+                     .physics_bodies = 0,
+                     .scene_events = 0,
+                     .terrain_revision = 0,
+                     .sim_fps = 0.0},
                     reason),
                 "register HG test region");
         require(regions->update_state("region-b", "world-b", 1, "starting", reason),
