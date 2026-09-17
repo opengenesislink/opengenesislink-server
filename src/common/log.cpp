@@ -14,7 +14,11 @@ void log(const LogLevel level, const std::string_view component, const std::stri
     else if (level == LogLevel::error) label = "ERROR";
     const auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
     std::tm tm{};
-    localtime_r(&now, &tm);
+#ifdef _WIN32
+    if (localtime_s(&tm, &now) != 0) tm = {};
+#else
+    if (localtime_r(&now, &tm) == nullptr) tm = {};
+#endif
     std::scoped_lock lock(g_log_mutex);
     std::clog << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [" << label << "] [" << component << "] " << message << '\n';
 }
