@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <vector>
 
 namespace opengenesis::compat::hypergrid {
 namespace {
