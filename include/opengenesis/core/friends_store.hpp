@@ -33,6 +33,13 @@ public:
     [[nodiscard]] std::optional<FriendRelation> accept(std::string user,
                                                        std::string other_user,
                                                        std::string& reason);
+    [[nodiscard]] std::optional<FriendRelation> upsert_pending(
+        std::string from_user,
+        std::string to_user,
+        std::uint32_t from_to_flags,
+        std::uint32_t to_from_flags,
+        std::string interop_secret,
+        std::string& reason);
     [[nodiscard]] std::optional<FriendRelation> upsert_accepted(
         std::string user,
         std::string other_user,
