@@ -29,6 +29,8 @@ public:
     [[nodiscard]] std::optional<AssetInfo> find(std::string_view id) const;
     [[nodiscard]] std::optional<std::string> read(std::string_view id,std::string_view owner_user_id) const;
     [[nodiscard]] std::vector<AssetInfo> list_for_user(std::string_view owner_user_id) const;
+    [[nodiscard]] std::vector<AssetInfo> list_all() const;
+    [[nodiscard]] std::optional<std::string> read_exportable(std::string_view id) const;
     [[nodiscard]] std::size_t count() const;
     [[nodiscard]] std::uint64_t total_bytes() const;
 private:
