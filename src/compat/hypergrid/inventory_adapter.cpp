@@ -8,6 +8,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 namespace opengenesis::compat::hypergrid {
@@ -192,14 +193,14 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
 
     if (method == "GETITEM") {
         const auto id_it = fields.find("ID");
-        if (id_it == fields.end()) return response({});
+        if (id_it == fields.end()) return response("");
         for (const auto& item : inventory.items) {
             if (legacy_item_uuid(item.id) != id_it->second) continue;
             return response("<item type=\"List\">" +
                             item_xml(item, principal_it->second, assets_->find(item.asset_id)) +
                             "</item>");
         }
-        return response({});
+        return response("");
     }
 
     if (method == "GETASSETPERMISSIONS") {
