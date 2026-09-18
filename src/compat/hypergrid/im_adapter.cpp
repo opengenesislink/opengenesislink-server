@@ -228,8 +228,12 @@ bool HypergridInstantMessageAdapter::send_remote(
             return false;
         }
         const auto fields = parse_xmlrpc_struct_response(*response);
-        const auto it = fields ? fields->find("success") : fields->end();
-        if (!fields || it == fields->end() || !true_text(it->second)) {
+        if (!fields) {
+            reason = "remote-im-invalid-response";
+            return false;
+        }
+        const auto it = fields->find("success");
+        if (it == fields->end() || !true_text(it->second)) {
             reason = "remote-im-rejected";
             return false;
         }
