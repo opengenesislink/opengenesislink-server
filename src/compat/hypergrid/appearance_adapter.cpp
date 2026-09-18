@@ -9,6 +9,8 @@
 #include <sstream>
 #include <stdexcept>
 #include <utility>
+#include <unordered_map>
+#include <vector>
 
 namespace opengenesis::compat::hypergrid {
 namespace {
