@@ -119,4 +119,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-hypergrid-session-tests tests/hypergrid_session_tests.cpp)
     target_link_libraries(ogl-hypergrid-session-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME hypergrid-session COMMAND ogl-hypergrid-session-tests)
+
+    add_executable(ogl-avatar-hg-social-tests tests/avatar_hg_social_tests.cpp)
+    target_link_libraries(ogl-avatar-hg-social-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME avatar-hg-social COMMAND ogl-avatar-hg-social-tests)
 endif()
