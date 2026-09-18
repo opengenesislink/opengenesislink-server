@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.5.0-dev — 2026-09-18
+
+Hypergrid messaging, inventory, appearance and return-home milestone.
+
+- added incoming `grid_instant_message` compatibility mapped into the native MessageStore and Notifications
+- added outbound HG IM routing through persisted foreign `IMServerURI`
+- added a shared portable Hypergrid HTTP callback client
+- persisted foreign Asset, Inventory, Avatar and IM service URLs from AgentCircuitData
+- added read-only OpenSim XInventory compatibility for root folder, skeleton, folder content/items, item lookup and Asset permissions
+- added OpenSim AvatarService `getavatar` exchange with AvatarHeight, VisualParams, export-safe wearables and attachments
+- added authenticated legacy `setavatar` extension for safely importing local-owned wearables, attachments and body data
+- extended native Appearance persistence with AvatarHeight and VisualParams while retaining old records
+- added `get_home_region` and a persistent returning-home travel state
+- added authenticated Core return-home and outbound HG IM APIs
+- added integrated and cross-platform tests for HG IM, XInventory, Appearance and return-home
+- writable XInventory, HTTPS outbound HG callbacks and the final legacy simulator/viewer data plane remain later hardening work
+
 ## 4.0.0-dev — 2026-09-18
 
 Avatar appearance and deeper Hypergrid social/content interoperability milestone.
