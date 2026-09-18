@@ -2,7 +2,9 @@ std::string appearance_json(const avatar::AvatarAppearance& appearance) {
     std::ostringstream out;
     out << "{\"user_id\":\"" << json_escape(appearance.user_id)
         << "\",\"revision\":" << appearance.revision
-        << ",\"updated_unix\":" << appearance.updated_unix
+        << ",\"avatar_height\":" << appearance.avatar_height
+        << ",\"visual_params\":\"" << json_escape(appearance.visual_params_csv)
+        << "\",\"updated_unix\":" << appearance.updated_unix
         << ",\"wearables\":[";
     for (std::size_t i = 0; i < appearance.wearables.size(); ++i) {
         if (i) out << ',';
