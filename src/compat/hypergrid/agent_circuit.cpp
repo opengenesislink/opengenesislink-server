@@ -141,6 +141,10 @@ std::optional<ForeignAgentCircuit> parse_foreign_agent_circuit(
 
     if (const auto urls = json_object(json, "serviceurls")) {
         circuit.home_uri = json_string(*urls, "HomeURI").value_or("");
+        circuit.asset_uri = json_string(*urls, "AssetServerURI").value_or("");
+        circuit.inventory_uri = json_string(*urls, "InventoryServerURI").value_or("");
+        circuit.avatar_uri = json_string(*urls, "AvatarServerURI").value_or("");
+        circuit.im_uri = json_string(*urls, "IMServerURI").value_or("");
     }
 
     if (!plausible_uuid(circuit.agent_id) || !plausible_uuid(circuit.session_id) ||
