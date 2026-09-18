@@ -131,7 +131,9 @@ bool HypergridSessionStore::verify_client(const std::string_view session_id,
                                           const std::string_view reported_ip) const {
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
-    return it != home_.end() && it->second.state == TravelState::active &&
+    return it != home_.end() &&
+           (it->second.state == TravelState::active ||
+            it->second.state == TravelState::returning) &&
            it->second.expires_unix > unix_now() && !reported_ip.empty() &&
            it->second.client_ip == reported_ip;
 }
@@ -338,6 +340,8 @@ void HypergridSessionStore::persist_locked() const {
                << session.im_uri << '\t' << session.service_token << '\t'
                << session.destination_region << '\t' << session.first_name << '\t'
                << session.last_name << '\t' << session.client_ip << '\t'
+               << session.asset_uri << '\t' << session.inventory_uri << '\t'
+               << session.avatar_uri << '\t' << session.im_uri << '\t'
                << (session.verified ? '1' : '0') << '\t' << session.created_unix << '\t'
                << session.expires_unix << '\n';
     }
