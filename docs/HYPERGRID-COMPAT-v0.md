@@ -33,18 +33,16 @@ Implemented through 4.5.0-dev:
 - persistent foreign Asset/Inventory/Avatar/IM service routing URLs
 - `get_home_region` and persistent return-home travel state
 - authenticated Core return-home and outbound HG IM controls
-- shared portable HTTP callback client
+- shared portable HTTP/HTTPS callback client with certificate-chain and hostname verification
 - cross-platform tests
 
 The OpenSimulator reference behavior uses XML-RPC for Gatekeeper/UserAgent calls and JSON for `/foreignagent` agent creation. OpenGenesisLINK now parses and verifies that foreign-agent identity flow, but still returns a non-success result after verification because the legacy simulator/viewer data plane is not complete. This prevents a false compatibility claim.
 
 Still open:
 
-- legacy simulator/viewer data-plane handoff after verified `/foreignagent`
 - final legacy simulator/viewer data-plane handoff after verified `/foreignagent`
 - writable legacy XInventory operations
-- HTTPS outbound Hypergrid callback transport
 - broader legacy Appearance edge cases and baking compatibility
-- legacy simulator/viewer data-plane compatibility
+- real OpenSimulator 0.9.3.x end-to-end interoperability validation
 
 OGL-FED Ed25519 keys are never reused as Hypergrid secrets or session tokens.
