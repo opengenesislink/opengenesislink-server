@@ -131,6 +131,7 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
 
     const auto native_user = native_user_for_legacy(principal_it->second);
     if (!native_user) return response(node("RESULT", "False"));
+    (void)inventory_->ensure_root(*native_user);
     const auto inventory = inventory_->list(*native_user);
     const auto& method = method_it->second;
 
