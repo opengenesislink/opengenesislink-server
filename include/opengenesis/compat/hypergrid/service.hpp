@@ -18,6 +18,7 @@ struct HypergridConfig {
     std::string home_uri;
     std::string asset_uri;
     std::string inventory_uri;
+    std::string avatar_uri;
     std::string friends_uri;
     std::string im_uri;
     std::string region_host{"127.0.0.1"};
