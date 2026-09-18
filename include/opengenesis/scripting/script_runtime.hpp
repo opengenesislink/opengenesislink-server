@@ -8,6 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "opengenesis/scripting/script_vm.hpp"
+
 namespace opengenesis::scripting {
 
 struct ScriptRecord {
@@ -15,6 +17,8 @@ struct ScriptRecord {
     std::string object_id;
     std::string owner_user_id;
     std::string source_hash;
+    std::string source;
+    std::string vm_state;
     std::string state{"default"};
     bool enabled{true};
     std::int64_t timer_interval_ms{0};
@@ -43,6 +47,15 @@ public:
     [[nodiscard]] bool set_chat(std::string_view script_id,
                                 bool enabled,
                                 std::int32_t channel);
+    [[nodiscard]] bool set_program(std::string_view script_id,
+                                   std::string source,
+                                   std::string& reason);
+    [[nodiscard]] std::optional<ScriptVmResult> execute_event(
+        std::string_view script_id,
+        std::string_view event,
+        std::int64_t now_unix_ms,
+        std::string& reason,
+        const ScriptVmLimits& limits = {});
 
     [[nodiscard]] std::vector<ScriptEvent> due_timers(std::int64_t now_unix_ms);
     [[nodiscard]] std::vector<ScriptEvent> dispatch_chat(std::int32_t channel,
