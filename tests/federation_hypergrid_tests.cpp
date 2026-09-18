@@ -142,6 +142,7 @@ int main() {
              .home_uri = "https://grid-b.example:8002",
              .asset_uri = "https://grid-b.example:8002",
              .inventory_uri = "https://grid-b.example:8002",
+             .avatar_uri = "https://grid-b.example:8002",
              .friends_uri = "https://grid-b.example:8002",
              .im_uri = "https://grid-b.example:8002",
              .region_host = "grid-b.example",
