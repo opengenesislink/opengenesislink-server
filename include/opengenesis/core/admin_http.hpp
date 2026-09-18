@@ -21,6 +21,7 @@
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
+#include "opengenesis/compat/hypergrid/im_adapter.hpp"
 #include "opengenesis/platform/socket.hpp"
 
 #include <atomic>
@@ -56,6 +57,7 @@ public:
                     std::shared_ptr<federation::FederationRuntime> federation_runtime,
                     std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service,
                     std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
+                    std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im,
                     std::string admin_api_key,
                     std::string scene_ticket_secret,
                     std::chrono::seconds scene_ticket_lifetime);
@@ -90,6 +92,7 @@ private:
     std::shared_ptr<federation::FederationRuntime> federation_runtime_;
     std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service_;
     std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions_;
+    std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im_;
     std::string admin_api_key_;
     std::string scene_ticket_secret_;
     std::chrono::seconds scene_ticket_lifetime_;
