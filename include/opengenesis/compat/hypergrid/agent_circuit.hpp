@@ -36,5 +36,6 @@ struct ForeignAgentCircuit {
 
 [[nodiscard]] bool service_token_targets(std::string_view service_token,
                                          std::string_view gatekeeper_uri);
+[[nodiscard]] std::string service_token_destination(std::string_view service_token);
 
 } // namespace opengenesis::compat::hypergrid
