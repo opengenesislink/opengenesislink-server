@@ -26,6 +26,7 @@
 #include "opengenesis/federation/trust_store.hpp"
 #include "opengenesis/compat/hypergrid/home_verifier.hpp"
 #include "opengenesis/compat/hypergrid/friends_adapter.hpp"
+#include "opengenesis/compat/hypergrid/asset_adapter.hpp"
 #include "opengenesis/compat/hypergrid/server.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
@@ -200,10 +201,13 @@ int main(int argc, char** argv) {
         auto hypergrid_friends =
             std::make_shared<opengenesis::compat::hypergrid::HypergridFriendsAdapter>(
                 identities, friends, presences, notifications, hypergrid_sessions);
+        auto hypergrid_assets =
+            std::make_shared<opengenesis::compat::hypergrid::HypergridAssetAdapter>(assets);
         auto hypergrid_server = std::make_unique<opengenesis::compat::hypergrid::HypergridServer>(
             config.get_string("hypergrid.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(hypergrid_port_value),
-            hypergrid_service, hypergrid_sessions, hypergrid_verifier, hypergrid_friends);
+            hypergrid_service, hypergrid_sessions, hypergrid_verifier, hypergrid_friends,
+            hypergrid_assets);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
