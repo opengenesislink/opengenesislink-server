@@ -151,7 +151,7 @@ The admin/API and Scene listeners bind to loopback by default. Replace all devel
 
 ### Hypergrid compatibility endpoints
 
-When Hypergrid compatibility is enabled, the dedicated HG listener exposes legacy endpoints such as `/hgfriends`, `/assets/<uuid>`, `/xinventory`, `/avatar` and XML-RPC methods including `grid_instant_message` and `get_home_region`. XInventory is intentionally read-only in this milestone. Outbound legacy callbacks currently support plain HTTP; production TLS callback transport remains hardening work.
+When Hypergrid compatibility is enabled, the dedicated HG listener exposes legacy endpoints such as `/hgfriends`, `/assets/<uuid>`, `/xinventory`, `/avatar` and XML-RPC methods including `grid_instant_message` and `get_home_region`. XInventory is intentionally read-only in this milestone. Outbound legacy callbacks support HTTP and HTTPS; HTTPS uses certificate-chain and hostname verification through OpenSSL.
 
 ## Authenticated world flow
 
