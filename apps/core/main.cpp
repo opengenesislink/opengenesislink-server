@@ -20,6 +20,8 @@
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
+#include "opengenesis/core/crossing_store.hpp"
+#include "opengenesis/scripting/script_runtime.hpp"
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
@@ -165,6 +167,10 @@ int main(int argc, char** argv) {
             config.get_string("storage.notifications", "data/notifications.db"));
         auto group_channels = std::make_shared<core::GroupChannelStore>(
             config.get_string("storage.group_channels", "data/group_channels.db"));
+        auto crossings = std::make_shared<core::CrossingStore>(
+            config.get_string("storage.crossings", "data/crossings.db"));
+        auto scripts = std::make_shared<opengenesis::scripting::ScriptRuntime>(
+            config.get_string("storage.scripts", "data/scripts.db"));
         auto federation_identity = std::make_shared<opengenesis::federation::GridIdentityStore>(
             config.get_string("storage.federation_identity", "data/federation-identity.db"),
             config.get_string("federation.grid_id", "local.opengenesislink"),
@@ -238,7 +244,8 @@ int main(int argc, char** argv) {
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
             identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
-            moderation, audit, estates, landmarks, notifications, group_channels, federation_runtime,
+            moderation, audit, estates, landmarks, notifications, group_channels, crossings, scripts,
+            federation_runtime,
             hypergrid_service, hypergrid_sessions, hypergrid_im, admin_api_key,
             scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
@@ -264,6 +271,12 @@ int main(int argc, char** argv) {
                     std::chrono::system_clock::now().time_since_epoch()).count();
                 (void)federation_runtime->maintenance(now_unix);
                 (void)hypergrid_sessions->purge_expired(now_unix);
+                (void)crossings->purge_expired(now_unix);
+                const auto now_ms = now_unix * 1000;
+                for (const auto& event : scripts->due_timers(now_ms)) {
+                    std::string reason;
+                    (void)scripts->execute_event(event.script_id, event.type, now_ms, reason);
+                }
                 std::this_thread::sleep_for(std::chrono::seconds{1});
             }
         });
