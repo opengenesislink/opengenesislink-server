@@ -7,7 +7,6 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 
 namespace opengenesis::compat::hypergrid {
@@ -59,7 +58,9 @@ HypergridInstantMessageAdapter::handle_incoming(const XmlRpcCall& call) const {
     const auto to = native_user_for_legacy(get("to_agent_id"));
     const auto name = get("from_agent_name");
     const auto text = get("message");
-    if (from.empty() || !to || text.empty()) return {{"success", "FALSE"}};
+    if (from.empty() || !to || text.empty() || text.size() > 2000) {
+        return {{"success", "FALSE"}};
+    }
 
     std::string reason;
     const auto message = messages_->send("hg:" + from, *to, text, reason);
@@ -77,11 +78,18 @@ bool HypergridInstantMessageAdapter::send_remote(
     const std::string_view target_agent_id,
     const std::string_view text,
     std::string& reason) const {
+    if (sender_native_id.empty() || sender_name.empty() ||
+        target_agent_id.empty() || text.empty() || text.size() > 2000) {
+        reason = "invalid-hg-im-fields";
+        return false;
+    }
+
     const auto visitor = sessions_->foreign_by_agent(target_agent_id);
     if (!visitor || visitor->im_uri.empty()) {
         reason = "remote-im-service-unavailable";
         return false;
     }
+
     const auto sender_legacy = legacy_uuid_from_seed(sender_native_id);
     const auto session = legacy_uuid_from_seed(security::random_hex(32));
     const auto body = xmlrpc_struct_call(
@@ -101,41 +109,34 @@ bool HypergridInstantMessageAdapter::send_remote(
          {"position_y", "0"},
          {"position_z", "0"},
          {"region_id", "00000000-0000-0000-0000-000000000000"},
-         {"binary_bucket", ""}});
+         {"binary_bucket", ""},
+         {"region_handle", "0"}});
 
-    try {
-        const auto response = http_request(
-            visitor->im_uri, "POST", "text/xml", body,
-            std::unordered_map<std::string, std::string>{}, reason);
-        if (!response || response->status != 200) {
-            if (reason == "https-not-yet-supported") {
-                reason = "https-hg-im-not-yet-supported";
-            } else if (reason.empty()) {
-                reason = "remote-im-http-failed";
-            }
-            return false;
-        }
-        const auto fields = parse_xmlrpc_struct_response(response->body);
-        if (!fields) {
-            reason = "remote-im-invalid-response";
-            return false;
-        }
-        const auto it = fields->find("success");
-        if (it == fields->end() || !true_text(it->second)) {
-            reason = "remote-im-rejected";
-            return false;
-        }
-
-        std::string store_reason;
-        (void)messages_->send(std::string{sender_native_id},
-                              "hg:" + std::string{target_agent_id},
-                              std::string{text}, store_reason);
-        reason.clear();
-        return true;
-    } catch (...) {
-        reason = "remote-im-unreachable";
+    auto response = http_request(
+        visitor->im_uri, "POST", "text/xml", body,
+        std::unordered_map<std::string, std::string>{}, reason);
+    if (!response || response->status != 200) {
+        if (reason.empty()) reason = "remote-im-http-failed";
         return false;
     }
+
+    const auto fields = parse_xmlrpc_struct_response(response->body);
+    if (!fields) {
+        reason = "remote-im-invalid-response";
+        return false;
+    }
+    const auto it = fields->find("success");
+    if (it == fields->end() || !true_text(it->second)) {
+        reason = "remote-im-rejected";
+        return false;
+    }
+
+    std::string store_reason;
+    (void)messages_->send(std::string{sender_native_id},
+                          "hg:" + std::string{target_agent_id},
+                          std::string{text}, store_reason);
+    reason.clear();
+    return true;
 }
 
 } // namespace opengenesis::compat::hypergrid
