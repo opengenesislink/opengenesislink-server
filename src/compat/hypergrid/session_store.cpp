@@ -120,7 +120,9 @@ bool HypergridSessionStore::verify_agent(const std::string_view session_id,
                                          const std::string_view service_token) const {
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
-    return it != home_.end() && it->second.state == TravelState::active &&
+    return it != home_.end() &&
+           (it->second.state == TravelState::active ||
+            it->second.state == TravelState::returning_home) &&
            it->second.expires_unix > unix_now() &&
            it->second.service_token == service_token;
 }
@@ -175,7 +177,8 @@ bool HypergridSessionStore::logout_home(const std::string_view user_id,
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
     if (it == home_.end() || it->second.user_id != user_id ||
-        it->second.state != TravelState::active) {
+        (it->second.state != TravelState::active &&
+         it->second.state != TravelState::returning_home)) {
         return false;
     }
     it->second.state = TravelState::logged_out;
