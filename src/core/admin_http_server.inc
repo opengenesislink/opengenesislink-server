@@ -735,10 +735,158 @@ void AdminHttpServer::run() {
                                 else if (region->grid_y < source->grid_y) y = 255.5;
                             }
                             const auto group_ids = groups_->group_ids_for_user(user->id);
-                            if (moderation_->is_banned(user->id, region->id)) response = {.status = 403, .body = "{\"error\":\"user-banned\"}"};
-                            else if (const auto error = estate_entry_error(*user, *region); !error.empty()) response = {.status = 403, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
-                            else if (!parcels_->can_enter(region->id, x, y, user->id, group_ids)) response = {.status = 403, .body = "{\"error\":\"parcel-entry-denied\"}"};
-                            else { audit_->append(user->id, "region.handoff", *from + "->" + *to); response.body = viewer_response(*user, *region, *world, *from, x, y, 0.0); }
+                            if (moderation_->is_banned(user->id, region->id)) {
+                                response = {.status = 403, .body = "{\"error\":\"user-banned\"}"};
+                            } else if (const auto error = estate_entry_error(*user, *region); !error.empty()) {
+                                response = {.status = 403, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
+                            } else if (!parcels_->can_enter(region->id, x, y, user->id, group_ids)) {
+                                response = {.status = 403, .body = "{\"error\":\"parcel-entry-denied\"}"};
+                            } else {
+                                const auto vx = json_number(request->body, "vx").value_or(0.0);
+                                const auto vy = json_number(request->body, "vy").value_or(0.0);
+                                const auto vz = json_number(request->body, "vz").value_or(0.0);
+                                const auto avatar = appearance_->find(user->id);
+                                const auto attachment_state = avatar ? appearance_json(*avatar) : std::string{"{}"};
+
+                                std::ostringstream script_state;
+                                script_state << '[';
+                                bool first_script = true;
+                                for (const auto& script : scripts_->list()) {
+                                    if (script.owner_user_id != user->id) continue;
+                                    if (!first_script) script_state << ',';
+                                    first_script = false;
+                                    script_state << "{\"id\":\"" << json_escape(script.id)
+                                                 << "\",\"object_id\":\"" << json_escape(script.object_id)
+                                                 << "\",\"state\":\"" << json_escape(script.state)
+                                                 << "\",\"vm_state\":\"" << json_escape(script.vm_state)
+                                                 << "\"}";
+                                }
+                                script_state << ']';
+
+                                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                                    std::chrono::system_clock::now().time_since_epoch()).count();
+                                std::string reason;
+                                const auto crossing = crossings_->prepare(
+                                    user->id, *from, *to,
+                                    {.x = x, .y = y, .z = 0.0},
+                                    {.x = vx, .y = vy, .z = vz},
+                                    now + std::min<std::int64_t>(scene_ticket_lifetime_.count(), 300),
+                                    reason, attachment_state, script_state.str());
+                                if (!crossing) {
+                                    response = {.status = 409,
+                                                .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                                } else {
+                                    audit_->append(user->id, "region.handoff.prepare",
+                                                   *from + "->" + *to, crossing->id);
+                                    response.body = viewer_response(
+                                        *user, *region, *world, *from, x, y, 0.0, crossing->id);
+                                }
+                            }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/handoff/complete") {
+                    auto [session, user] = auth();
+                    const auto crossing_id = json_string(request->body, "crossing_id");
+                    const auto region_id = json_string(request->body, "region");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!crossing_id || !region_id) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto crossing = crossings_->complete(*crossing_id, user->id, *region_id, reason);
+                        if (!crossing) {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "region.handoff.complete", crossing->id,
+                                           crossing->from_region + "->" + crossing->to_region);
+                            response.body = crossing_json(*crossing);
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/scripts") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        std::ostringstream out;
+                        out << "{\"scripts\":[";
+                        bool first_script = true;
+                        for (const auto& script : scripts_->list()) {
+                            if (script.owner_user_id != user->id) continue;
+                            if (!first_script) out << ',';
+                            first_script = false;
+                            out << script_record_json(script);
+                        }
+                        out << "]}";
+                        response.body = out.str();
+                    }
+                } else if (method == "POST" && path == "/v1/scripts") {
+                    auto [session, user] = auth();
+                    const auto object_id = json_string(request->body, "object_id");
+                    const auto source = json_string(request->body, "source");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!object_id || !source) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-script-fields\"}"};
+                    } else {
+                        const auto id = security::random_hex(16);
+                        std::string reason;
+                        const bool stored = scripts_->upsert(
+                            {.id = id,
+                             .object_id = *object_id,
+                             .owner_user_id = user->id,
+                             .source_hash = "pending",
+                             .source = {},
+                             .vm_state = {},
+                             .state = "default",
+                             .enabled = true,
+                             .timer_interval_ms = 0,
+                             .next_timer_unix_ms = 0,
+                             .chat_channel = 0,
+                             .chat_enabled = false,
+                             .event_count = 0},
+                            reason);
+                        if (!stored || !scripts_->set_program(id, *source, reason)) {
+                            (void)scripts_->remove(id);
+                            response = {.status = 400,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            const auto script = scripts_->find(id);
+                            response.status = 201;
+                            response.body = script ? script_record_json(*script)
+                                                   : "{\"error\":\"script-not-found\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/scripts/event") {
+                    auto [session, user] = auth();
+                    const auto script_id = json_string(request->body, "script_id");
+                    const auto event = json_string(request->body, "event");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!script_id || !event) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-script-event\"}"};
+                    } else {
+                        const auto script = scripts_->find(*script_id);
+                        if (!script || script->owner_user_id != user->id) {
+                            response = {.status = 404, .body = "{\"error\":\"script-not-found\"}"};
+                        } else {
+                            const auto now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch()).count();
+                            std::string reason;
+                            const auto result = scripts_->execute_event(
+                                *script_id, *event, now_ms, reason);
+                            if (!result) {
+                                response = {.status = 400,
+                                            .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            } else {
+                                response.body = "{\"status\":\"executed\",\"instructions\":" +
+                                                std::to_string(result->instructions_executed) +
+                                                ",\"state\":\"" +
+                                                json_escape(result->state.state) +
+                                                "\",\"actions\":" +
+                                                script_actions_json(result->actions) + "}";
+                            }
                         }
                     }
                 } else if (method == "GET" && path == "/v1/groups") {
