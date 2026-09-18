@@ -41,6 +41,7 @@ users = "data/users.db"
 sessions = "data/sessions.db"
 assets_metadata = "data/assets.db"
 assets_blobs = "data/assets"
+appearance = "data/appearance.db"
 inventory = "data/inventory.db"
 friends = "data/friends.db"
 messages = "data/messages.db"
@@ -65,10 +66,11 @@ listen_address = "127.0.0.1"
 port = $HG_PORT
 external_name = "http://127.0.0.1:$HG_PORT"
 home_uri = "http://127.0.0.1:$HG_PORT"
-asset_uri = ""
-inventory_uri = ""
-friends_uri = ""
-im_uri = ""
+asset_uri = "http://127.0.0.1:$HG_PORT"
+inventory_uri = "http://127.0.0.1:$HG_PORT"
+avatar_uri = "http://127.0.0.1:$HG_PORT"
+friends_uri = "http://127.0.0.1:$HG_PORT"
+im_uri = "http://127.0.0.1:$HG_PORT"
 region_host = "127.0.0.1"
 region_http_port = $SCENE_PORT
 region_internal_port = $SCENE_PORT
@@ -140,7 +142,7 @@ sleep 0.5
 sleep 3
 
 python3 - <<'PY'
-import base64,json,os,socket,struct,time,urllib.request,urllib.error
+import base64,json,os,socket,struct,time,urllib.request,urllib.error,urllib.parse
 A=f"http://127.0.0.1:{os.environ['ADMIN_PORT']}"; PORT=int(os.environ['SCENE_PORT'])
 def api(path,method='GET',body=None,token=None,admin=False):
     data=None if body is None else json.dumps(body).encode(); headers={}
@@ -149,6 +151,16 @@ def api(path,method='GET',body=None,token=None,admin=False):
     if admin: headers['X-OpenGenesis-Admin-Key']='smoke-admin-api-key-0123456789abcdef'
     req=urllib.request.Request(A+path,data=data,headers=headers,method=method)
     with urllib.request.urlopen(req,timeout=6) as r: return r.status,r.headers.get_content_type(),r.read()
+HG=f"http://127.0.0.1:{os.environ['HG_PORT']}"
+def hg_form(path,fields):
+    data=urllib.parse.urlencode(fields).encode()
+    req=urllib.request.Request(HG+path,data=data,headers={'Content-Type':'application/x-www-form-urlencoded'},method='POST')
+    with urllib.request.urlopen(req,timeout=6) as r: return r.status,r.read().decode()
+def hg_xml(method,fields):
+    members=''.join('<member><name>'+k+'</name><value><string>'+v+'</string></value></member>' for k,v in fields.items())
+    data=('<?xml version="1.0"?><methodCall><methodName>'+method+'</methodName><params><param><value><struct>'+members+'</struct></value></param></params></methodCall>').encode()
+    req=urllib.request.Request(HG+'/',data=data,headers={'Content-Type':'text/xml'},method='POST')
+    with urllib.request.urlopen(req,timeout=6) as r: return r.status,r.read().decode()
 def rx(s,n):
     b=b''
     while len(b)<n:
@@ -176,7 +188,7 @@ def register(username,display):
     assert st==201; return json.loads(raw)
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
-_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='4.0.0'
+_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='4.5.0'
 for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1']:
     assert cap in info['capabilities'],cap
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
@@ -204,6 +216,14 @@ req=urllib.request.Request('http://127.0.0.1:'+os.environ['HG_PORT']+'/',data=xm
 with urllib.request.urlopen(req,timeout=6) as resp:
     body=resp.read().decode(); assert '<name>result</name>' in body and '>True<' in body
 _,_,raw=api('/v1/hypergrid/sessions',admin=True); hgs=json.loads(raw); assert hgs['home_sessions']==1
+st,body=hg_xml('get_server_urls',{}); assert st==200 and 'SRV_InventoryServerURI' in body and 'SRV_AvatarServerURI' in body and 'SRV_IMServerURI' in body
+st,body=hg_form('/xinventory',{'METHOD':'GETROOTFOLDER','PRINCIPAL':hgtravel['agent_id']}); assert st==200 and '<folder type="List">' in body
+st,body=hg_form('/avatar',{'METHOD':'getavatar','UserID':hgtravel['agent_id']}); assert st==200 and '<AvatarType>1</AvatarType>' in body
+remote_hg='12345678-1234-4234-8234-123456789abc'
+st,body=hg_xml('grid_instant_message',{'from_agent_id':remote_hg,'to_agent_id':hgtravel['agent_id'],'im_session_id':'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee','timestamp':str(int(time.time())),'from_agent_name':'Remote Resident','message':'hello over hypergrid','dialog':'AA==','from_group':'FALSE','offline':'AA==','parent_estate_id':'0','position_x':'0','position_y':'0','position_z':'0','region_id':'00000000-0000-0000-0000-000000000000','binary_bucket':''}); assert st==200 and '<name>success</name>' in body and '>TRUE<' in body
+st,_,raw=api('/v1/hypergrid/travel/return','POST',{'session_id':hgtravel['session_id']},at); assert st==200 and json.loads(raw)['status']=='returning-home'
+st,body=hg_xml('agent_is_coming_home',{'sessionID':hgtravel['session_id'],'externalName':HG}); assert st==200 and '>True<' in body
+st,body=hg_xml('logout_agent',{'userID':hgtravel['agent_id'],'sessionID':hgtravel['session_id']}); assert st==200 and '>true<' in body
 
 for path,val in [('/tmp/ogl-auth-token',at),('/tmp/ogl-user-id',auid),('/tmp/ogl-bob-token',bt),('/tmp/ogl-bob-id',buid)]: open(path,'w').write(val)
 
@@ -211,9 +231,9 @@ for path,val in [('/tmp/ogl-auth-token',at),('/tmp/ogl-user-id',auid),('/tmp/ogl
 st,_,_=api('/v1/social/friends/request','POST',{'user_id':buid},at); assert st==201
 st,_,_=api('/v1/social/friends/accept','POST',{'user_id':auid},bt); assert st==200
 _,_,raw=api('/v1/social/friends',token=at); friends=json.loads(raw)['friends']; assert len(friends)==1 and friends[0]['status']=='accepted'
-st,_,raw=api('/v1/social/messages','POST',{'recipient_id':buid,'text':'hello from 4.0.0-dev'},at); assert st==201
+st,_,raw=api('/v1/social/messages','POST',{'recipient_id':buid,'text':'hello from 4.5.0-dev'},at); assert st==201
 message_id=json.loads(raw)['message_id']; open('/tmp/ogl-message-id','w').write(message_id)
-_,_,raw=api('/v1/social/messages',token=bt); inbox=json.loads(raw); assert inbox['unread']==1 and inbox['messages'][0]['text']=='hello from 4.0.0-dev'
+_,_,raw=api('/v1/social/messages',token=bt); inbox=json.loads(raw); assert inbox['unread']==1 and inbox['messages'][0]['text']=='hello from 4.5.0-dev'
 st,_,_=api('/v1/social/messages/read','POST',{'message_id':message_id},bt); assert st==200
 
 # groups + land governance
@@ -247,13 +267,14 @@ st,_,raw=api('/v1/viewer/session','POST',{'region':'genesis-central'},bt); asser
 _,_,raw=api('/v1/avatar/appearance',token=at); ap=json.loads(raw); assert ap['revision']>=1 and ap['wearables']==[] and ap['attachments']==[]
 
 # content remains part of the integrated user flow
-payload=b'OpenGenesis 4.0.0 content payload'
+payload=b'OpenGenesis 4.5.0 content payload'
 st,_,raw=api('/v1/assets','POST',{'name':'one.txt','mime_type':'text/plain','data_base64':base64.b64encode(payload).decode()},at); assert st==201
 asset_id=json.loads(raw)['asset']['id']; open('/tmp/ogl-asset-id','w').write(asset_id)
 _,_,raw=api('/v1/inventory',token=at); root=json.loads(raw)['root']['id']
 st,_,raw=api('/v1/inventory/folders','POST',{'parent_id':root,'name':'Objects'},at); assert st==201
 folder=json.loads(raw)['folder']['id']
 st,_,_=api('/v1/inventory/items','POST',{'parent_id':folder,'asset_id':asset_id,'name':'One Asset'},at); assert st==201
+st,body=hg_form('/xinventory',{'METHOD':'GETINVENTORYSKELETON','PRINCIPAL':hgtravel['agent_id']}); assert st==200 and '<FOLDERS type="List">' in body
 st,_,raw=api('/v1/assets/transfer','POST',{'asset_id':asset_id,'recipient_id':buid,'keep_copy':True},at); assert st==200
 transferred_id=json.loads(raw)['asset']['id']; open('/tmp/ogl-transferred-id','w').write(transferred_id)
 _,_,raw=api('/v1/inventory',token=bt); assert len(json.loads(raw)['items'])==1
@@ -298,7 +319,7 @@ time.sleep(3)
 _,_,raw=api('/v1/presence',token=at); prs=json.loads(raw)['presences']; assert len(prs)==1 and prs[0]['region_id']=='genesis-east'
 send(e,42,3,''); e.close(); time.sleep(2)
 
-_,_,raw=api('/v1/status'); status=json.loads(raw); assert status['version']=='4.0.0' and len(status['regions'])==2 and status['friendships']==1 and status['messages']==1 and status['groups']==1 and status['parcels']==1 and status['estates']==1 and status['landmarks']==1 and status['notifications']>=3 and status['group_posts']==1
+_,_,raw=api('/v1/status'); status=json.loads(raw); assert status['version']=='4.5.0' and len(status['regions'])==2 and status['friendships']==1 and status['messages']==2 and status['groups']==1 and status['parcels']==1 and status['estates']==1 and status['landmarks']==1 and status['notifications']>=4 and status['group_posts']==1
 open('/tmp/ogl-generation','w').write(str(status['world_nodes'][0]['generation']))
 open('/tmp/ogl-ticks','w').write(str(status['regions'][0]['ticks']))
 PY
@@ -316,7 +337,7 @@ def api(path,method='GET',body=None,token=None):
  if token:h['Authorization']='Bearer '+token
  with urllib.request.urlopen(urllib.request.Request(A+path,data=d,headers=h,method=method),timeout=6) as r:return json.load(r)
 s=api('/v1/status'); assert s['world_nodes'][0]['state']=='online' and s['world_nodes'][0]['generation']>int(sys.argv[1])
-assert max(r['ticks'] for r in s['regions'])>int(sys.argv[2]); assert s['friendships']==1 and s['messages']==1 and s['estates']==1 and s['landmarks']==1 and s['group_posts']==1
+assert max(r['ticks'] for r in s['regions'])>int(sys.argv[2]); assert s['friendships']==1 and s['messages']==2 and s['estates']==1 and s['landmarks']==1 and s['group_posts']==1
 assert api('/v1/auth/me',token=at)['user']['username']=='alice.smoke'
 assert len(api('/v1/social/friends',token=at)['friends'])==1
 assert len(api('/v1/landmarks',token=at)['landmarks'])==1
@@ -325,7 +346,7 @@ assert len(api('/v1/notifications',token=bt)['notifications'])>=3
 assert api('/v1/social/messages',token=bt)['unread']==0
 assert len(api('/v1/inventory',token=at)['items'])==1
 assert len(api('/v1/inventory',token=bt)['items'])==1
-assert base64.b64decode(api('/v1/assets/'+aid,token=at)['data_base64'])==b'OpenGenesis 4.0.0 content payload'
+assert base64.b64decode(api('/v1/assets/'+aid,token=at)['data_base64'])==b'OpenGenesis 4.5.0 content payload'
 PY
 
 # Full World restart validates scene/terrain persistence across both-region runtime recreation.
@@ -366,7 +387,7 @@ PY
 stop_pid "$WORLD"; sleep 2
 python3 - <<'PY'
 import json,os,urllib.request
-d=json.load(urllib.request.urlopen(f"http://127.0.0.1:{os.environ['ADMIN_PORT']}/v1/status")); assert all(r['state']=='offline' for r in d['regions']); assert d['identities']==2 and d['active_sessions']==0 and d['friendships']==1 and d['messages']==1 and d['groups']==1 and d['parcels']==1 and d['estates']==1 and d['landmarks']==1 and d['group_posts']==1
+d=json.load(urllib.request.urlopen(f"http://127.0.0.1:{os.environ['ADMIN_PORT']}/v1/status")); assert all(r['state']=='offline' for r in d['regions']); assert d['identities']==2 and d['active_sessions']==0 and d['friendships']==1 and d['messages']==2 and d['groups']==1 and d['parcels']==1 and d['estates']==1 and d['landmarks']==1 and d['group_posts']==1
 PY
 
-echo "OpenGenesisLINK 4.0.0-dev integrated operations/governance/world/social/handoff smoke test: PASS"
+echo "OpenGenesisLINK 4.5.0-dev integrated world/social/federation/hypergrid services smoke test: PASS"
