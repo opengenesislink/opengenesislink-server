@@ -4,7 +4,7 @@ OpenGenesisLINK keeps OpenSimulator Hypergrid compatibility separate from native
 
 The compatibility layer follows the OpenSimulator Gatekeeper/UserAgent control-plane conventions without importing OpenSimulator code.
 
-Implemented through 4.0.0-dev:
+Implemented through 4.5.0-dev:
 
 - XML-RPC method parsing and struct responses
 - `link_region`
@@ -26,6 +26,14 @@ Implemented through 4.0.0-dev:
 - export-safe `/assets/<uuid>`, `/data` and `/metadata` GET compatibility
 - deterministic legacy Asset UUID mapping
 - native Export permission enforcement before remote Asset delivery
+- incoming `grid_instant_message` mapped into native messages and notifications
+- outbound HG IM routing using stored `IMServerURI`
+- read-only `/xinventory` support for root, skeleton, folders, items and Asset permissions
+- `/avatar` AvatarService exchange for AvatarHeight, VisualParams, wearables and attachments
+- persistent foreign Asset/Inventory/Avatar/IM service routing URLs
+- `get_home_region` and persistent return-home travel state
+- authenticated Core return-home and outbound HG IM controls
+- shared portable HTTP callback client
 - cross-platform tests
 
 The OpenSimulator reference behavior uses XML-RPC for Gatekeeper/UserAgent calls and JSON for `/foreignagent` agent creation. OpenGenesisLINK now parses and verifies that foreign-agent identity flow, but still returns a non-success result after verification because the legacy simulator/viewer data plane is not complete. This prevents a false compatibility claim.
@@ -33,10 +41,10 @@ The OpenSimulator reference behavior uses XML-RPC for Gatekeeper/UserAgent calls
 Still open:
 
 - legacy simulator/viewer data-plane handoff after verified `/foreignagent`
-- complete return-home routing beyond home-session verification/logout
-- HG Instant Messaging
-- remote Inventory
-- full legacy Appearance/wearables/attachments exchange
+- final legacy simulator/viewer data-plane handoff after verified `/foreignagent`
+- writable legacy XInventory operations
+- HTTPS outbound Hypergrid callback transport
+- broader legacy Appearance edge cases and baking compatibility
 - legacy simulator/viewer data-plane compatibility
 
 OGL-FED Ed25519 keys are never reused as Hypergrid secrets or session tokens.
