@@ -14,6 +14,10 @@ struct ForeignAgentCircuit {
     std::string first_name;
     std::string last_name;
     std::string home_uri;
+    std::string asset_uri;
+    std::string inventory_uri;
+    std::string avatar_uri;
+    std::string im_uri;
     std::string client_ip;
     std::string viewer;
     std::string channel;
