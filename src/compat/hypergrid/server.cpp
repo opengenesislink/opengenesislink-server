@@ -182,14 +182,16 @@ HypergridServer::HypergridServer(
     std::shared_ptr<HypergridService> service,
     std::shared_ptr<HypergridSessionStore> sessions,
     std::shared_ptr<IHypergridHomeVerifier> verifier,
-    std::shared_ptr<HypergridFriendsAdapter> friends)
+    std::shared_ptr<HypergridFriendsAdapter> friends,
+    std::shared_ptr<HypergridAssetAdapter> assets)
     : address_(std::move(address)),
       port_(port),
       service_(std::move(service)),
       sessions_(std::move(sessions)),
       verifier_(std::move(verifier)),
-      friends_(std::move(friends)) {
-    if (!service_ || !sessions_ || !verifier_ || !friends_) {
+      friends_(std::move(friends)),
+      assets_(std::move(assets)) {
+    if (!service_ || !sessions_ || !verifier_ || !friends_ || !assets_) {
         throw std::invalid_argument("Hypergrid server dependencies required");
     }
 }
@@ -259,6 +261,13 @@ void HypergridServer::run() {
                     platform::close_socket(client);
                     continue;
                 }
+                if (request->method == "GET" && request->path.starts_with("/assets/")) {
+                    const auto legacy = assets_->handle_get(request->path);
+                    send_response(client, legacy.status, legacy.content_type, legacy.body);
+                    platform::close_socket(client);
+                    continue;
+                }
+
                 if (request->method != "POST") {
                     send_response(client, 405, "text/plain", "method not allowed");
                     platform::close_socket(client);
