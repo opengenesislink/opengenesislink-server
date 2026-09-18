@@ -238,6 +238,89 @@ void AdminHttpServer::run() {
                                     ",\"group_posts\":" + std::to_string(group_channels_->count()) +
                                     ",\"assets\":" + std::to_string(assets_->count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                } else if (method == "GET" && path == "/v1/avatar/appearance") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body = appearance_json(appearance_->ensure(user->id));
+                    }
+                } else if (method == "POST" && path == "/v1/avatar/appearance/wearable") {
+                    auto [session, user] = auth();
+                    const auto slot = json_string(request->body, "slot");
+                    const auto item_id = json_string(request->body, "item_id");
+                    const auto asset_id = json_string(request->body, "asset_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!slot || !item_id || !asset_id) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-wearable-fields\"}"};
+                    } else {
+                        const auto asset = assets_->find(*asset_id);
+                        if (!asset || asset->owner_user_id != user->id) {
+                            response = {.status = 403, .body = "{\"error\":\"asset-not-owned\"}"};
+                        } else {
+                            std::string reason;
+                            const auto appearance = appearance_->set_wearable(
+                                user->id, *slot, *item_id, *asset_id, reason);
+                            if (!appearance) {
+                                response = {.status = 400,
+                                            .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            } else {
+                                response.body = appearance_json(*appearance);
+                            }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/avatar/appearance/wearable/remove") {
+                    auto [session, user] = auth();
+                    const auto slot = json_string(request->body, "slot");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!slot) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-wearable-fields\"}"};
+                    } else {
+                        const auto appearance = appearance_->remove_wearable(user->id, *slot);
+                        response.body = appearance_json(
+                            appearance.value_or(appearance_->ensure(user->id)));
+                    }
+                } else if (method == "POST" && path == "/v1/avatar/appearance/attachment") {
+                    auto [session, user] = auth();
+                    const auto point = json_string(request->body, "point");
+                    const auto item_id = json_string(request->body, "item_id");
+                    const auto asset_id = json_string(request->body, "asset_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!point || !item_id || !asset_id) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-attachment-fields\"}"};
+                    } else {
+                        const auto asset = assets_->find(*asset_id);
+                        if (!asset || asset->owner_user_id != user->id) {
+                            response = {.status = 403, .body = "{\"error\":\"asset-not-owned\"}"};
+                        } else {
+                            std::string reason;
+                            const auto appearance = appearance_->attach(
+                                user->id, *point, *item_id, *asset_id, reason);
+                            if (!appearance) {
+                                response = {.status = 400,
+                                            .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            } else {
+                                response.body = appearance_json(*appearance);
+                            }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/avatar/appearance/attachment/remove") {
+                    auto [session, user] = auth();
+                    const auto point = json_string(request->body, "point");
+                    const auto item_id = json_string(request->body, "item_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!point) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-attachment-fields\"}"};
+                    } else {
+                        const auto appearance = appearance_->detach(
+                            user->id, *point, item_id.value_or(""));
+                        response.body = appearance_json(
+                            appearance.value_or(appearance_->ensure(user->id)));
+                    }
                 } else if (method == "GET" && path == "/v1/hypergrid/info") {
                     const auto& cfg = hypergrid_service_->config();
                     response.body = "{\"enabled\":" + std::string(cfg.enabled ? "true" : "false") +
