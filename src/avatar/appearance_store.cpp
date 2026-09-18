@@ -92,6 +92,31 @@ std::optional<AvatarAppearance> AppearanceStore::find(const std::string_view use
     return it == by_user_.end() ? std::nullopt : std::optional<AvatarAppearance>{it->second};
 }
 
+std::optional<AvatarAppearance> AppearanceStore::set_legacy_body(
+    std::string user_id,
+    const double avatar_height,
+    std::string visual_params_csv,
+    std::string& reason) {
+    if (!valid_field(user_id, 256) || avatar_height < 0.5 || avatar_height > 4.0 ||
+        visual_params_csv.size() > 8192 ||
+        visual_params_csv.find('\t') != std::string::npos ||
+        visual_params_csv.find('\r') != std::string::npos ||
+        visual_params_csv.find('\n') != std::string::npos) {
+        reason = "invalid-legacy-appearance";
+        return std::nullopt;
+    }
+    std::scoped_lock lock(mutex_);
+    auto& appearance = by_user_[user_id];
+    if (appearance.user_id.empty()) appearance.user_id = std::move(user_id);
+    appearance.avatar_height = avatar_height;
+    appearance.visual_params_csv = std::move(visual_params_csv);
+    ++appearance.revision;
+    appearance.updated_unix = unix_now();
+    persist_locked();
+    reason.clear();
+    return appearance;
+}
+
 std::optional<AvatarAppearance> AppearanceStore::set_wearable(
     std::string user_id,
     std::string slot,
@@ -209,11 +234,17 @@ void AppearanceStore::load() {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = tabs(line);
         try {
-            if (fields.size() == 4 && fields[0] == "A") {
+            if ((fields.size() == 4 || fields.size() == 6) && fields[0] == "A") {
                 auto& appearance = by_user_[unhex(fields[1])];
                 appearance.user_id = unhex(fields[1]);
                 appearance.revision = std::stoull(fields[2]);
-                appearance.updated_unix = std::stoll(fields[3]);
+                if (fields.size() == 6) {
+                    appearance.avatar_height = std::stod(fields[3]);
+                    appearance.visual_params_csv = unhex(fields[4]);
+                    appearance.updated_unix = std::stoll(fields[5]);
+                } else {
+                    appearance.updated_unix = std::stoll(fields[3]);
+                }
             } else if (fields.size() == 5 && fields[0] == "W") {
                 const auto user = unhex(fields[1]);
                 auto& appearance = by_user_[user];
@@ -242,7 +273,7 @@ void AppearanceStore::persist_locked() const {
     const auto temp = path.string() + ".tmp";
     std::ofstream output(temp, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write appearance store");
-    output << "# OpenGenesisLINK avatar appearance v1\n";
+    output << "# OpenGenesisLINK avatar appearance v2\n";
 
     std::vector<AvatarAppearance> rows;
     rows.reserve(by_user_.size());
@@ -253,6 +284,7 @@ void AppearanceStore::persist_locked() const {
 
     for (const auto& appearance : rows) {
         output << "A\t" << hex(appearance.user_id) << '\t' << appearance.revision << '\t'
+               << appearance.avatar_height << '\t' << hex(appearance.visual_params_csv) << '\t'
                << appearance.updated_unix << '\n';
         for (const auto& wearable : appearance.wearables) {
             output << "W\t" << hex(appearance.user_id) << '\t' << hex(wearable.slot) << '\t'

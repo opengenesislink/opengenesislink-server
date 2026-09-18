@@ -60,6 +60,27 @@ std::unordered_map<std::string, std::string> HypergridService::handle(
     if (call.method == "link_region") return link_region(call);
     if (call.method == "get_region") return get_region(call);
     if (call.method == "get_server_urls") return get_server_urls();
+    if (call.method == "get_home_region") {
+        const auto regions = regions_->list();
+        const auto it = std::find_if(regions.begin(), regions.end(),
+                                     [](const core::RegionInfo& region) {
+                                         return region.state == "online";
+                                     });
+        if (it == regions.end()) return {{"result", "false"}};
+        return {{"result", "true"},
+                {"uuid", legacy_region_uuid(it->id)},
+                {"x", std::to_string(static_cast<std::int64_t>(it->grid_x) * 256)},
+                {"y", std::to_string(static_cast<std::int64_t>(it->grid_y) * 256)},
+                {"size_x", "256"},
+                {"size_y", "256"},
+                {"region_name", it->name},
+                {"hostname", config_.region_host},
+                {"http_port", std::to_string(config_.http_port)},
+                {"internal_port", std::to_string(config_.internal_port)},
+                {"server_uri", config_.external_name},
+                {"position", "<128, 128, 23>"},
+                {"lookAt", "<0, 1, 0>"}};
+    }
     return {{"result", "false"}, {"message", "Unsupported Hypergrid method"}};
 }
 
@@ -117,6 +138,7 @@ std::unordered_map<std::string, std::string> HypergridService::get_server_urls()
     if (!config_.home_uri.empty()) result["SRV_HomeURI"] = config_.home_uri;
     if (!config_.asset_uri.empty()) result["SRV_AssetServerURI"] = config_.asset_uri;
     if (!config_.inventory_uri.empty()) result["SRV_InventoryServerURI"] = config_.inventory_uri;
+    if (!config_.avatar_uri.empty()) result["SRV_AvatarServerURI"] = config_.avatar_uri;
     if (!config_.friends_uri.empty()) result["SRV_FriendsServerURI"] = config_.friends_uri;
     if (!config_.im_uri.empty()) result["SRV_IMServerURI"] = config_.im_uri;
     if (result.empty()) result["result"] = "No Service URLs";

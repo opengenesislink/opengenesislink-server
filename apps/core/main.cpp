@@ -27,6 +27,9 @@
 #include "opengenesis/compat/hypergrid/home_verifier.hpp"
 #include "opengenesis/compat/hypergrid/friends_adapter.hpp"
 #include "opengenesis/compat/hypergrid/asset_adapter.hpp"
+#include "opengenesis/compat/hypergrid/im_adapter.hpp"
+#include "opengenesis/compat/hypergrid/inventory_adapter.hpp"
+#include "opengenesis/compat/hypergrid/appearance_adapter.hpp"
 #include "opengenesis/compat/hypergrid/server.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
@@ -183,15 +186,18 @@ int main(int argc, char** argv) {
         }
         auto hypergrid_sessions = std::make_shared<opengenesis::compat::hypergrid::HypergridSessionStore>(
             config.get_string("storage.hypergrid_sessions", "data/hypergrid-sessions.db"));
+        const auto hypergrid_external_name =
+            config.get_string("hypergrid.external_name", "http://127.0.0.1:18081");
         auto hypergrid_service = std::make_shared<opengenesis::compat::hypergrid::HypergridService>(
             opengenesis::compat::hypergrid::HypergridConfig{
                 .enabled = config.get_bool("hypergrid.enabled", false),
-                .external_name = config.get_string("hypergrid.external_name", "http://127.0.0.1:18081"),
-                .home_uri = config.get_string("hypergrid.home_uri", "http://127.0.0.1:18081"),
-                .asset_uri = config.get_string("hypergrid.asset_uri", ""),
-                .inventory_uri = config.get_string("hypergrid.inventory_uri", ""),
-                .friends_uri = config.get_string("hypergrid.friends_uri", ""),
-                .im_uri = config.get_string("hypergrid.im_uri", ""),
+                .external_name = hypergrid_external_name,
+                .home_uri = config.get_string("hypergrid.home_uri", hypergrid_external_name),
+                .asset_uri = config.get_string("hypergrid.asset_uri", hypergrid_external_name),
+                .inventory_uri = config.get_string("hypergrid.inventory_uri", hypergrid_external_name),
+                .avatar_uri = config.get_string("hypergrid.avatar_uri", hypergrid_external_name),
+                .friends_uri = config.get_string("hypergrid.friends_uri", hypergrid_external_name),
+                .im_uri = config.get_string("hypergrid.im_uri", hypergrid_external_name),
                 .region_host = config.get_string("hypergrid.region_host", "127.0.0.1"),
                 .http_port = static_cast<std::uint16_t>(hypergrid_http_port_value),
                 .internal_port = static_cast<std::uint16_t>(hypergrid_internal_port_value)},
@@ -203,11 +209,20 @@ int main(int argc, char** argv) {
                 identities, friends, presences, notifications, hypergrid_sessions);
         auto hypergrid_assets =
             std::make_shared<opengenesis::compat::hypergrid::HypergridAssetAdapter>(assets);
+        auto hypergrid_im =
+            std::make_shared<opengenesis::compat::hypergrid::HypergridInstantMessageAdapter>(
+                identities, messages, notifications, hypergrid_sessions);
+        auto hypergrid_inventory =
+            std::make_shared<opengenesis::compat::hypergrid::HypergridInventoryAdapter>(
+                identities, inventory, assets);
+        auto hypergrid_appearance =
+            std::make_shared<opengenesis::compat::hypergrid::HypergridAppearanceAdapter>(
+                identities, appearance, inventory, assets, hypergrid_sessions);
         auto hypergrid_server = std::make_unique<opengenesis::compat::hypergrid::HypergridServer>(
             config.get_string("hypergrid.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(hypergrid_port_value),
             hypergrid_service, hypergrid_sessions, hypergrid_verifier, hypergrid_friends,
-            hypergrid_assets);
+            hypergrid_assets, hypergrid_im, hypergrid_inventory, hypergrid_appearance);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
@@ -224,8 +239,8 @@ int main(int argc, char** argv) {
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
             identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, federation_runtime,
-            hypergrid_service, hypergrid_sessions, admin_api_key, scene_ticket_secret,
-            scene_ticket_lifetime);
+            hypergrid_service, hypergrid_sessions, hypergrid_im, admin_api_key,
+            scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
         if (hypergrid_service->enabled()) hypergrid_server->start();
 

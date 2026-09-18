@@ -141,6 +141,10 @@ std::optional<ForeignAgentCircuit> parse_foreign_agent_circuit(
 
     if (const auto urls = json_object(json, "serviceurls")) {
         circuit.home_uri = json_string(*urls, "HomeURI").value_or("");
+        circuit.asset_uri = json_string(*urls, "AssetServerURI").value_or("");
+        circuit.inventory_uri = json_string(*urls, "InventoryServerURI").value_or("");
+        circuit.avatar_uri = json_string(*urls, "AvatarServerURI").value_or("");
+        circuit.im_uri = json_string(*urls, "IMServerURI").value_or("");
     }
 
     if (!plausible_uuid(circuit.agent_id) || !plausible_uuid(circuit.session_id) ||
@@ -159,12 +163,17 @@ std::optional<ForeignAgentCircuit> parse_foreign_agent_circuit(
     return circuit;
 }
 
+std::string service_token_destination(const std::string_view service_token) {
+    const auto delimiter = service_token.find(';');
+    if (delimiter == std::string_view::npos || delimiter == 0) return {};
+    return normalize_uri(std::string{service_token.substr(0, delimiter)});
+}
+
 bool service_token_targets(const std::string_view service_token,
                            const std::string_view gatekeeper_uri) {
-    const auto delimiter = service_token.find(';');
-    if (delimiter == std::string_view::npos || delimiter == 0) return false;
-    return normalize_uri(std::string{service_token.substr(0, delimiter)}) ==
-           normalize_uri(std::string{gatekeeper_uri});
+    const auto destination = service_token_destination(service_token);
+    return !destination.empty() &&
+           destination == normalize_uri(std::string{gatekeeper_uri});
 }
 
 } // namespace opengenesis::compat::hypergrid

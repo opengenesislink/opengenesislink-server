@@ -42,6 +42,7 @@ bool safe_field(const std::string_view value, const std::size_t max_size = 2048)
 }
 
 TravelState parse_state(const std::string_view value) {
+    if (value == "returning_home") return TravelState::returning_home;
     if (value == "logged_out") return TravelState::logged_out;
     if (value == "expired") return TravelState::expired;
     return TravelState::active;
@@ -57,6 +58,7 @@ char hex_digit(const unsigned value) {
 std::string_view travel_state_name(const TravelState state) noexcept {
     switch (state) {
         case TravelState::active: return "active";
+        case TravelState::returning_home: return "returning_home";
         case TravelState::logged_out: return "logged_out";
         case TravelState::expired: return "expired";
     }
@@ -118,7 +120,9 @@ bool HypergridSessionStore::verify_agent(const std::string_view session_id,
                                          const std::string_view service_token) const {
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
-    return it != home_.end() && it->second.state == TravelState::active &&
+    return it != home_.end() &&
+           (it->second.state == TravelState::active ||
+            it->second.state == TravelState::returning_home) &&
            it->second.expires_unix > unix_now() &&
            it->second.service_token == service_token;
 }
@@ -127,7 +131,9 @@ bool HypergridSessionStore::verify_client(const std::string_view session_id,
                                           const std::string_view reported_ip) const {
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
-    return it != home_.end() && it->second.state == TravelState::active &&
+    return it != home_.end() &&
+           (it->second.state == TravelState::active ||
+            it->second.state == TravelState::returning_home) &&
            it->second.expires_unix > unix_now() && !reported_ip.empty() &&
            it->second.client_ip == reported_ip;
 }
@@ -137,8 +143,35 @@ bool HypergridSessionStore::is_agent_coming_home(
     const std::string_view grid_external_name) const {
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
-    return it != home_.end() && it->second.state == TravelState::active &&
+    return it != home_.end() &&
+           (it->second.state == TravelState::returning_home ||
+            it->second.state == TravelState::active) &&
            it->second.destination_gatekeeper == grid_external_name;
+}
+
+std::optional<HomeTravelSession> HypergridSessionStore::home(
+    const std::string_view session_id) const {
+    std::scoped_lock lock(mutex_);
+    const auto it = home_.find(std::string{session_id});
+    return it == home_.end() ? std::nullopt : std::optional<HomeTravelSession>{it->second};
+}
+
+bool HypergridSessionStore::request_return_home(
+    const std::string_view native_user_id,
+    const std::string_view session_id,
+    const std::string_view home_grid_uri) {
+    if (home_grid_uri.empty()) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = home_.find(std::string{session_id});
+    if (it == home_.end() || it->second.native_user_id != native_user_id ||
+        (it->second.state != TravelState::active &&
+         it->second.state != TravelState::returning_home)) {
+        return false;
+    }
+    it->second.destination_gatekeeper = std::string{home_grid_uri};
+    it->second.state = TravelState::returning_home;
+    persist_locked();
+    return true;
 }
 
 bool HypergridSessionStore::logout_home(const std::string_view user_id,
@@ -146,7 +179,8 @@ bool HypergridSessionStore::logout_home(const std::string_view user_id,
     std::scoped_lock lock(mutex_);
     const auto it = home_.find(std::string{session_id});
     if (it == home_.end() || it->second.user_id != user_id ||
-        it->second.state != TravelState::active) {
+        (it->second.state != TravelState::active &&
+         it->second.state != TravelState::returning_home)) {
         return false;
     }
     it->second.state = TravelState::logged_out;
@@ -158,8 +192,13 @@ bool HypergridSessionStore::logout_home(const std::string_view user_id,
 bool HypergridSessionStore::upsert_foreign(ForeignVisitorSession session,
                                            std::string& reason) {
     const auto now = unix_now();
+    const auto optional_safe = [](const std::string& value) {
+        return value.empty() || safe_field(value);
+    };
     if (!safe_field(session.session_id, 64) || !safe_field(session.agent_id, 64) ||
-        !safe_field(session.home_uri) || !safe_field(session.service_token) ||
+        !safe_field(session.home_uri) || !optional_safe(session.asset_uri) ||
+        !optional_safe(session.inventory_uri) || !optional_safe(session.avatar_uri) ||
+        !optional_safe(session.im_uri) || !safe_field(session.service_token) ||
         !safe_field(session.destination_region, 256) ||
         session.expires_unix <= now || session.expires_unix > now + 86400) {
         reason = "invalid-foreign-session";
@@ -177,6 +216,15 @@ std::optional<ForeignVisitorSession> HypergridSessionStore::foreign(
     std::scoped_lock lock(mutex_);
     const auto it = foreign_.find(std::string{session_id});
     return it == foreign_.end() ? std::nullopt : std::optional<ForeignVisitorSession>{it->second};
+}
+
+std::optional<ForeignVisitorSession> HypergridSessionStore::foreign_by_agent(
+    const std::string_view agent_id) const {
+    std::scoped_lock lock(mutex_);
+    for (const auto& [_, session] : foreign_) {
+        if (session.agent_id == agent_id) return session;
+    }
+    return std::nullopt;
 }
 
 bool HypergridSessionStore::logout_foreign(const std::string_view session_id) {
@@ -206,7 +254,9 @@ std::size_t HypergridSessionStore::purge_expired(const std::int64_t now_unix) {
     std::scoped_lock lock(mutex_);
     std::size_t changed = 0;
     for (auto& [_, session] : home_) {
-        if (session.state == TravelState::active && session.expires_unix <= now_unix) {
+        if ((session.state == TravelState::active ||
+             session.state == TravelState::returning_home) &&
+            session.expires_unix <= now_unix) {
             session.state = TravelState::expired;
             session.ended_unix = now_unix;
             ++changed;
@@ -246,19 +296,24 @@ void HypergridSessionStore::load() {
                     .expires_unix = std::stoll(fields[9]),
                     .ended_unix = std::stoll(fields[10])};
                 home_[session.session_id] = std::move(session);
-            } else if (fields[0] == "V" && fields.size() == 12) {
+            } else if (fields[0] == "V" && (fields.size() == 12 || fields.size() == 16)) {
+                const bool v2 = fields.size() == 16;
                 ForeignVisitorSession session{
                     .session_id = fields[1],
                     .agent_id = fields[2],
                     .home_uri = fields[3],
-                    .service_token = fields[4],
-                    .destination_region = fields[5],
-                    .first_name = fields[6],
-                    .last_name = fields[7],
-                    .client_ip = fields[8],
-                    .verified = fields[9] == "1",
-                    .created_unix = std::stoll(fields[10]),
-                    .expires_unix = std::stoll(fields[11])};
+                    .asset_uri = v2 ? fields[4] : std::string{},
+                    .inventory_uri = v2 ? fields[5] : std::string{},
+                    .avatar_uri = v2 ? fields[6] : std::string{},
+                    .im_uri = v2 ? fields[7] : std::string{},
+                    .service_token = fields[v2 ? 8 : 4],
+                    .destination_region = fields[v2 ? 9 : 5],
+                    .first_name = fields[v2 ? 10 : 6],
+                    .last_name = fields[v2 ? 11 : 7],
+                    .client_ip = fields[v2 ? 12 : 8],
+                    .verified = fields[v2 ? 13 : 9] == "1",
+                    .created_unix = std::stoll(fields[v2 ? 14 : 10]),
+                    .expires_unix = std::stoll(fields[v2 ? 15 : 11])};
                 foreign_[session.session_id] = std::move(session);
             }
         } catch (...) {
@@ -272,7 +327,7 @@ void HypergridSessionStore::persist_locked() const {
     const auto temporary = path.string() + ".tmp";
     std::ofstream output(temporary, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write Hypergrid session store");
-    output << "# OpenGenesisLINK Hypergrid sessions v1\n";
+    output << "# OpenGenesisLINK Hypergrid sessions v2\n";
     for (const auto& [_, session] : home_) {
         output << "H\t" << session.session_id << '\t' << session.user_id << '\t'
                << session.native_user_id << '\t' << session.destination_gatekeeper << '\t'
@@ -282,7 +337,9 @@ void HypergridSessionStore::persist_locked() const {
     }
     for (const auto& [_, session] : foreign_) {
         output << "V\t" << session.session_id << '\t' << session.agent_id << '\t'
-               << session.home_uri << '\t' << session.service_token << '\t'
+               << session.home_uri << '\t' << session.asset_uri << '\t'
+               << session.inventory_uri << '\t' << session.avatar_uri << '\t'
+               << session.im_uri << '\t' << session.service_token << '\t'
                << session.destination_region << '\t' << session.first_name << '\t'
                << session.last_name << '\t' << session.client_ip << '\t'
                << (session.verified ? '1' : '0') << '\t' << session.created_unix << '\t'

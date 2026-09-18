@@ -202,6 +202,7 @@ std::string status_text(const int status) {
         case 404: return "404 Not Found";
         case 405: return "405 Method Not Allowed";
         case 409: return "409 Conflict";
+        case 502: return "502 Bad Gateway";
         case 503: return "503 Service Unavailable";
         default: return "500 Internal Server Error";
     }

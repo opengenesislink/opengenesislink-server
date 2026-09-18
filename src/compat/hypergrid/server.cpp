@@ -146,6 +146,12 @@ bool bool_result(const bool value) {
     return value;
 }
 
+bool same_uri(std::string left, std::string right) {
+    while (!left.empty() && left.back() == '/') left.pop_back();
+    while (!right.empty() && right.back() == '/') right.pop_back();
+    return left == right;
+}
+
 std::unordered_map<std::string, std::string> home_method(
     const XmlRpcCall& call,
     HypergridSessionStore& sessions) {
@@ -183,15 +189,22 @@ HypergridServer::HypergridServer(
     std::shared_ptr<HypergridSessionStore> sessions,
     std::shared_ptr<IHypergridHomeVerifier> verifier,
     std::shared_ptr<HypergridFriendsAdapter> friends,
-    std::shared_ptr<HypergridAssetAdapter> assets)
+    std::shared_ptr<HypergridAssetAdapter> assets,
+    std::shared_ptr<HypergridInstantMessageAdapter> instant_messages,
+    std::shared_ptr<HypergridInventoryAdapter> inventory,
+    std::shared_ptr<HypergridAppearanceAdapter> appearance)
     : address_(std::move(address)),
       port_(port),
       service_(std::move(service)),
       sessions_(std::move(sessions)),
       verifier_(std::move(verifier)),
       friends_(std::move(friends)),
-      assets_(std::move(assets)) {
-    if (!service_ || !sessions_ || !verifier_ || !friends_ || !assets_) {
+      assets_(std::move(assets)),
+      instant_messages_(std::move(instant_messages)),
+      inventory_(std::move(inventory)),
+      appearance_(std::move(appearance)) {
+    if (!service_ || !sessions_ || !verifier_ || !friends_ || !assets_ ||
+        !instant_messages_ || !inventory_ || !appearance_) {
         throw std::invalid_argument("Hypergrid server dependencies required");
     }
 }
@@ -274,7 +287,25 @@ void HypergridServer::run() {
                     continue;
                 }
 
-                if (request->path == "/hgfriends" || request->path == "/hgfriends/") {
+                if (request->path == "/xinventory" || request->path == "/xinventory/") {
+                    if (request->content_type.find("application/x-www-form-urlencoded") ==
+                        std::string::npos) {
+                        send_response(client, 406, "text/xml",
+                                      "<?xml version=\"1.0\"?><ServerResponse><RESULT>False</RESULT></ServerResponse>");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    send_response(client, 200, "text/xml", inventory_->handle_form(request->body));
+                } else if (request->path == "/avatar" || request->path == "/avatar/") {
+                    if (request->content_type.find("application/x-www-form-urlencoded") ==
+                        std::string::npos) {
+                        send_response(client, 406, "text/xml",
+                                      "<?xml version=\"1.0\"?><ServerResponse><result>Failure</result></ServerResponse>");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    send_response(client, 200, "text/xml", appearance_->handle_form(request->body));
+                } else if (request->path == "/hgfriends" || request->path == "/hgfriends/") {
                     if (request->content_type.find("application/x-www-form-urlencoded") ==
                         std::string::npos) {
                         send_response(client, 406, "text/xml",
@@ -298,7 +329,17 @@ void HypergridServer::run() {
                         platform::close_socket(client);
                         continue;
                     }
-                    if (!service_token_targets(circuit->service_session_id,
+                    const auto home_session = sessions_->home(circuit->session_id);
+                    const bool returning_home =
+                        home_session &&
+                        home_session->state == TravelState::returning_home &&
+                        home_session->user_id == circuit->agent_id &&
+                        same_uri(circuit->home_uri, service_->config().home_uri) &&
+                        sessions_->verify_agent(circuit->session_id,
+                                                circuit->service_session_id);
+
+                    if (!returning_home &&
+                        !service_token_targets(circuit->service_session_id,
                                                service_->config().external_name)) {
                         send_response(client, 200, "application/json",
                                       foreign_response(false, "service token targets another grid", remote));
@@ -314,10 +355,21 @@ void HypergridServer::run() {
                         continue;
                     }
 
-                    if (!verifier_->verify_agent(circuit->home_uri, circuit->session_id,
+                    if (!returning_home &&
+                        !verifier_->verify_agent(circuit->home_uri, circuit->session_id,
                                                  circuit->service_session_id, reason)) {
                         send_response(client, 200, "application/json",
                                       foreign_response(false, reason, remote));
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (returning_home) {
+                        send_response(client, 200, "application/json",
+                                      foreign_response(
+                                          false,
+                                          "return-home identity verified; legacy simulator data plane not available",
+                                          remote));
                         platform::close_socket(client);
                         continue;
                     }
@@ -329,6 +381,10 @@ void HypergridServer::run() {
                         .session_id = circuit->session_id,
                         .agent_id = circuit->agent_id,
                         .home_uri = circuit->home_uri,
+                        .asset_uri = circuit->asset_uri,
+                        .inventory_uri = circuit->inventory_uri,
+                        .avatar_uri = circuit->avatar_uri,
+                        .im_uri = circuit->im_uri,
                         .service_token = circuit->service_session_id,
                         .destination_region = region->id,
                         .first_name = circuit->first_name,
@@ -357,6 +413,9 @@ void HypergridServer::run() {
                     }
 
                     auto result = home_method(*call, *sessions_);
+                    if (result.empty() && call->method == "grid_instant_message") {
+                        result = instant_messages_->handle_incoming(*call);
+                    }
                     if (result.empty()) result = service_->handle(*call);
                     send_response(client, 200, "text/xml", xmlrpc_struct_response(result));
                 }

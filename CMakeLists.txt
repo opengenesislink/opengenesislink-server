@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 4.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 4.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,8 +54,12 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/session_store.cpp
     src/compat/hypergrid/agent_circuit.cpp
     src/compat/hypergrid/home_verifier.cpp
+    src/compat/hypergrid/http_client.cpp
     src/compat/hypergrid/friends_adapter.cpp
     src/compat/hypergrid/asset_adapter.cpp
+    src/compat/hypergrid/appearance_adapter.cpp
+    src/compat/hypergrid/inventory_adapter.cpp
+    src/compat/hypergrid/im_adapter.cpp
     src/compat/hypergrid/server.cpp
     src/scripting/script_runtime.cpp
     src/storage/schema_version.cpp
@@ -71,7 +75,7 @@ add_library(OpenGenesis::Foundation ALIAS opengenesis-foundation)
 target_include_directories(opengenesis-foundation PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto)
+target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto OpenSSL::SSL)
 if(WIN32)
     target_link_libraries(opengenesis-foundation PUBLIC ws2_32)
 endif()
@@ -123,4 +127,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-avatar-hg-social-tests tests/avatar_hg_social_tests.cpp)
     target_link_libraries(ogl-avatar-hg-social-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME avatar-hg-social COMMAND ogl-avatar-hg-social-tests)
+
+    add_executable(ogl-hypergrid-services-tests tests/hypergrid_services_tests.cpp)
+    target_link_libraries(ogl-hypergrid-services-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME hypergrid-services COMMAND ogl-hypergrid-services-tests)
 endif()
