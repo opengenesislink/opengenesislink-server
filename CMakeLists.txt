@@ -40,6 +40,7 @@ add_library(opengenesis-foundation
     src/core/landmark_store.cpp
     src/core/notification_store.cpp
     src/core/group_channel_store.cpp
+    src/avatar/appearance_store.cpp
     src/core/crossing_store.cpp
     src/federation/grid_identity.cpp
     src/federation/grid_identity_store.cpp
@@ -53,6 +54,7 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/session_store.cpp
     src/compat/hypergrid/agent_circuit.cpp
     src/compat/hypergrid/home_verifier.cpp
+    src/compat/hypergrid/friends_adapter.cpp
     src/compat/hypergrid/server.cpp
     src/scripting/script_runtime.cpp
     src/storage/schema_version.cpp
