@@ -29,6 +29,8 @@ struct RegionCrossing {
     std::string to_region;
     CrossingVector position;
     CrossingVector velocity;
+    std::string attachment_state;
+    std::string script_state;
     CrossingState state{CrossingState::prepared};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
@@ -46,7 +48,9 @@ public:
         CrossingVector position,
         CrossingVector velocity,
         std::int64_t expires_unix,
-        std::string& reason);
+        std::string& reason,
+        std::string attachment_state = {},
+        std::string script_state = {});
 
     [[nodiscard]] std::optional<RegionCrossing> complete(
         std::string_view crossing_id,
