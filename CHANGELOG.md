@@ -1,5 +1,22 @@
 # Changelog
 
+## 3.5.0-dev — 2026-09-18
+
+Deep Hypergrid session and identity-verification milestone.
+
+- added dedicated Hypergrid compatibility listener, separate from native OGL-FED
+- added persistent home-grid travel sessions with OpenSim-style service tokens
+- added `verify_agent`, `verify_client`, `agent_is_coming_home` and `logout_agent`
+- added deterministic legacy UUID mapping for native OpenGenesisLINK users
+- added `/foreignagent` JSON AgentCircuitData parsing
+- added HomeURI callback verification before accepting a foreign identity
+- added service-token destination binding checks
+- added persistent verified foreign-visitor session records and expiry cleanup
+- added Core Hypergrid status, travel-issue and session-count APIs
+- added XML-RPC request/response callback helpers
+- added cross-platform Hypergrid session, circuit and XML-RPC tests
+- foreign identity verification is implemented, but the legacy simulator/viewer data plane is not yet claimed complete
+
 ## 3.0.0-dev — 2026-09-18
 
 Federation runtime and Hypergrid control-plane milestone.
