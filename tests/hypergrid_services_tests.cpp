@@ -214,7 +214,7 @@ int main() {
                      .asset_uri = "https://remote.example:8002",
                      .inventory_uri = "https://remote.example:8002",
                      .avatar_uri = "https://remote.example:8002",
-                     .im_uri = "https://remote.example:8002",
+                     .im_uri = "invalid://remote.example",
                      .service_token =
                          "http://local.example:8002;token",
                      .destination_region = "region-a",
@@ -231,8 +231,8 @@ int main() {
         require(!hg_im.send_remote(
                     user->id, user->display_name, remote_agent,
                     "outbound test", send_reason) &&
-                    send_reason == "https-hg-im-not-yet-supported",
-                "outbound HG IM refuses unsupported HTTPS transport explicitly");
+                    send_reason == "invalid-http-url",
+                "outbound HG IM rejects invalid transport explicitly");
 
         {
             opengenesis::compat::hypergrid::HypergridSessionStore restored(
@@ -241,7 +241,7 @@ int main() {
             require(visitor && visitor->inventory_uri ==
                                    "https://remote.example:8002" &&
                         visitor->avatar_uri == "https://remote.example:8002" &&
-                        visitor->im_uri == "https://remote.example:8002",
+                        visitor->im_uri == "invalid://remote.example",
                     "visitor service routes survive restart");
         }
 
