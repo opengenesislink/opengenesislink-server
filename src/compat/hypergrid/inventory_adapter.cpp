@@ -134,19 +134,19 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
     const auto& method = method_it->second;
 
     if (method == "GETROOTFOLDER") {
-        return response("<folder>" +
+        return response("<folder type=\"List\">" +
                         folder_xml(inventory.root, principal_it->second, true) +
                         "</folder>");
     }
 
     if (method == "GETINVENTORYSKELETON") {
         std::ostringstream out;
-        out << "<FOLDERS><folder_0>"
+        out << "<FOLDERS type=\"List\"><folder_0 type=\"List\">"
             << folder_xml(inventory.root, principal_it->second, true)
             << "</folder_0>";
         std::size_t index = 1;
         for (const auto& folder : inventory.folders) {
-            out << "<folder_" << index << ">"
+            out << "<folder_" << index << " type=\"List\">"
                 << folder_xml(folder, principal_it->second, false)
                 << "</folder_" << index << ">";
             ++index;
@@ -169,25 +169,25 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
                                            ? legacy_folder_uuid(inventory.root.id)
                                            : legacy_folder_uuid(folder.parent_id);
             if (parent_legacy != requested) continue;
-            folders << "<folder_" << folder_index << ">"
+            folders << "<folder_" << folder_index << " type=\"List\">"
                     << folder_xml(folder, principal_it->second, false)
                     << "</folder_" << folder_index << ">";
             ++folder_index;
         }
         for (const auto& item : inventory.items) {
             if (legacy_folder_uuid(item.parent_id) != requested) continue;
-            items << "<item_" << item_index << ">"
+            items << "<item_" << item_index << " type=\"List\">"
                   << item_xml(item, principal_it->second, assets_->find(item.asset_id))
                   << "</item_" << item_index << ">";
             ++item_index;
         }
 
         if (method == "GETFOLDERITEMS") {
-            return response("<ITEMS>" + items.str() + "</ITEMS>");
+            return response("<ITEMS type=\"List\">" + items.str() + "</ITEMS>");
         }
         return response(node("FID", requested) + node("VERSION", "1") +
-                        "<FOLDERS>" + folders.str() + "</FOLDERS>" +
-                        "<ITEMS>" + items.str() + "</ITEMS>");
+                        "<FOLDERS type=\"List\">" + folders.str() + "</FOLDERS>" +
+                        "<ITEMS type=\"List\">" + items.str() + "</ITEMS>");
     }
 
     if (method == "GETITEM") {
@@ -195,7 +195,7 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
         if (id_it == fields.end()) return response({});
         for (const auto& item : inventory.items) {
             if (legacy_item_uuid(item.id) != id_it->second) continue;
-            return response("<item>" +
+            return response("<item type=\"List\">" +
                             item_xml(item, principal_it->second, assets_->find(item.asset_id)) +
                             "</item>");
         }
