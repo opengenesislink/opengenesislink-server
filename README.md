@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **4.5.0-dev**.
+Current development version: **5.0.0-dev**.
 
-`4.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`5.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -36,8 +36,10 @@ Current development version: **4.5.0-dev**.
 - persistent foreign visitor sessions with logout/expiry lifecycle
 - incoming OGL-FED visitors receive destination-bound Scene Tickets after Region/Parcel/Estate policy checks
 - persistent Federation trust/revocation store with Core admin API
-- transactional one-time Region Crossing records with position and velocity state
-- persistent Script Event Runtime foundation with states, timers and chat dispatch
+- transactional one-time Region Crossing records with position, velocity, Avatar Appearance/attachment context and persistent Script state
+- crossing IDs are signed into destination Scene Tickets and consumed exactly once through the Handoff completion flow
+- sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
+- persistent Script Runtime with source hashing, restart-safe VM state and automatic timer execution
 - reusable runtime Rate Limiter and storage Schema Version guard
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
 - OpenSimulator Hypergrid compatibility gateway with `link_region`, `get_region`, `get_server_urls`, `verify_agent`, `verify_client`, `agent_is_coming_home` and `logout_agent`
@@ -83,7 +85,12 @@ GET  /v1/auth/me
 POST /v1/viewer/session
 POST /v1/viewer/teleport
 POST /v1/viewer/handoff
+POST /v1/viewer/handoff/complete
 GET  /v1/presence
+
+GET  /v1/scripts
+POST /v1/scripts
+POST /v1/scripts/event
 GET  /v1/regions/<region-id>/neighbors
 
 GET/POST /v1/groups
@@ -164,7 +171,7 @@ When Hypergrid compatibility is enabled, the dedicated HG listener exposes legac
 7. Core can issue a teleport or adjacent-Region handoff ticket after target policy checks.
 8. The destination Region validates the new ticket and creates the authenticated Presence there.
 
-The existing viewer handoff remains client-driven. The 2.5 foundation adds a persistent one-time crossing transaction record carrying position and velocity, but it is not yet wired into every Scene handoff path. Attachment and full script-state transfer remain incomplete.
+`5.0.0-dev` upgrades adjacent-Region handoff to a persistent transaction. Core prepares a short-lived Crossing record, captures velocity plus Avatar Appearance/attachment context and owned Script VM state, signs the Crossing ID into the destination Scene Ticket, and exposes a one-time completion endpoint. Replays, wrong users, wrong destinations and expired Crossings are rejected. The Viewer still coordinates the final connection switch, but the runtime state transfer is no longer an unsigned client-only hint.
 
 ## Federation and Voice foundations
 
@@ -191,7 +198,7 @@ Run the full Linux process-level test:
 ./scripts/smoke-test.sh
 ```
 
-The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends, HG IM, read-only XInventory, export-safe HG Assets, AvatarService exchange, return-home lifecycle, crossing transactions, Script Runtime, rate limiting, schema versioning and Voice provider validation.
+The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, transactional teleport/handoff, Script VM execution, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends, HG IM, read-only XInventory, export-safe HG Assets, AvatarService exchange, return-home lifecycle, signed one-time Crossing transactions, sandboxed Script VM budgets/state persistence, rate limiting, schema versioning and Voice provider validation.
 
 ## Documentation
 
@@ -212,6 +219,8 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/OGL-FED-v0.md`
 - `docs/VOICE-PROVIDER-v0.md`
 - `docs/HYPERGRID-COMPAT-v0.md`
+- `docs/SCRIPT-RUNTIME-v1.md`
+- `docs/REGION-CROSSING-v1.md`
 
 ## License
 
