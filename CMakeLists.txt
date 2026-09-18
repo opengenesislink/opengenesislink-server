@@ -132,4 +132,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-hypergrid-services-tests tests/hypergrid_services_tests.cpp)
     target_link_libraries(ogl-hypergrid-services-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME hypergrid-services COMMAND ogl-hypergrid-services-tests)
+
+    add_executable(ogl-script-crossing-tests tests/script_crossing_tests.cpp)
+    target_link_libraries(ogl-script-crossing-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME script-crossing COMMAND ogl-script-crossing-tests)
 endif()
