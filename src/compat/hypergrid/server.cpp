@@ -146,6 +146,12 @@ bool bool_result(const bool value) {
     return value;
 }
 
+bool same_uri(std::string left, std::string right) {
+    while (!left.empty() && left.back() == '/') left.pop_back();
+    while (!right.empty() && right.back() == '/') right.pop_back();
+    return left == right;
+}
+
 std::unordered_map<std::string, std::string> home_method(
     const XmlRpcCall& call,
     HypergridSessionStore& sessions) {
@@ -323,7 +329,17 @@ void HypergridServer::run() {
                         platform::close_socket(client);
                         continue;
                     }
-                    if (!service_token_targets(circuit->service_session_id,
+                    const auto home_session = sessions_->home(circuit->session_id);
+                    const bool returning_home =
+                        home_session &&
+                        home_session->state == TravelState::returning_home &&
+                        home_session->user_id == circuit->agent_id &&
+                        same_uri(circuit->home_uri, service_->config().home_uri) &&
+                        sessions_->verify_agent(circuit->session_id,
+                                                circuit->service_session_id);
+
+                    if (!returning_home &&
+                        !service_token_targets(circuit->service_session_id,
                                                service_->config().external_name)) {
                         send_response(client, 200, "application/json",
                                       foreign_response(false, "service token targets another grid", remote));
@@ -339,10 +355,21 @@ void HypergridServer::run() {
                         continue;
                     }
 
-                    if (!verifier_->verify_agent(circuit->home_uri, circuit->session_id,
+                    if (!returning_home &&
+                        !verifier_->verify_agent(circuit->home_uri, circuit->session_id,
                                                  circuit->service_session_id, reason)) {
                         send_response(client, 200, "application/json",
                                       foreign_response(false, reason, remote));
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (returning_home) {
+                        send_response(client, 200, "application/json",
+                                      foreign_response(
+                                          false,
+                                          "return-home identity verified; legacy simulator data plane not available",
+                                          remote));
                         platform::close_socket(client);
                         continue;
                     }
