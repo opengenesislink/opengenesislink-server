@@ -57,6 +57,9 @@ std::optional<FriendRelation> FriendsStore::request(std::string from_user, std::
                             .user_b = std::max(from_user, to_user),
                             .requested_by = std::move(from_user),
                             .status = "pending",
+                            .flags_a_to_b = 0,
+                            .flags_b_to_a = 0,
+                            .interop_secret = {},
                             .created_unix = now,
                             .updated_unix = now};
     by_pair_[key] = relation;
@@ -83,6 +86,57 @@ std::optional<FriendRelation> FriendsStore::accept(std::string user, std::string
     persist_locked();
     reason.clear();
     return it->second;
+}
+
+std::optional<FriendRelation> FriendsStore::upsert_accepted(
+    std::string user,
+    std::string other_user,
+    const std::uint32_t user_to_other_flags,
+    const std::uint32_t other_to_user_flags,
+    std::string interop_secret,
+    std::string& reason) {
+    if (user.empty() || other_user.empty() || user == other_user ||
+        interop_secret.size() > 128 ||
+        interop_secret.find('\t') != std::string::npos ||
+        interop_secret.find('\n') != std::string::npos ||
+        interop_secret.find('\r') != std::string::npos) {
+        reason = "invalid-friend-target";
+        return std::nullopt;
+    }
+
+    const auto key = pair_key(user, other_user);
+    const auto now = unix_now();
+    std::scoped_lock lock(mutex_);
+    auto& relation = by_pair_[key];
+    if (relation.id.empty()) {
+        relation.id = security::random_hex(16);
+        relation.user_a = std::min(user, other_user);
+        relation.user_b = std::max(user, other_user);
+        relation.requested_by = user;
+        relation.created_unix = now;
+    }
+    relation.status = "accepted";
+    if (relation.user_a == user) {
+        relation.flags_a_to_b = user_to_other_flags;
+        relation.flags_b_to_a = other_to_user_flags;
+    } else {
+        relation.flags_a_to_b = other_to_user_flags;
+        relation.flags_b_to_a = user_to_other_flags;
+    }
+    relation.interop_secret = std::move(interop_secret);
+    relation.updated_unix = now;
+    persist_locked();
+    reason.clear();
+    return relation;
+}
+
+std::optional<FriendRelation> FriendsStore::find_relation(
+    const std::string_view user,
+    const std::string_view other_user) const {
+    const auto key = pair_key(user, other_user);
+    std::scoped_lock lock(mutex_);
+    const auto it = by_pair_.find(key);
+    return it == by_pair_.end() ? std::nullopt : std::optional<FriendRelation>{it->second};
 }
 
 bool FriendsStore::remove(const std::string_view user, const std::string_view other_user) {
@@ -137,15 +191,22 @@ void FriendsStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 7) continue;
+        if (fields.size() != 7 && fields.size() != 10) continue;
         try {
             FriendRelation relation{.id = fields[0],
                                     .user_a = fields[1],
                                     .user_b = fields[2],
                                     .requested_by = fields[3],
                                     .status = fields[4],
-                                    .created_unix = std::stoll(fields[5]),
-                                    .updated_unix = std::stoll(fields[6])};
+                                    .flags_a_to_b = fields.size() == 10
+                                                        ? static_cast<std::uint32_t>(std::stoul(fields[5]))
+                                                        : 0U,
+                                    .flags_b_to_a = fields.size() == 10
+                                                        ? static_cast<std::uint32_t>(std::stoul(fields[6]))
+                                                        : 0U,
+                                    .interop_secret = fields.size() == 10 ? fields[7] : std::string{},
+                                    .created_unix = std::stoll(fields[fields.size() == 10 ? 8 : 5]),
+                                    .updated_unix = std::stoll(fields[fields.size() == 10 ? 9 : 6])};
             if (relation.user_a.empty() || relation.user_b.empty() ||
                 (relation.status != "pending" && relation.status != "accepted")) continue;
             by_pair_[pair_key(relation.user_a, relation.user_b)] = std::move(relation);
@@ -160,7 +221,7 @@ void FriendsStore::persist_locked() const {
     const auto temp = path.string() + ".tmp";
     std::ofstream output(temp, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write friends store");
-    output << "# OpenGenesisLINK friends store v1\n";
+    output << "# OpenGenesisLINK friends store v2\n";
     std::vector<FriendRelation> rows;
     rows.reserve(by_pair_.size());
     for (const auto& [_, relation] : by_pair_) rows.push_back(relation);
@@ -169,7 +230,9 @@ void FriendsStore::persist_locked() const {
     });
     for (const auto& relation : rows) {
         output << relation.id << '\t' << relation.user_a << '\t' << relation.user_b << '\t'
-               << relation.requested_by << '\t' << relation.status << '\t' << relation.created_unix
+               << relation.requested_by << '\t' << relation.status << '\t'
+               << relation.flags_a_to_b << '\t' << relation.flags_b_to_a << '\t'
+               << relation.interop_secret << '\t' << relation.created_unix
                << '\t' << relation.updated_unix << '\n';
     }
     output.close();
