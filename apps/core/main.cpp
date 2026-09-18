@@ -23,6 +23,10 @@
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
 #include "opengenesis/federation/trust_store.hpp"
+#include "opengenesis/compat/hypergrid/home_verifier.hpp"
+#include "opengenesis/compat/hypergrid/server.hpp"
+#include "opengenesis/compat/hypergrid/service.hpp"
+#include "opengenesis/compat/hypergrid/session_store.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
 
@@ -163,6 +167,36 @@ int main(int argc, char** argv) {
             config.get_string("storage.federation_sessions", "data/federation-sessions.db"));
         auto federation_runtime = std::make_shared<opengenesis::federation::FederationRuntime>(
             federation_identity, federation_trust, federation_sessions);
+
+        const auto hypergrid_port_value = config.get_int("hypergrid.port", 18081);
+        const auto hypergrid_http_port_value = config.get_int("hypergrid.region_http_port", 19100);
+        const auto hypergrid_internal_port_value = config.get_int("hypergrid.region_internal_port", 19100);
+        if (hypergrid_port_value < 1 || hypergrid_port_value > 65535 ||
+            hypergrid_http_port_value < 1 || hypergrid_http_port_value > 65535 ||
+            hypergrid_internal_port_value < 1 || hypergrid_internal_port_value > 65535) {
+            throw std::runtime_error("invalid Hypergrid port configuration");
+        }
+        auto hypergrid_sessions = std::make_shared<opengenesis::compat::hypergrid::HypergridSessionStore>(
+            config.get_string("storage.hypergrid_sessions", "data/hypergrid-sessions.db"));
+        auto hypergrid_service = std::make_shared<opengenesis::compat::hypergrid::HypergridService>(
+            opengenesis::compat::hypergrid::HypergridConfig{
+                .enabled = config.get_bool("hypergrid.enabled", false),
+                .external_name = config.get_string("hypergrid.external_name", "http://127.0.0.1:18081"),
+                .home_uri = config.get_string("hypergrid.home_uri", "http://127.0.0.1:18081"),
+                .asset_uri = config.get_string("hypergrid.asset_uri", ""),
+                .inventory_uri = config.get_string("hypergrid.inventory_uri", ""),
+                .friends_uri = config.get_string("hypergrid.friends_uri", ""),
+                .im_uri = config.get_string("hypergrid.im_uri", ""),
+                .region_host = config.get_string("hypergrid.region_host", "127.0.0.1"),
+                .http_port = static_cast<std::uint16_t>(hypergrid_http_port_value),
+                .internal_port = static_cast<std::uint16_t>(hypergrid_internal_port_value)},
+            regions);
+        auto hypergrid_verifier =
+            std::make_shared<opengenesis::compat::hypergrid::HttpHypergridHomeVerifier>();
+        auto hypergrid_server = std::make_unique<opengenesis::compat::hypergrid::HypergridServer>(
+            config.get_string("hypergrid.listen_address", "127.0.0.1"),
+            static_cast<std::uint16_t>(hypergrid_port_value),
+            hypergrid_service, hypergrid_sessions, hypergrid_verifier);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
@@ -179,8 +213,10 @@ int main(int argc, char** argv) {
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
             identities, auth_sessions, assets, inventory, presences, friends, messages, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, federation_runtime,
-            admin_api_key, scene_ticket_secret, scene_ticket_lifetime);
+            hypergrid_service, hypergrid_sessions, admin_api_key, scene_ticket_secret,
+            scene_ticket_lifetime);
         admin.start();
+        if (hypergrid_service->enabled()) hypergrid_server->start();
 
         opengenesis::network::TcpListener listener(address, port);
         opengenesis::common::log(LogLevel::info, "core",
@@ -201,6 +237,7 @@ int main(int argc, char** argv) {
                 const auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
                 (void)federation_runtime->maintenance(now_unix);
+                (void)hypergrid_sessions->purge_expired(now_unix);
                 std::this_thread::sleep_for(std::chrono::seconds{1});
             }
         });
@@ -332,6 +369,7 @@ int main(int argc, char** argv) {
         }
 
         if (maintenance_thread.joinable()) maintenance_thread.join();
+        hypergrid_server->stop();
         admin.stop();
         return 0;
     } catch (const std::exception& error) {

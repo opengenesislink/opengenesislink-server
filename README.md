@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **3.0.0-dev**.
+Current development version: **3.5.0-dev**.
 
-`3.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`3.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -40,7 +40,9 @@ Current development version: **3.0.0-dev**.
 - persistent Script Event Runtime foundation with states, timers and chat dispatch
 - reusable runtime Rate Limiter and storage Schema Version guard
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
-- OpenSimulator Hypergrid XML-RPC control-plane foundation for `link_region`, `get_region` and `get_server_urls`, kept separate from OGL-FED
+- OpenSimulator Hypergrid compatibility gateway with `link_region`, `get_region`, `get_server_urls`, `verify_agent`, `verify_client`, `agent_is_coming_home` and `logout_agent`
+- persistent Hypergrid home-travel and verified foreign-visitor sessions
+- `/foreignagent` JSON AgentCircuitData ingestion with HomeURI callback verification and destination/service-token validation; legacy simulator data-plane handoff remains explicitly incomplete
 - cross-platform socket layer for Linux/POSIX and Windows Winsock
 - Linux x86_64, Linux ARM64/aarch64 and Windows x86_64 CI targets
 
@@ -120,6 +122,10 @@ POST /v1/federation/trust
 POST /v1/federation/revoke
 GET  /v1/federation/sessions
 POST /v1/federation/sessions/logout
+
+GET  /v1/hypergrid/info
+POST /v1/hypergrid/travel/issue
+GET  /v1/hypergrid/sessions
 ```
 
 The admin/API and Scene listeners bind to loopback by default. Replace all development secrets before exposing anything beyond a trusted host. TLS termination, key rotation, distributed replay protection, mature admin roles and production abuse controls are not complete yet.
@@ -139,7 +145,7 @@ The existing viewer handoff remains client-driven. The 2.5 foundation adds a per
 
 ## Federation and Voice foundations
 
-`OGL-FED/1` is the native Federation direction. 3.0 adds persistent local Grid identity, signed outbound travel, trusted inbound travel verification, replay protection, persistent foreign sessions and destination Scene-Ticket issuance. OpenSimulator Hypergrid remains a separate legacy compatibility layer and is not mixed into OGL-FED.
+`OGL-FED/1` is the native Federation direction. It uses persistent Grid identity, signed outbound travel, trusted inbound travel verification, replay protection, persistent foreign sessions and destination Scene-Ticket issuance. Hypergrid is implemented as a separate compatibility gateway with its own legacy sessions and verification semantics; OGL-FED keys are never reused as Hypergrid secrets.
 
 Voice is provider-neutral. The server exposes the `OGL-VOICE/1` and `OGL-VOICE-CAP/1` contracts so a Grid can later use the hosted OpenGenesisLINK Voice service, another compatible provider or a self-hosted implementation. Provider credentials stay server-side; the Viewer receives only short-lived destination capabilities.
 
@@ -162,7 +168,7 @@ Run the full Linux process-level test:
 ./scripts/smoke-test.sh
 ```
 
-The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, crossing transactions, Script Runtime, rate limiting, schema versioning and Voice provider validation.
+The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, crossing transactions, Script Runtime, rate limiting, schema versioning and Voice provider validation.
 
 ## Documentation
 

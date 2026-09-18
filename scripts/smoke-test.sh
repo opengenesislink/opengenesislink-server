@@ -6,15 +6,15 @@ rm -rf data
 cmake --preset dev >/dev/null
 cmake --build --preset dev >/dev/null
 
-read -r CORE_PORT ADMIN_PORT SCENE_PORT < <(python3 - <<'PY'
+read -r CORE_PORT ADMIN_PORT SCENE_PORT HG_PORT < <(python3 - <<'PY'
 import socket
 ports=[]
-for _ in range(3):
+for _ in range(4):
     s=socket.socket(); s.bind(('127.0.0.1',0)); ports.append(s.getsockname()[1]); s.close()
 print(*ports)
 PY
 )
-export CORE_PORT ADMIN_PORT SCENE_PORT
+export CORE_PORT ADMIN_PORT SCENE_PORT HG_PORT
 SECRET="smoke-scene-ticket-secret-0123456789abcdef-200"
 ADMIN_KEY="smoke-admin-api-key-0123456789abcdef"
 CORE_CFG=/tmp/ogl-core-smoke.toml
@@ -52,6 +52,26 @@ estates = "data/estates.db"
 landmarks = "data/landmarks.db"
 notifications = "data/notifications.db"
 group_channels = "data/group_channels.db"
+federation_identity = "data/federation-identity.db"
+federation_trust = "data/federation-trust.db"
+federation_sessions = "data/federation-sessions.db"
+hypergrid_sessions = "data/hypergrid-sessions.db"
+[federation]
+grid_id = "local.opengenesislink"
+base_url = "http://127.0.0.1:$ADMIN_PORT"
+[hypergrid]
+enabled = true
+listen_address = "127.0.0.1"
+port = $HG_PORT
+external_name = "http://127.0.0.1:$HG_PORT"
+home_uri = "http://127.0.0.1:$HG_PORT"
+asset_uri = ""
+inventory_uri = ""
+friends_uri = ""
+im_uri = ""
+region_host = "127.0.0.1"
+region_http_port = $SCENE_PORT
+region_internal_port = $SCENE_PORT
 [assets]
 max_bytes = 1048576
 EOF_CORE
@@ -106,7 +126,7 @@ stop_pid(){
 cleanup(){
   status=$?; trap - EXIT
   if [ "$status" -ne 0 ]; then
-    echo "Smoke ports: core=$CORE_PORT admin=$ADMIN_PORT scene=$SCENE_PORT" >&2
+    echo "Smoke ports: core=$CORE_PORT admin=$ADMIN_PORT scene=$SCENE_PORT hypergrid=$HG_PORT" >&2
     echo "--- Core ---" >&2; cat /tmp/ogl-core.log 2>/dev/null >&2 || true; cat /tmp/ogl-core2.log 2>/dev/null >&2 || true
     echo "--- World ---" >&2; cat /tmp/ogl-world.log 2>/dev/null >&2 || true; cat /tmp/ogl-world2.log 2>/dev/null >&2 || true
   fi
@@ -156,8 +176,8 @@ def register(username,display):
     assert st==201; return json.loads(raw)
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
-_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='3.0.0'
-for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1']:
+_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='3.5.0'
+for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1']:
     assert cap in info['capabilities'],cap
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
 assert fed['protocol']=='OGL-FED/1' and fed['grid_id']=='local.opengenesislink' and len(fed['public_key'])==64
@@ -172,15 +192,28 @@ _,_,raw=api('/v1/federation/peers',admin=True); assert len(json.loads(raw)['peer
 st,_,raw=api('/v1/federation/travel/issue','POST',{'audience_grid':'smoke.remote.example','origin_region':'genesis-central','destination_region':'remote-welcome','lifetime_seconds':90},at); assert st==201
 issued=json.loads(raw); assert issued['protocol']=='OGL-FED/1' and issued['audience_grid']=='smoke.remote.example' and len(issued['travel_token'])>100
 st,_,_=api('/v1/federation/revoke','POST',{'grid_id':'smoke.remote.example'},admin=True); assert st==200
+# Hypergrid home-travel/session control plane
+_,_,raw=api('/v1/hypergrid/info'); hgi=json.loads(raw); assert hgi['enabled'] is True
+st,_,raw=api('/v1/hypergrid/travel/issue','POST',{'destination_gatekeeper':'http://127.0.0.1:'+os.environ['HG_PORT'],'client_ip':'127.0.0.1'},at); assert st==201
+hgtravel=json.loads(raw); assert len(hgtravel['agent_id'])==36 and len(hgtravel['session_id'])==36 and ';' in hgtravel['service_session_id']
+xml=('<?xml version="1.0"?><methodCall><methodName>verify_agent</methodName><params><param><value><struct>'
+     '<member><name>sessionID</name><value><string>'+hgtravel['session_id']+'</string></value></member>'
+     '<member><name>token</name><value><string>'+hgtravel['service_session_id']+'</string></value></member>'
+     '</struct></value></param></params></methodCall>').encode()
+req=urllib.request.Request('http://127.0.0.1:'+os.environ['HG_PORT']+'/',data=xml,headers={'Content-Type':'text/xml'},method='POST')
+with urllib.request.urlopen(req,timeout=6) as resp:
+    body=resp.read().decode(); assert '<name>result</name>' in body and '>True<' in body
+_,_,raw=api('/v1/hypergrid/sessions',admin=True); hgs=json.loads(raw); assert hgs['home_sessions']==1
+
 for path,val in [('/tmp/ogl-auth-token',at),('/tmp/ogl-user-id',auid),('/tmp/ogl-bob-token',bt),('/tmp/ogl-bob-id',buid)]: open(path,'w').write(val)
 
 # social graph + offline-capable direct message
 st,_,_=api('/v1/social/friends/request','POST',{'user_id':buid},at); assert st==201
 st,_,_=api('/v1/social/friends/accept','POST',{'user_id':auid},bt); assert st==200
 _,_,raw=api('/v1/social/friends',token=at); friends=json.loads(raw)['friends']; assert len(friends)==1 and friends[0]['status']=='accepted'
-st,_,raw=api('/v1/social/messages','POST',{'recipient_id':buid,'text':'hello from 3.0.0-dev'},at); assert st==201
+st,_,raw=api('/v1/social/messages','POST',{'recipient_id':buid,'text':'hello from 3.5.0-dev'},at); assert st==201
 message_id=json.loads(raw)['message_id']; open('/tmp/ogl-message-id','w').write(message_id)
-_,_,raw=api('/v1/social/messages',token=bt); inbox=json.loads(raw); assert inbox['unread']==1 and inbox['messages'][0]['text']=='hello from 3.0.0-dev'
+_,_,raw=api('/v1/social/messages',token=bt); inbox=json.loads(raw); assert inbox['unread']==1 and inbox['messages'][0]['text']=='hello from 3.5.0-dev'
 st,_,_=api('/v1/social/messages/read','POST',{'message_id':message_id},bt); assert st==200
 
 # groups + land governance
@@ -211,7 +244,7 @@ st,ctype,metrics=api('/metrics'); assert st==200 and ctype=='text/plain' and b'o
 st,_,raw=api('/v1/viewer/session','POST',{'region':'genesis-central'},bt); assert st==200 and group_id in json.loads(raw)['groups']
 
 # content remains part of the integrated user flow
-payload=b'OpenGenesis 3.0.0 content payload'
+payload=b'OpenGenesis 3.5.0 content payload'
 st,_,raw=api('/v1/assets','POST',{'name':'one.txt','mime_type':'text/plain','data_base64':base64.b64encode(payload).decode()},at); assert st==201
 asset_id=json.loads(raw)['asset']['id']; open('/tmp/ogl-asset-id','w').write(asset_id)
 _,_,raw=api('/v1/inventory',token=at); root=json.loads(raw)['root']['id']
@@ -262,7 +295,7 @@ time.sleep(3)
 _,_,raw=api('/v1/presence',token=at); prs=json.loads(raw)['presences']; assert len(prs)==1 and prs[0]['region_id']=='genesis-east'
 send(e,42,3,''); e.close(); time.sleep(2)
 
-_,_,raw=api('/v1/status'); status=json.loads(raw); assert status['version']=='3.0.0' and len(status['regions'])==2 and status['friendships']==1 and status['messages']==1 and status['groups']==1 and status['parcels']==1 and status['estates']==1 and status['landmarks']==1 and status['notifications']>=3 and status['group_posts']==1
+_,_,raw=api('/v1/status'); status=json.loads(raw); assert status['version']=='3.5.0' and len(status['regions'])==2 and status['friendships']==1 and status['messages']==1 and status['groups']==1 and status['parcels']==1 and status['estates']==1 and status['landmarks']==1 and status['notifications']>=3 and status['group_posts']==1
 open('/tmp/ogl-generation','w').write(str(status['world_nodes'][0]['generation']))
 open('/tmp/ogl-ticks','w').write(str(status['regions'][0]['ticks']))
 PY
@@ -289,7 +322,7 @@ assert len(api('/v1/notifications',token=bt)['notifications'])>=3
 assert api('/v1/social/messages',token=bt)['unread']==0
 assert len(api('/v1/inventory',token=at)['items'])==1
 assert len(api('/v1/inventory',token=bt)['items'])==1
-assert base64.b64decode(api('/v1/assets/'+aid,token=at)['data_base64'])==b'OpenGenesis 3.0.0 content payload'
+assert base64.b64decode(api('/v1/assets/'+aid,token=at)['data_base64'])==b'OpenGenesis 3.5.0 content payload'
 PY
 
 # Full World restart validates scene/terrain persistence across both-region runtime recreation.
@@ -333,4 +366,4 @@ import json,os,urllib.request
 d=json.load(urllib.request.urlopen(f"http://127.0.0.1:{os.environ['ADMIN_PORT']}/v1/status")); assert all(r['state']=='offline' for r in d['regions']); assert d['identities']==2 and d['active_sessions']==0 and d['friendships']==1 and d['messages']==1 and d['groups']==1 and d['parcels']==1 and d['estates']==1 and d['landmarks']==1 and d['group_posts']==1
 PY
 
-echo "OpenGenesisLINK 3.0.0-dev integrated operations/governance/world/social/handoff smoke test: PASS"
+echo "OpenGenesisLINK 3.5.0-dev integrated operations/governance/world/social/handoff smoke test: PASS"

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 3.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 3.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +50,10 @@ add_library(opengenesis-foundation
     src/federation/runtime.cpp
     src/compat/hypergrid/xmlrpc.cpp
     src/compat/hypergrid/service.cpp
+    src/compat/hypergrid/session_store.cpp
+    src/compat/hypergrid/agent_circuit.cpp
+    src/compat/hypergrid/home_verifier.cpp
+    src/compat/hypergrid/server.cpp
     src/scripting/script_runtime.cpp
     src/storage/schema_version.cpp
     src/voice/voice_provider.cpp
@@ -108,4 +112,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-federation-hypergrid-tests tests/federation_hypergrid_tests.cpp)
     target_link_libraries(ogl-federation-hypergrid-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME federation-hypergrid COMMAND ogl-federation-hypergrid-tests)
+
+    add_executable(ogl-hypergrid-session-tests tests/hypergrid_session_tests.cpp)
+    target_link_libraries(ogl-hypergrid-session-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME hypergrid-session COMMAND ogl-hypergrid-session-tests)
 endif()

@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,6 +37,9 @@ public:
     [[nodiscard]] static std::string legacy_region_uuid(std::string_view region_id);
     [[nodiscard]] static std::uint64_t legacy_region_handle(std::int32_t grid_x,
                                                             std::int32_t grid_y);
+    [[nodiscard]] std::optional<core::RegionInfo> region_by_legacy_uuid(
+        std::string_view legacy_uuid) const;
+    [[nodiscard]] const HypergridConfig& config() const noexcept { return config_; }
 
 private:
     [[nodiscard]] std::unordered_map<std::string, std::string> link_region(
