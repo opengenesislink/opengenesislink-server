@@ -127,7 +127,10 @@ std::string HypergridAppearanceAdapter::handle_form(const std::string_view body)
         std::ostringstream data;
         data << "<result type=\"List\">" << node("AvatarType", "1")
              << node("Serial", std::to_string(appearance.revision))
-             << node("AvatarHeight", "1.9");
+             << node("AvatarHeight", std::to_string(appearance.avatar_height));
+        if (!appearance.visual_params_csv.empty()) {
+            data << node("VisualParams", appearance.visual_params_csv);
+        }
 
         for (const auto& wearable : appearance.wearables) {
             const auto index = wearable_index(wearable.slot);
@@ -181,27 +184,83 @@ std::string HypergridAppearanceAdapter::handle_form(const std::string_view body)
         }
 
         std::string reason;
-        for (const auto& [name, value] : fields) {
-            if (!name.starts_with("Wearable ")) continue;
-            const auto space = name.find(' ');
-            const auto colon = name.find(':', space + 1);
-            if (colon == std::string::npos) continue;
-            const auto ids = value.find(':');
-            if (ids == std::string::npos) continue;
-            const auto legacy_asset = value.substr(ids + 1);
+        double avatar_height = 1.9;
+        if (const auto height_it = fields.find("AvatarHeight"); height_it != fields.end()) {
+            try {
+                avatar_height = std::stod(height_it->second);
+            } catch (...) {
+                return response(node("result", "Failure"));
+            }
+        }
+        const auto visual_it = fields.find("VisualParams");
+        const auto visual_params =
+            visual_it == fields.end() ? std::string{} : visual_it->second;
+        if (!appearance_->set_legacy_body(
+                *native_user, avatar_height, visual_params, reason)) {
+            return response(node("result", "Failure"));
+        }
 
-            std::optional<core::AssetInfo> native_asset;
-            for (const auto& asset : assets_->list_for_user(*native_user)) {
-                if (HypergridAssetAdapter::legacy_asset_uuid(asset.id) == legacy_asset) {
-                    native_asset = asset;
-                    break;
+        const auto native_inventory = inventory_->list(*native_user);
+        const auto find_item = [&](const std::string_view legacy_item)
+            -> std::optional<core::InventoryItem> {
+            for (const auto& item : native_inventory.items) {
+                if (HypergridInventoryAdapter::legacy_item_uuid(item.id) == legacy_item) {
+                    return item;
                 }
             }
-            if (!native_asset) continue;
+            return std::nullopt;
+        };
 
-            const auto slot = name.substr(space + 1, colon - space - 1);
-            (void)appearance_->set_wearable(
-                *native_user, slot, value.substr(0, ids), native_asset->id, reason);
+        for (const auto& [name, value] : fields) {
+            if (name.starts_with("Wearable ")) {
+                const auto space = name.find(' ');
+                const auto colon = name.find(':', space + 1);
+                if (colon == std::string::npos) continue;
+                const auto ids = value.find(':');
+                if (ids == std::string::npos) continue;
+
+                const auto legacy_item = value.substr(0, ids);
+                const auto legacy_asset = value.substr(ids + 1);
+                const auto item = find_item(legacy_item);
+                if (!item) continue;
+                const auto asset = assets_->find(item->asset_id);
+                if (!asset || asset->owner_user_id != *native_user ||
+                    !core::has_permission(asset->permissions, core::perm_export) ||
+                    HypergridAssetAdapter::legacy_asset_uuid(asset->id) != legacy_asset) {
+                    continue;
+                }
+
+                const auto slot = name.substr(space + 1, colon - space - 1);
+                (void)appearance_->set_wearable(
+                    *native_user, slot, item->id, asset->id, reason);
+                continue;
+            }
+
+            if (name.starts_with("_ap_") && name.size() > 4) {
+                const auto point = name.substr(4);
+                if (attachment_point(point) < 0) continue;
+                (void)appearance_->detach(*native_user, point);
+
+                std::size_t start = 0;
+                while (start <= value.size()) {
+                    const auto comma = value.find(',', start);
+                    const auto legacy_item = value.substr(
+                        start, comma == std::string::npos ? std::string::npos : comma - start);
+                    if (!legacy_item.empty()) {
+                        const auto item = find_item(legacy_item);
+                        if (item) {
+                            const auto asset = assets_->find(item->asset_id);
+                            if (asset && asset->owner_user_id == *native_user &&
+                                core::has_permission(asset->permissions, core::perm_export)) {
+                                (void)appearance_->attach(
+                                    *native_user, point, item->id, asset->id, reason);
+                            }
+                        }
+                    }
+                    if (comma == std::string::npos) break;
+                    start = comma + 1;
+                }
+            }
         }
         return response(node("result", "Success"));
     }
