@@ -44,6 +44,10 @@ struct ForeignVisitorSession {
     std::string first_name;
     std::string last_name;
     std::string client_ip;
+    std::string asset_uri;
+    std::string inventory_uri;
+    std::string avatar_uri;
+    std::string im_uri;
     bool verified{false};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
@@ -66,6 +70,8 @@ public:
                                      std::string_view reported_ip) const;
     [[nodiscard]] bool is_agent_coming_home(std::string_view session_id,
                                             std::string_view grid_external_name) const;
+    [[nodiscard]] bool begin_return(std::string_view session_id,
+                                    std::string_view remote_grid_external_name);
     [[nodiscard]] bool logout_home(std::string_view user_id,
                                    std::string_view session_id);
     [[nodiscard]] bool request_return_home(std::string_view native_user_id,
