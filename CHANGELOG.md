@@ -1,5 +1,23 @@
 # Changelog
 
+## 5.0.0-dev — 2026-09-18
+
+Sandboxed scripting and transactional Region Crossing milestone.
+
+- added a small deterministic event Script VM with explicit opcodes for variables, arithmetic, emitted host actions, state changes, timers and listen channels
+- added instruction, variable, state-memory and output-action budgets to stop runaway scripts
+- Script VM has no direct filesystem or socket access; effects are returned as explicit host actions
+- persisted Script source, source hash and VM state across Core restarts
+- added authenticated Script create/list/event Core APIs
+- added automatic execution of due timer events in the Core maintenance loop
+- extended Region Crossing persistence with Avatar Appearance/attachment context and Script VM state
+- added short-lived one-time transactional handoff prepare/complete flow
+- signed Crossing IDs into destination Scene Tickets and exposed them during Scene join
+- preserved velocity across prepared Region crossings
+- rejected Crossing replay, user/destination mismatch and expired crossings
+- added Script/Crossing metrics, API discovery and cross-platform tests
+- Viewer still coordinates the network connection switch; the transaction now protects and carries runtime state
+
 ## 4.5.0-dev — 2026-09-18
 
 Hypergrid messaging, inventory, appearance and return-home milestone.
