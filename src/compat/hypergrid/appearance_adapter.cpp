@@ -186,7 +186,8 @@ std::string HypergridAppearanceAdapter::handle_form(const std::string_view body)
         }
 
         std::string reason;
-        double avatar_height = 1.9;
+        const auto current = appearance_->ensure(*native_user);
+        double avatar_height = current.avatar_height;
         if (const auto height_it = fields.find("AvatarHeight"); height_it != fields.end()) {
             try {
                 avatar_height = std::stod(height_it->second);
@@ -196,7 +197,7 @@ std::string HypergridAppearanceAdapter::handle_form(const std::string_view body)
         }
         const auto visual_it = fields.find("VisualParams");
         const auto visual_params =
-            visual_it == fields.end() ? std::string{} : visual_it->second;
+            visual_it == fields.end() ? current.visual_params_csv : visual_it->second;
         if (!appearance_->set_legacy_body(
                 *native_user, avatar_height, visual_params, reason)) {
             return response(node("result", "Failure"));
