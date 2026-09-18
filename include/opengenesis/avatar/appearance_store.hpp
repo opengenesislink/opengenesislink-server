@@ -25,6 +25,8 @@ struct AttachmentRef {
 struct AvatarAppearance {
     std::string user_id;
     std::uint64_t revision{0};
+    double avatar_height{1.9};
+    std::string visual_params_csv;
     std::vector<WearableRef> wearables;
     std::vector<AttachmentRef> attachments;
     std::int64_t updated_unix{0};
@@ -36,6 +38,12 @@ public:
 
     [[nodiscard]] AvatarAppearance ensure(std::string user_id);
     [[nodiscard]] std::optional<AvatarAppearance> find(std::string_view user_id) const;
+
+    [[nodiscard]] std::optional<AvatarAppearance> set_legacy_body(
+        std::string user_id,
+        double avatar_height,
+        std::string visual_params_csv,
+        std::string& reason);
 
     [[nodiscard]] std::optional<AvatarAppearance> set_wearable(
         std::string user_id,
