@@ -13,6 +13,7 @@ namespace opengenesis::compat::hypergrid {
 
 enum class TravelState {
     active,
+    returning_home,
     logged_out,
     expired
 };
@@ -34,6 +35,10 @@ struct ForeignVisitorSession {
     std::string session_id;
     std::string agent_id;
     std::string home_uri;
+    std::string asset_uri;
+    std::string inventory_uri;
+    std::string avatar_uri;
+    std::string im_uri;
     std::string service_token;
     std::string destination_region;
     std::string first_name;
@@ -63,11 +68,17 @@ public:
                                             std::string_view grid_external_name) const;
     [[nodiscard]] bool logout_home(std::string_view user_id,
                                    std::string_view session_id);
+    [[nodiscard]] bool request_return_home(std::string_view native_user_id,
+                                           std::string_view session_id,
+                                           std::string_view home_grid_uri);
+    [[nodiscard]] std::optional<HomeTravelSession> home(std::string_view session_id) const;
 
     [[nodiscard]] bool upsert_foreign(ForeignVisitorSession session,
                                       std::string& reason);
     [[nodiscard]] std::optional<ForeignVisitorSession> foreign(
         std::string_view session_id) const;
+    [[nodiscard]] std::optional<ForeignVisitorSession> foreign_by_agent(
+        std::string_view agent_id) const;
     [[nodiscard]] bool logout_foreign(std::string_view session_id);
 
     [[nodiscard]] std::vector<HomeTravelSession> home_sessions() const;
