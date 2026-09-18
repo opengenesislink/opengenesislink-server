@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 4.5.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 5.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -62,6 +62,7 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/im_adapter.cpp
     src/compat/hypergrid/server.cpp
     src/scripting/script_runtime.cpp
+    src/scripting/script_vm.cpp
     src/storage/schema_version.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
@@ -131,4 +132,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-hypergrid-services-tests tests/hypergrid_services_tests.cpp)
     target_link_libraries(ogl-hypergrid-services-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME hypergrid-services COMMAND ogl-hypergrid-services-tests)
+
+    add_executable(ogl-script-crossing-tests tests/script_crossing_tests.cpp)
+    target_link_libraries(ogl-script-crossing-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME script-crossing COMMAND ogl-script-crossing-tests)
 endif()

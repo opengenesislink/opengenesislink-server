@@ -53,6 +53,8 @@ estates = "data/estates.db"
 landmarks = "data/landmarks.db"
 notifications = "data/notifications.db"
 group_channels = "data/group_channels.db"
+crossings = "data/crossings.db"
+scripts = "data/scripts.db"
 federation_identity = "data/federation-identity.db"
 federation_trust = "data/federation-trust.db"
 federation_sessions = "data/federation-sessions.db"
@@ -188,8 +190,8 @@ def register(username,display):
     assert st==201; return json.loads(raw)
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
-_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='4.5.0'
-for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1']:
+_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='5.0.0'
+for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1','script-vm-v1','crossing-v2']:
     assert cap in info['capabilities'],cap
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
 assert fed['protocol']=='OGL-FED/1' and fed['grid_id']=='local.opengenesislink' and len(fed['public_key'])==64
@@ -227,13 +229,21 @@ st,body=hg_xml('logout_agent',{'userID':hgtravel['agent_id'],'sessionID':hgtrave
 
 for path,val in [('/tmp/ogl-auth-token',at),('/tmp/ogl-user-id',auid),('/tmp/ogl-bob-token',bt),('/tmp/ogl-bob-id',buid)]: open(path,'w').write(val)
 
+# sandboxed Script VM
+program='event touch\nset count 1\nadd count 2\nemit $count\nstate active\ntimer 1500\nlisten 7\nend\n'
+st,_,raw=api('/v1/scripts','POST',{'object_id':'smoke-object','source':program},at); assert st==201
+script=json.loads(raw); script_id=script['id']; assert script['source_hash']!='pending'
+st,_,raw=api('/v1/scripts/event','POST',{'script_id':script_id,'event':'touch'},at); assert st==200
+executed=json.loads(raw); assert executed['state']=='active' and executed['instructions']>=6 and executed['actions'][0]['value']=='3'
+_,_,raw=api('/v1/scripts',token=at); assert any(x['id']==script_id for x in json.loads(raw)['scripts'])
+
 # social graph + offline-capable direct message
 st,_,_=api('/v1/social/friends/request','POST',{'user_id':buid},at); assert st==201
 st,_,_=api('/v1/social/friends/accept','POST',{'user_id':auid},bt); assert st==200
 _,_,raw=api('/v1/social/friends',token=at); friends=json.loads(raw)['friends']; assert len(friends)==1 and friends[0]['status']=='accepted'
-st,_,raw=api('/v1/social/messages','POST',{'recipient_id':buid,'text':'hello from 4.5.0-dev'},at); assert st==201
+st,_,raw=api('/v1/social/messages','POST',{'recipient_id':buid,'text':'hello from 5.0.0-dev'},at); assert st==201
 message_id=json.loads(raw)['message_id']; open('/tmp/ogl-message-id','w').write(message_id)
-_,_,raw=api('/v1/social/messages',token=bt); inbox=json.loads(raw); assert inbox['unread']==1 and inbox['messages'][0]['text']=='hello from 4.5.0-dev'
+_,_,raw=api('/v1/social/messages',token=bt); inbox=json.loads(raw); assert inbox['unread']==1 and inbox['messages'][0]['text']=='hello from 5.0.0-dev'
 st,_,_=api('/v1/social/messages/read','POST',{'message_id':message_id},bt); assert st==200
 
 # groups + land governance
@@ -267,7 +277,7 @@ st,_,raw=api('/v1/viewer/session','POST',{'region':'genesis-central'},bt); asser
 _,_,raw=api('/v1/avatar/appearance',token=at); ap=json.loads(raw); assert ap['revision']>=1 and ap['wearables']==[] and ap['attachments']==[]
 
 # content remains part of the integrated user flow
-payload=b'OpenGenesis 4.5.0 content payload'
+payload=b'OpenGenesis 5.0.0 content payload'
 st,_,raw=api('/v1/assets','POST',{'name':'one.txt','mime_type':'text/plain','data_base64':base64.b64encode(payload).decode()},at); assert st==201
 asset_id=json.loads(raw)['asset']['id']; open('/tmp/ogl-asset-id','w').write(asset_id)
 _,_,raw=api('/v1/inventory',token=at); root=json.loads(raw)['root']['id']
@@ -311,15 +321,22 @@ time.sleep(3)
 _,_,raw=api('/v1/presence',token=at); prs=json.loads(raw)['presences']; assert len(prs)==1 and prs[0]['user_id']==auid and prs[0]['region_id']=='genesis-central'
 
 # client-driven adjacent-region handoff
-st,_,raw=api('/v1/viewer/handoff','POST',{'from_region':'genesis-central','to_region':'genesis-east'},at); assert st==200
-handoff=json.loads(raw); assert handoff['handoff_from']=='genesis-central' and handoff['region']['id']=='genesis-east'
+st,_,raw=api('/v1/viewer/handoff','POST',{'from_region':'genesis-central','to_region':'genesis-east','vx':4.0,'vy':0.0,'vz':0.0},at); assert st==200
+handoff=json.loads(raw); assert handoff['handoff_from']=='genesis-central' and handoff['region']['id']=='genesis-east' and len(handoff['crossing_id'])==32
 send(s,42,6,''); s.close(); time.sleep(1)
-e,p=join('genesis-east',handoff['scene_ticket']); ej=fields(p); assert ej['handoff_from']=='genesis-central'
+e,p=join('genesis-east',handoff['scene_ticket']); ej=fields(p); assert ej['handoff_from']=='genesis-central' and ej['crossing_id']==handoff['crossing_id']
+st,_,raw=api('/v1/viewer/handoff/complete','POST',{'crossing_id':handoff['crossing_id'],'region':'genesis-east'},at); assert st==200
+crossing=json.loads(raw); assert crossing['state']=='completed' and crossing['velocity']['x']==4.0 and crossing['attachment_state'] is not None and crossing['script_state'] is not None
+try:
+    api('/v1/viewer/handoff/complete','POST',{'crossing_id':handoff['crossing_id'],'region':'genesis-east'},at)
+    raise AssertionError('crossing replay accepted')
+except urllib.error.HTTPError as ex:
+    assert ex.code==409
 time.sleep(3)
 _,_,raw=api('/v1/presence',token=at); prs=json.loads(raw)['presences']; assert len(prs)==1 and prs[0]['region_id']=='genesis-east'
 send(e,42,3,''); e.close(); time.sleep(2)
 
-_,_,raw=api('/v1/status'); status=json.loads(raw); assert status['version']=='4.5.0' and len(status['regions'])==2 and status['friendships']==1 and status['messages']==2 and status['groups']==1 and status['parcels']==1 and status['estates']==1 and status['landmarks']==1 and status['notifications']>=4 and status['group_posts']==1
+_,_,raw=api('/v1/status'); status=json.loads(raw); assert status['version']=='5.0.0' and len(status['regions'])==2 and status['friendships']==1 and status['messages']==2 and status['groups']==1 and status['parcels']==1 and status['estates']==1 and status['landmarks']==1 and status['notifications']>=4 and status['group_posts']==1
 open('/tmp/ogl-generation','w').write(str(status['world_nodes'][0]['generation']))
 open('/tmp/ogl-ticks','w').write(str(status['regions'][0]['ticks']))
 PY
@@ -346,7 +363,7 @@ assert len(api('/v1/notifications',token=bt)['notifications'])>=3
 assert api('/v1/social/messages',token=bt)['unread']==0
 assert len(api('/v1/inventory',token=at)['items'])==1
 assert len(api('/v1/inventory',token=bt)['items'])==1
-assert base64.b64decode(api('/v1/assets/'+aid,token=at)['data_base64'])==b'OpenGenesis 4.5.0 content payload'
+assert base64.b64decode(api('/v1/assets/'+aid,token=at)['data_base64'])==b'OpenGenesis 5.0.0 content payload'
 PY
 
 # Full World restart validates scene/terrain persistence across both-region runtime recreation.
@@ -390,4 +407,4 @@ import json,os,urllib.request
 d=json.load(urllib.request.urlopen(f"http://127.0.0.1:{os.environ['ADMIN_PORT']}/v1/status")); assert all(r['state']=='offline' for r in d['regions']); assert d['identities']==2 and d['active_sessions']==0 and d['friendships']==1 and d['messages']==2 and d['groups']==1 and d['parcels']==1 and d['estates']==1 and d['landmarks']==1 and d['group_posts']==1
 PY
 
-echo "OpenGenesisLINK 4.5.0-dev integrated world/social/federation/hypergrid services smoke test: PASS"
+echo "OpenGenesisLINK 5.0.0-dev integrated world/social/federation/hypergrid services smoke test: PASS"

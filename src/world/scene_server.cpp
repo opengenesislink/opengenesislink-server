@@ -229,6 +229,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
                << "\navatar_id=" << avatar_id << "\nsequence=" << region->latest_sequence()
                << "\nterrain_revision=" << region->terrain().revision() << "\ncapabilities="
                << claims.capabilities << "\nhandoff_from=" << claims.handoff_from_region
+               << "\ncrossing_id=" << claims.crossing_id
                << "\ngroups=" << claims.group_ids_csv << "\nspawn_x=" << claims.spawn_x
                << "\nspawn_y=" << claims.spawn_y << "\nspawn_z=" << claims.spawn_z << '\n';
         socket.send_frame({protocol::MessageType::scene_join_ack, join.request_id,

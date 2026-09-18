@@ -87,7 +87,8 @@ IssuedSceneTicket issue_scene_ticket(const std::string_view secret, std::string 
                                      std::string display_name, std::string region_id,
                                      std::chrono::seconds lifetime, std::string capabilities,
                                      std::string handoff_from_region, std::string group_ids_csv,
-                                     double spawn_x, double spawn_y, double spawn_z) {
+                                     double spawn_x, double spawn_y, double spawn_z,
+                                     std::string crossing_id) {
     if (secret.size() < 32) throw std::runtime_error("scene ticket secret must be at least 32 bytes");
     if (!valid_capability_text(capabilities)) throw std::runtime_error("invalid scene capabilities");
     lifetime = std::clamp(lifetime, std::chrono::seconds{10}, std::chrono::seconds{300});
@@ -98,6 +99,7 @@ IssuedSceneTicket issue_scene_ticket(const std::string_view secret, std::string 
                              .nonce = random_hex(16),
                              .capabilities = std::move(capabilities),
                              .handoff_from_region = std::move(handoff_from_region),
+                             .crossing_id = std::move(crossing_id),
                              .group_ids_csv = std::move(group_ids_csv),
                              .spawn_x = spawn_x, .spawn_y = spawn_y, .spawn_z = spawn_z,
                              .issued_unix = now,
@@ -112,6 +114,7 @@ IssuedSceneTicket issue_scene_ticket(const std::string_view secret, std::string 
             << "n=" << claims.nonce << '\n'
             << "c=" << hex_text(claims.capabilities) << '\n'
             << "h=" << hex_text(claims.handoff_from_region) << '\n'
+            << "k=" << hex_text(claims.crossing_id) << '\n'
             << "g=" << hex_text(claims.group_ids_csv) << '\n'
             << "x=" << claims.spawn_x << '\n'
             << "y=" << claims.spawn_y << '\n'
@@ -144,7 +147,7 @@ std::optional<SceneTicketClaims> verify_scene_ticket(const std::string_view secr
             return std::nullopt;
         }
         const auto u = parsed.find("u"), d = parsed.find("d"), r = parsed.find("r"), n = parsed.find("n");
-        const auto c = parsed.find("c"), h = parsed.find("h"), g = parsed.find("g");
+        const auto c = parsed.find("c"), h = parsed.find("h"), k = parsed.find("k"), g = parsed.find("g");
         const auto sx = parsed.find("x"), sy = parsed.find("y"), sz = parsed.find("z");
         if (u == parsed.end() || d == parsed.end() || r == parsed.end() || n == parsed.end() ||
             c == parsed.end() || h == parsed.end()) {
@@ -156,6 +159,7 @@ std::optional<SceneTicketClaims> verify_scene_ticket(const std::string_view secr
                                  .nonce = n->second,
                                  .capabilities = unhex_text(c->second),
                                  .handoff_from_region = unhex_text(h->second),
+                                 .crossing_id = k == parsed.end() ? std::string{} : unhex_text(k->second),
                                  .group_ids_csv = g == parsed.end() ? std::string{} : unhex_text(g->second),
                                  .spawn_x = sx == parsed.end() ? 128.0 : std::stod(sx->second),
                                  .spawn_y = sy == parsed.end() ? 128.0 : std::stod(sy->second),

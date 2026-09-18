@@ -1,5 +1,6 @@
 #include "opengenesis/scripting/script_runtime.hpp"
 #include "opengenesis/platform/filesystem.hpp"
+#include "opengenesis/security/crypto.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -41,6 +42,7 @@ ScriptRuntime::ScriptRuntime(std::string path) : path_(std::move(path)) {
 bool ScriptRuntime::upsert(ScriptRecord script, std::string& reason) {
     if (!safe_field(script.id, 256) || !safe_field(script.object_id, 256) ||
         !safe_field(script.owner_user_id, 256) || !safe_field(script.source_hash, 256) ||
+        script.source.size() > 64U * 1024U || script.vm_state.size() > 64U * 1024U ||
         !safe_field(script.state, 128) || script.timer_interval_ms < 0 ||
         script.timer_interval_ms > 24LL * 60LL * 60LL * 1000LL) {
         reason = "invalid-script-record";
@@ -96,6 +98,89 @@ bool ScriptRuntime::set_chat(const std::string_view script_id,
     it->second.chat_channel = channel;
     persist_locked();
     return true;
+}
+
+bool ScriptRuntime::set_program(const std::string_view script_id,
+                                std::string source,
+                                std::string& reason) {
+    if (source.empty() || source.size() > 64U * 1024U) {
+        reason = "invalid-script-size";
+        return false;
+    }
+    const auto compiled = compile_script(source, reason);
+    if (!compiled) return false;
+
+    std::scoped_lock lock(mutex_);
+    const auto it = scripts_.find(std::string{script_id});
+    if (it == scripts_.end()) {
+        reason = "script-not-found";
+        return false;
+    }
+    it->second.source_hash = security::sha256_hex(source);
+    it->second.source = std::move(source);
+    ScriptVmState initial;
+    initial.state = it->second.state;
+    it->second.vm_state = serialize_vm_state(initial);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+std::optional<ScriptVmResult> ScriptRuntime::execute_event(
+    const std::string_view script_id,
+    const std::string_view event,
+    const std::int64_t now_unix_ms,
+    std::string& reason,
+    const ScriptVmLimits& limits) {
+    std::scoped_lock lock(mutex_);
+    const auto it = scripts_.find(std::string{script_id});
+    if (it == scripts_.end()) {
+        reason = "script-not-found";
+        return std::nullopt;
+    }
+    auto& script = it->second;
+    if (!script.enabled) {
+        reason = "script-disabled";
+        return std::nullopt;
+    }
+    if (script.source.empty()) {
+        reason = "script-program-missing";
+        return std::nullopt;
+    }
+
+    const auto program = compile_script(script.source, reason);
+    if (!program) return std::nullopt;
+
+    ScriptVmState state;
+    if (script.vm_state.empty()) {
+        state.state = script.state;
+    } else {
+        const auto decoded = deserialize_vm_state(script.vm_state, reason);
+        if (!decoded) return std::nullopt;
+        state = *decoded;
+    }
+
+    auto result = execute_script_event(*program, event, state, limits);
+    if (!result.ok) {
+        reason = result.error;
+        return result;
+    }
+
+    script.state = result.state.state;
+    script.vm_state = serialize_vm_state(result.state);
+    ++script.event_count;
+    for (const auto& action : result.actions) {
+        if (action.type == ScriptActionType::set_timer) {
+            script.timer_interval_ms = action.number;
+            script.next_timer_unix_ms = action.number <= 0 ? 0 : now_unix_ms + action.number;
+        } else if (action.type == ScriptActionType::listen) {
+            script.chat_enabled = true;
+            script.chat_channel = static_cast<std::int32_t>(action.number);
+        }
+    }
+    persist_locked();
+    reason.clear();
+    return result;
 }
 
 std::vector<ScriptEvent> ScriptRuntime::due_timers(const std::int64_t now_unix_ms) {
@@ -162,13 +247,15 @@ void ScriptRuntime::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 11) continue;
+        if (fields.size() != 11 && fields.size() != 13) continue;
         try {
             ScriptRecord script{
                 .id = fields[0],
                 .object_id = fields[1],
                 .owner_user_id = fields[2],
                 .source_hash = fields[3],
+                .source = fields.size() == 13 ? security::base64_decode(fields[11], 64U * 1024U) : std::string{},
+                .vm_state = fields.size() == 13 ? security::base64_decode(fields[12], 64U * 1024U) : std::string{},
                 .state = fields[4],
                 .enabled = fields[5] == "1",
                 .timer_interval_ms = std::stoll(fields[6]),
@@ -193,7 +280,7 @@ void ScriptRuntime::persist_locked() const {
 
     std::ofstream output(temp, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write script runtime store");
-    output << "# OpenGenesisLINK script runtime v1\n";
+    output << "# OpenGenesisLINK script runtime v2\n";
 
     std::vector<ScriptRecord> rows;
     rows.reserve(scripts_.size());
@@ -208,7 +295,9 @@ void ScriptRuntime::persist_locked() const {
                << (script.enabled ? '1' : '0') << '\t'
                << script.timer_interval_ms << '\t' << script.next_timer_unix_ms << '\t'
                << script.chat_channel << '\t' << (script.chat_enabled ? '1' : '0') << '\t'
-               << script.event_count << '\n';
+               << script.event_count << '\t'
+               << security::base64_encode(script.source) << '\t'
+               << security::base64_encode(script.vm_state) << '\n';
     }
 
     output.close();

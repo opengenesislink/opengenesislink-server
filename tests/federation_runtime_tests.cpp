@@ -129,6 +129,8 @@ int main() {
                                     .object_id = "object-1",
                                     .owner_user_id = "user-1",
                                     .source_hash = "sha256:test",
+                                    .source = {},
+                                    .vm_state = {},
                                     .state = "default",
                                     .enabled = true,
                                     .timer_interval_ms = 0,
