@@ -1,5 +1,22 @@
 # Changelog
 
+## 4.0.0-dev — 2026-09-18
+
+Avatar appearance and deeper Hypergrid social/content interoperability milestone.
+
+- added persistent native Avatar Appearance records
+- added wearable slots, attachment points and monotonic appearance revisions
+- added authenticated Appearance Core APIs with Asset ownership validation
+- extended native friendship persistence with directional permissions and interoperability secret metadata
+- added Hypergrid Friends compatibility over the native FriendsStore; no separate HG friend database is used
+- added HG friend permission lookup, pending/accepted friendship mapping, deletion, incoming offers, offer validation and online-status response
+- incoming HG friendship offers now create native OpenGenesisLINK notifications
+- added deterministic legacy UUID mapping for exportable Assets
+- added Hypergrid Asset GET compatibility for full Asset XML, /data and /metadata
+- enforced the native Export permission before any Asset is exposed through Hypergrid
+- added cross-platform Avatar/HG social/content tests
+- legacy viewer/simulator data-plane handoff, HG IM, remote Inventory and full legacy Appearance transfer remain later work
+
 ## 3.5.0-dev — 2026-09-18
 
 Deep Hypergrid session and identity-verification milestone.

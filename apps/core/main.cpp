@@ -1,4 +1,5 @@
 #include "opengenesis/common/log.hpp"
+#include "opengenesis/avatar/appearance_store.hpp"
 #include "opengenesis/config/toml_config.hpp"
 #include "opengenesis/core/admin_http.hpp"
 #include "opengenesis/core/asset_store.hpp"
@@ -24,6 +25,8 @@
 #include "opengenesis/federation/session_store.hpp"
 #include "opengenesis/federation/trust_store.hpp"
 #include "opengenesis/compat/hypergrid/home_verifier.hpp"
+#include "opengenesis/compat/hypergrid/friends_adapter.hpp"
+#include "opengenesis/compat/hypergrid/asset_adapter.hpp"
 #include "opengenesis/compat/hypergrid/server.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
@@ -130,6 +133,8 @@ int main(int argc, char** argv) {
             config.get_string("storage.users", "data/users.db"));
         auto auth_sessions = std::make_shared<core::SessionStore>(
             config.get_string("storage.sessions", "data/sessions.db"), session_lifetime);
+        auto appearance = std::make_shared<opengenesis::avatar::AppearanceStore>(
+            config.get_string("storage.appearance", "data/appearance.db"));
         auto assets = std::make_shared<core::AssetStore>(
             config.get_string("storage.assets_metadata", "data/assets.db"),
             config.get_string("storage.assets_blobs", "data/assets"),
@@ -193,10 +198,16 @@ int main(int argc, char** argv) {
             regions);
         auto hypergrid_verifier =
             std::make_shared<opengenesis::compat::hypergrid::HttpHypergridHomeVerifier>();
+        auto hypergrid_friends =
+            std::make_shared<opengenesis::compat::hypergrid::HypergridFriendsAdapter>(
+                identities, friends, presences, notifications, hypergrid_sessions);
+        auto hypergrid_assets =
+            std::make_shared<opengenesis::compat::hypergrid::HypergridAssetAdapter>(assets);
         auto hypergrid_server = std::make_unique<opengenesis::compat::hypergrid::HypergridServer>(
             config.get_string("hypergrid.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(hypergrid_port_value),
-            hypergrid_service, hypergrid_sessions, hypergrid_verifier);
+            hypergrid_service, hypergrid_sessions, hypergrid_verifier, hypergrid_friends,
+            hypergrid_assets);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
@@ -211,7 +222,7 @@ int main(int argc, char** argv) {
         core::AdminHttpServer admin(
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
-            identities, auth_sessions, assets, inventory, presences, friends, messages, groups, parcels,
+            identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, federation_runtime,
             hypergrid_service, hypergrid_sessions, admin_api_key, scene_ticket_secret,
             scene_ticket_lifetime);

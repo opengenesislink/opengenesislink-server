@@ -16,6 +16,9 @@ struct FriendRelation {
     std::string user_b;
     std::string requested_by;
     std::string status{"pending"};
+    std::uint32_t flags_a_to_b{0};
+    std::uint32_t flags_b_to_a{0};
+    std::string interop_secret;
     std::int64_t created_unix{0};
     std::int64_t updated_unix{0};
 };
@@ -30,6 +33,23 @@ public:
     [[nodiscard]] std::optional<FriendRelation> accept(std::string user,
                                                        std::string other_user,
                                                        std::string& reason);
+    [[nodiscard]] std::optional<FriendRelation> upsert_pending(
+        std::string from_user,
+        std::string to_user,
+        std::uint32_t from_to_flags,
+        std::uint32_t to_from_flags,
+        std::string interop_secret,
+        std::string& reason);
+    [[nodiscard]] std::optional<FriendRelation> upsert_accepted(
+        std::string user,
+        std::string other_user,
+        std::uint32_t user_to_other_flags,
+        std::uint32_t other_to_user_flags,
+        std::string interop_secret,
+        std::string& reason);
+    [[nodiscard]] std::optional<FriendRelation> find_relation(
+        std::string_view user,
+        std::string_view other_user) const;
     bool remove(std::string_view user, std::string_view other_user);
     [[nodiscard]] bool are_friends(std::string_view user, std::string_view other_user) const;
     [[nodiscard]] std::vector<FriendRelation> list_for_user(std::string_view user) const;

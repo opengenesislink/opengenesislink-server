@@ -181,13 +181,17 @@ HypergridServer::HypergridServer(
     const std::uint16_t port,
     std::shared_ptr<HypergridService> service,
     std::shared_ptr<HypergridSessionStore> sessions,
-    std::shared_ptr<IHypergridHomeVerifier> verifier)
+    std::shared_ptr<IHypergridHomeVerifier> verifier,
+    std::shared_ptr<HypergridFriendsAdapter> friends,
+    std::shared_ptr<HypergridAssetAdapter> assets)
     : address_(std::move(address)),
       port_(port),
       service_(std::move(service)),
       sessions_(std::move(sessions)),
-      verifier_(std::move(verifier)) {
-    if (!service_ || !sessions_ || !verifier_) {
+      verifier_(std::move(verifier)),
+      friends_(std::move(friends)),
+      assets_(std::move(assets)) {
+    if (!service_ || !sessions_ || !verifier_ || !friends_ || !assets_) {
         throw std::invalid_argument("Hypergrid server dependencies required");
     }
 }
@@ -257,13 +261,29 @@ void HypergridServer::run() {
                     platform::close_socket(client);
                     continue;
                 }
+                if (request->method == "GET" && request->path.starts_with("/assets/")) {
+                    const auto legacy = assets_->handle_get(request->path);
+                    send_response(client, legacy.status, legacy.content_type, legacy.body);
+                    platform::close_socket(client);
+                    continue;
+                }
+
                 if (request->method != "POST") {
                     send_response(client, 405, "text/plain", "method not allowed");
                     platform::close_socket(client);
                     continue;
                 }
 
-                if (request->path.starts_with("/foreignagent")) {
+                if (request->path == "/hgfriends" || request->path == "/hgfriends/") {
+                    if (request->content_type.find("application/x-www-form-urlencoded") ==
+                        std::string::npos) {
+                        send_response(client, 406, "text/xml",
+                                      "<?xml version=\"1.0\"?><ServerResponse><RESULT>Failure</RESULT><Message>form encoding required</Message></ServerResponse>");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    send_response(client, 200, "text/xml", friends_->handle_form(request->body));
+                } else if (request->path.starts_with("/foreignagent")) {
                     if (request->content_type.find("application/json") == std::string::npos) {
                         send_response(client, 406, "application/json",
                                       foreign_response(false, "application/json required", remote));

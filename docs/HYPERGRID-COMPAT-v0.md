@@ -4,7 +4,7 @@ OpenGenesisLINK keeps OpenSimulator Hypergrid compatibility separate from native
 
 The compatibility layer follows the OpenSimulator Gatekeeper/UserAgent control-plane conventions without importing OpenSimulator code.
 
-Implemented through 3.5.0-dev:
+Implemented through 4.0.0-dev:
 
 - XML-RPC method parsing and struct responses
 - `link_region`
@@ -20,6 +20,12 @@ Implemented through 3.5.0-dev:
 - service-token destination binding
 - persistent verified foreign visitor records with expiry cleanup
 - Core API for Hypergrid travel/session state
+- Hypergrid Friends `/hgfriends` adapter backed by the native FriendsStore
+- HG friend permission lookup, new/delete friendship, friendship offer validation and status notifications
+- incoming HG friendship offers mapped to native notifications
+- export-safe `/assets/<uuid>`, `/data` and `/metadata` GET compatibility
+- deterministic legacy Asset UUID mapping
+- native Export permission enforcement before remote Asset delivery
 - cross-platform tests
 
 The OpenSimulator reference behavior uses XML-RPC for Gatekeeper/UserAgent calls and JSON for `/foreignagent` agent creation. OpenGenesisLINK now parses and verifies that foreign-agent identity flow, but still returns a non-success result after verification because the legacy simulator/viewer data plane is not complete. This prevents a false compatibility claim.
@@ -28,9 +34,9 @@ Still open:
 
 - legacy simulator/viewer data-plane handoff after verified `/foreignagent`
 - complete return-home routing beyond home-session verification/logout
-- HG Friends
 - HG Instant Messaging
-- remote Assets/Inventory
+- remote Inventory
+- full legacy Appearance/wearables/attachments exchange
 - legacy simulator/viewer data-plane compatibility
 
 OGL-FED Ed25519 keys are never reused as Hypergrid secrets or session tokens.

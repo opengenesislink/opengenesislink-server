@@ -1,6 +1,7 @@
 #pragma once
 
 #include "opengenesis/core/asset_store.hpp"
+#include "opengenesis/avatar/appearance_store.hpp"
 #include "opengenesis/core/audit_store.hpp"
 #include "opengenesis/core/group_store.hpp"
 #include "opengenesis/core/group_channel_store.hpp"
@@ -39,6 +40,7 @@ public:
                     std::shared_ptr<IdentityStore> identities,
                     std::shared_ptr<SessionStore> sessions,
                     std::shared_ptr<AssetStore> assets,
+                    std::shared_ptr<avatar::AppearanceStore> appearance,
                     std::shared_ptr<InventoryStore> inventory,
                     std::shared_ptr<PresenceStore> presences,
                     std::shared_ptr<FriendsStore> friends,
@@ -72,6 +74,7 @@ private:
     std::shared_ptr<IdentityStore> identities_;
     std::shared_ptr<SessionStore> sessions_;
     std::shared_ptr<AssetStore> assets_;
+    std::shared_ptr<avatar::AppearanceStore> appearance_;
     std::shared_ptr<InventoryStore> inventory_;
     std::shared_ptr<PresenceStore> presences_;
     std::shared_ptr<FriendsStore> friends_;

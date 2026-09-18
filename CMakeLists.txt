@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 3.5.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 4.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,6 +40,7 @@ add_library(opengenesis-foundation
     src/core/landmark_store.cpp
     src/core/notification_store.cpp
     src/core/group_channel_store.cpp
+    src/avatar/appearance_store.cpp
     src/core/crossing_store.cpp
     src/federation/grid_identity.cpp
     src/federation/grid_identity_store.cpp
@@ -53,6 +54,8 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/session_store.cpp
     src/compat/hypergrid/agent_circuit.cpp
     src/compat/hypergrid/home_verifier.cpp
+    src/compat/hypergrid/friends_adapter.cpp
+    src/compat/hypergrid/asset_adapter.cpp
     src/compat/hypergrid/server.cpp
     src/scripting/script_runtime.cpp
     src/storage/schema_version.cpp
@@ -116,4 +119,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-hypergrid-session-tests tests/hypergrid_session_tests.cpp)
     target_link_libraries(ogl-hypergrid-session-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME hypergrid-session COMMAND ogl-hypergrid-session-tests)
+
+    add_executable(ogl-avatar-hg-social-tests tests/avatar_hg_social_tests.cpp)
+    target_link_libraries(ogl-avatar-hg-social-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME avatar-hg-social COMMAND ogl-avatar-hg-social-tests)
 endif()
