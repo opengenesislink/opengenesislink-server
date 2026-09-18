@@ -50,6 +50,7 @@ add_library(opengenesis-foundation
     src/federation/session_store.cpp
     src/federation/runtime.cpp
     src/compat/hypergrid/xmlrpc.cpp
+    src/compat/hypergrid/http_client.cpp
     src/compat/hypergrid/service.cpp
     src/compat/hypergrid/session_store.cpp
     src/compat/hypergrid/agent_circuit.cpp
