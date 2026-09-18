@@ -55,8 +55,8 @@ std::string item_xml(const core::InventoryItem& item,
     const auto asset_id = asset
                               ? HypergridAssetAdapter::legacy_asset_uuid(asset->id)
                               : legacy_uuid_from_seed("missing-asset:" + item.asset_id);
-    const auto owner_mask = asset ? asset->permissions : core::perm_none;
-    const auto next_mask = asset ? asset->next_owner_permissions : core::perm_none;
+    const auto owner_mask = asset ? asset->permissions : 0U;
+    const auto next_mask = asset ? asset->next_owner_permissions : 0U;
     return node("AssetID", asset_id) +
            node("AssetType", "-1") +
            node("BasePermissions", std::to_string(owner_mask)) +
