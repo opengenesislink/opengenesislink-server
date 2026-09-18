@@ -75,7 +75,7 @@ add_library(OpenGenesis::Foundation ALIAS opengenesis-foundation)
 target_include_directories(opengenesis-foundation PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto)
+target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto OpenSSL::SSL)
 if(WIN32)
     target_link_libraries(opengenesis-foundation PUBLIC ws2_32)
 endif()
