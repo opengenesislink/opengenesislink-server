@@ -54,6 +54,7 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/session_store.cpp
     src/compat/hypergrid/agent_circuit.cpp
     src/compat/hypergrid/home_verifier.cpp
+    src/compat/hypergrid/http_client.cpp
     src/compat/hypergrid/friends_adapter.cpp
     src/compat/hypergrid/asset_adapter.cpp
     src/compat/hypergrid/appearance_adapter.cpp
