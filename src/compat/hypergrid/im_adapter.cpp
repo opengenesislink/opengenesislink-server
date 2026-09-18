@@ -4,6 +4,7 @@
 #include "opengenesis/security/crypto.hpp"
 
 #include <chrono>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <unordered_map>
