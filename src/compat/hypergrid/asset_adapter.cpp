@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <ctime>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
