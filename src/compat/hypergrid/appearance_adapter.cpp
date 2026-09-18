@@ -28,9 +28,27 @@ std::string xml_escape(const std::string_view value) {
     return output;
 }
 
+std::string xml_name(const std::string_view name) {
+    std::string output;
+    constexpr char digits[] = "0123456789ABCDEF";
+    for (const unsigned char c : name) {
+        const bool valid = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                           (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
+        if (valid) {
+            output.push_back(static_cast<char>(c));
+        } else {
+            output += "_x00";
+            output.push_back(digits[(c >> 4U) & 0x0FU]);
+            output.push_back(digits[c & 0x0FU]);
+            output.push_back('_');
+        }
+    }
+    return output;
+}
+
 std::string node(const std::string_view name, const std::string_view value) {
-    return "<" + std::string{name} + ">" + xml_escape(value) + "</" +
-           std::string{name} + ">";
+    const auto encoded = xml_name(name);
+    return "<" + encoded + ">" + xml_escape(value) + "</" + encoded + ">";
 }
 
 std::string response(const std::string_view body) {
@@ -107,7 +125,7 @@ std::string HypergridAppearanceAdapter::handle_form(const std::string_view body)
     if (method_it->second == "getavatar") {
         const auto appearance = appearance_->ensure(*native_user);
         std::ostringstream data;
-        data << "<result>" << node("AvatarType", "1")
+        data << "<result type=\"List\">" << node("AvatarType", "1")
              << node("Serial", std::to_string(appearance.revision))
              << node("AvatarHeight", "1.9");
 
