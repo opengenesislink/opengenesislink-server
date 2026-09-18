@@ -178,8 +178,10 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
         }
         for (const auto& item : inventory.items) {
             if (legacy_folder_uuid(item.parent_id) != requested) continue;
+            const auto asset = assets_->find(item.asset_id);
+            if (!asset || !core::has_permission(asset->permissions, core::perm_export)) continue;
             items << "<item_" << item_index << " type=\"List\">"
-                  << item_xml(item, principal_it->second, assets_->find(item.asset_id))
+                  << item_xml(item, principal_it->second, asset)
                   << "</item_" << item_index << ">";
             ++item_index;
         }
@@ -197,8 +199,12 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
         if (id_it == fields.end()) return response("");
         for (const auto& item : inventory.items) {
             if (legacy_item_uuid(item.id) != id_it->second) continue;
+            const auto asset = assets_->find(item.asset_id);
+            if (!asset || !core::has_permission(asset->permissions, core::perm_export)) {
+                return response("");
+            }
             return response("<item type=\"List\">" +
-                            item_xml(item, principal_it->second, assets_->find(item.asset_id)) +
+                            item_xml(item, principal_it->second, asset) +
                             "</item>");
         }
         return response("");
