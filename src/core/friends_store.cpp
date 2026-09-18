@@ -88,6 +88,52 @@ std::optional<FriendRelation> FriendsStore::accept(std::string user, std::string
     return it->second;
 }
 
+std::optional<FriendRelation> FriendsStore::upsert_pending(
+    std::string from_user,
+    std::string to_user,
+    const std::uint32_t from_to_flags,
+    const std::uint32_t to_from_flags,
+    std::string interop_secret,
+    std::string& reason) {
+    if (from_user.empty() || to_user.empty() || from_user == to_user ||
+        interop_secret.size() > 128 ||
+        interop_secret.find('\t') != std::string::npos ||
+        interop_secret.find('\n') != std::string::npos ||
+        interop_secret.find('\r') != std::string::npos) {
+        reason = "invalid-friend-target";
+        return std::nullopt;
+    }
+
+    const auto key = pair_key(from_user, to_user);
+    const auto now = unix_now();
+    std::scoped_lock lock(mutex_);
+    auto& relation = by_pair_[key];
+    if (!relation.id.empty() && relation.status == "accepted") {
+        reason = "already-friends";
+        return std::nullopt;
+    }
+    if (relation.id.empty()) {
+        relation.id = security::random_hex(16);
+        relation.user_a = std::min(from_user, to_user);
+        relation.user_b = std::max(from_user, to_user);
+        relation.created_unix = now;
+    }
+    relation.requested_by = from_user;
+    relation.status = "pending";
+    if (relation.user_a == from_user) {
+        relation.flags_a_to_b = from_to_flags;
+        relation.flags_b_to_a = to_from_flags;
+    } else {
+        relation.flags_a_to_b = to_from_flags;
+        relation.flags_b_to_a = from_to_flags;
+    }
+    relation.interop_secret = std::move(interop_secret);
+    relation.updated_unix = now;
+    persist_locked();
+    reason.clear();
+    return relation;
+}
+
 std::optional<FriendRelation> FriendsStore::upsert_accepted(
     std::string user,
     std::string other_user,
