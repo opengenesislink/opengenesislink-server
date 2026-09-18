@@ -2,6 +2,7 @@
 
 #include "opengenesis/compat/hypergrid/home_verifier.hpp"
 #include "opengenesis/compat/hypergrid/friends_adapter.hpp"
+#include "opengenesis/compat/hypergrid/asset_adapter.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
 #include "opengenesis/platform/socket.hpp"
@@ -21,7 +22,8 @@ public:
                     std::shared_ptr<HypergridService> service,
                     std::shared_ptr<HypergridSessionStore> sessions,
                     std::shared_ptr<IHypergridHomeVerifier> verifier,
-                    std::shared_ptr<HypergridFriendsAdapter> friends);
+                    std::shared_ptr<HypergridFriendsAdapter> friends,
+                    std::shared_ptr<HypergridAssetAdapter> assets);
     ~HypergridServer();
 
     HypergridServer(const HypergridServer&) = delete;
@@ -39,6 +41,7 @@ private:
     std::shared_ptr<HypergridSessionStore> sessions_;
     std::shared_ptr<IHypergridHomeVerifier> verifier_;
     std::shared_ptr<HypergridFriendsAdapter> friends_;
+    std::shared_ptr<HypergridAssetAdapter> assets_;
     std::atomic_bool running_{false};
     std::thread thread_;
     platform::SocketHandle listen_fd_{platform::kInvalidSocket};
