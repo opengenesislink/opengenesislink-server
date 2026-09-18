@@ -190,8 +190,13 @@ bool HypergridSessionStore::logout_home(const std::string_view user_id,
 bool HypergridSessionStore::upsert_foreign(ForeignVisitorSession session,
                                            std::string& reason) {
     const auto now = unix_now();
+    const auto optional_safe = [](const std::string& value) {
+        return value.empty() || safe_field(value);
+    };
     if (!safe_field(session.session_id, 64) || !safe_field(session.agent_id, 64) ||
-        !safe_field(session.home_uri) || !safe_field(session.service_token) ||
+        !safe_field(session.home_uri) || !optional_safe(session.asset_uri) ||
+        !optional_safe(session.inventory_uri) || !optional_safe(session.avatar_uri) ||
+        !optional_safe(session.im_uri) || !safe_field(session.service_token) ||
         !safe_field(session.destination_region, 256) ||
         session.expires_unix <= now || session.expires_unix > now + 86400) {
         reason = "invalid-foreign-session";
