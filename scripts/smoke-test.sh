@@ -321,10 +321,17 @@ time.sleep(3)
 _,_,raw=api('/v1/presence',token=at); prs=json.loads(raw)['presences']; assert len(prs)==1 and prs[0]['user_id']==auid and prs[0]['region_id']=='genesis-central'
 
 # client-driven adjacent-region handoff
-st,_,raw=api('/v1/viewer/handoff','POST',{'from_region':'genesis-central','to_region':'genesis-east'},at); assert st==200
-handoff=json.loads(raw); assert handoff['handoff_from']=='genesis-central' and handoff['region']['id']=='genesis-east'
+st,_,raw=api('/v1/viewer/handoff','POST',{'from_region':'genesis-central','to_region':'genesis-east','vx':4.0,'vy':0.0,'vz':0.0},at); assert st==200
+handoff=json.loads(raw); assert handoff['handoff_from']=='genesis-central' and handoff['region']['id']=='genesis-east' and len(handoff['crossing_id'])==32
 send(s,42,6,''); s.close(); time.sleep(1)
-e,p=join('genesis-east',handoff['scene_ticket']); ej=fields(p); assert ej['handoff_from']=='genesis-central'
+e,p=join('genesis-east',handoff['scene_ticket']); ej=fields(p); assert ej['handoff_from']=='genesis-central' and ej['crossing_id']==handoff['crossing_id']
+st,_,raw=api('/v1/viewer/handoff/complete','POST',{'crossing_id':handoff['crossing_id'],'region':'genesis-east'},at); assert st==200
+crossing=json.loads(raw); assert crossing['state']=='completed' and crossing['velocity']['x']==4.0 and crossing['attachment_state'] is not None and crossing['script_state'] is not None
+try:
+    api('/v1/viewer/handoff/complete','POST',{'crossing_id':handoff['crossing_id'],'region':'genesis-east'},at)
+    raise AssertionError('crossing replay accepted')
+except urllib.error.HTTPError as ex:
+    assert ex.code==409
 time.sleep(3)
 _,_,raw=api('/v1/presence',token=at); prs=json.loads(raw)['presences']; assert len(prs)==1 and prs[0]['region_id']=='genesis-east'
 send(e,42,3,''); e.close(); time.sleep(2)
