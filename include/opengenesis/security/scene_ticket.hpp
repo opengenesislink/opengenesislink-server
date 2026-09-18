@@ -19,6 +19,7 @@ struct SceneTicketClaims {
     std::string nonce;
     std::string capabilities;
     std::string handoff_from_region;
+    std::string crossing_id;
     std::string group_ids_csv;
     double spawn_x{128.0};
     double spawn_y{128.0};
@@ -43,7 +44,8 @@ struct IssuedSceneTicket {
     std::string group_ids_csv = {},
     double spawn_x = 128.0,
     double spawn_y = 128.0,
-    double spawn_z = 0.0);
+    double spawn_z = 0.0,
+    std::string crossing_id = {});
 
 [[nodiscard]] std::optional<SceneTicketClaims> verify_scene_ticket(
     std::string_view secret,
