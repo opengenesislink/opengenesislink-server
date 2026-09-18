@@ -20,6 +20,7 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<federation::FederationRuntime> federation_runtime,
                                  std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service,
                                  std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
+                                 std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im,
                                  std::string admin_api_key,
                                  std::string scene_ticket_secret,
                                  std::chrono::seconds scene_ticket_lifetime)
@@ -31,7 +32,7 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
       group_channels_(std::move(group_channels)), federation_runtime_(std::move(federation_runtime)),
       hypergrid_service_(std::move(hypergrid_service)), hypergrid_sessions_(std::move(hypergrid_sessions)),
-      admin_api_key_(std::move(admin_api_key)),
+      hypergrid_im_(std::move(hypergrid_im)), admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
       scene_ticket_lifetime_(scene_ticket_lifetime) {}
 
