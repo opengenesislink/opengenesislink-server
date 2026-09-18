@@ -17,6 +17,8 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<LandmarkStore> landmarks,
                                  std::shared_ptr<NotificationStore> notifications,
                                  std::shared_ptr<GroupChannelStore> group_channels,
+                                 std::shared_ptr<CrossingStore> crossings,
+                                 std::shared_ptr<scripting::ScriptRuntime> scripts,
                                  std::shared_ptr<federation::FederationRuntime> federation_runtime,
                                  std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service,
                                  std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
@@ -30,7 +32,8 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       messages_(std::move(messages)), groups_(std::move(groups)), parcels_(std::move(parcels)),
       moderation_(std::move(moderation)), audit_(std::move(audit)), estates_(std::move(estates)),
       landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
-      group_channels_(std::move(group_channels)), federation_runtime_(std::move(federation_runtime)),
+      group_channels_(std::move(group_channels)), crossings_(std::move(crossings)),
+      scripts_(std::move(scripts)), federation_runtime_(std::move(federation_runtime)),
       hypergrid_service_(std::move(hypergrid_service)), hypergrid_sessions_(std::move(hypergrid_sessions)),
       hypergrid_im_(std::move(hypergrid_im)), admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
@@ -122,7 +125,8 @@ void AdminHttpServer::run() {
                                                  const WorldNodeInfo& world,
                                                  std::string handoff_from = {},
                                                  double spawn_x = 128.0, double spawn_y = 128.0,
-                                                 double spawn_z = 0.0) {
+                                                 double spawn_z = 0.0,
+                                                 std::string crossing_id = {}) {
                     const auto group_ids = groups_->group_ids_for_user(user.id);
                     std::string groups_csv;
                     for (std::size_t i = 0; i < group_ids.size(); ++i) {
@@ -132,7 +136,8 @@ void AdminHttpServer::run() {
                     const auto ticket = security::issue_scene_ticket(
                         scene_ticket_secret_, user.id, user.display_name, region.id,
                         scene_ticket_lifetime_, std::string{security::kDefaultSceneCapabilities},
-                        std::move(handoff_from), groups_csv, spawn_x, spawn_y, spawn_z);
+                        std::move(handoff_from), groups_csv, spawn_x, spawn_y, spawn_z,
+                        std::move(crossing_id));
                     return "{\"user\":{\"id\":\"" + json_escape(user.id) +
                            "\",\"display_name\":\"" + json_escape(user.display_name) +
                            "\"},\"region\":{\"id\":\"" + json_escape(region.id) +
@@ -141,6 +146,7 @@ void AdminHttpServer::run() {
                            "\",\"scene_ticket\":\"" + ticket.token +
                            "\",\"capabilities\":\"" + json_escape(ticket.claims.capabilities) +
                            "\",\"handoff_from\":\"" + json_escape(ticket.claims.handoff_from_region) +
+                           "\",\"crossing_id\":\"" + json_escape(ticket.claims.crossing_id) +
                            "\",\"groups\":\"" + json_escape(ticket.claims.group_ids_csv) +
                            "\",\"spawn\":{\"x\":" + std::to_string(ticket.claims.spawn_x) +
                            ",\"y\":" + std::to_string(ticket.claims.spawn_y) +
@@ -175,7 +181,9 @@ void AdminHttpServer::run() {
                         << "opengenesis_federation_peers " << federation_runtime_->peers().size() << "\n"
                         << "opengenesis_foreign_sessions " << federation_runtime_->sessions().size() << "\n"
                         << "opengenesis_hypergrid_home_sessions " << hypergrid_sessions_->home_sessions().size() << "\n"
-                        << "opengenesis_hypergrid_foreign_sessions " << hypergrid_sessions_->foreign_sessions().size() << "\n";
+                        << "opengenesis_hypergrid_foreign_sessions " << hypergrid_sessions_->foreign_sessions().size() << "\n"
+                        << "opengenesis_crossings " << crossings_->list().size() << "\n"
+                        << "opengenesis_scripts " << scripts_->list().size() << "\n";
                     for (const auto& region : regions_->list()) {
                         out << "opengenesis_region_sim_fps{region=\"" << json_escape(region.id) << "\"} " << region.sim_fps << "\n"
                             << "opengenesis_region_entities{region=\"" << json_escape(region.id) << "\"} " << region.entities << "\n"
@@ -186,7 +194,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","script-vm-v1","crossing-v2"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","scripts":"GET|POST /v1/scripts","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
