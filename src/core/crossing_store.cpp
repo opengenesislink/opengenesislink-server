@@ -63,10 +63,13 @@ std::optional<RegionCrossing> CrossingStore::prepare(
     const CrossingVector position,
     const CrossingVector velocity,
     const std::int64_t expires_unix,
-    std::string& reason) {
+    std::string& reason,
+    std::string attachment_state,
+    std::string script_state) {
     const auto now = unix_now();
     if (user_id.empty() || from_region.empty() || to_region.empty() ||
-        from_region == to_region || expires_unix <= now || expires_unix > now + 300) {
+        from_region == to_region || expires_unix <= now || expires_unix > now + 300 ||
+        attachment_state.size() > 64U * 1024U || script_state.size() > 64U * 1024U) {
         reason = "invalid-crossing";
         return std::nullopt;
     }
@@ -78,6 +81,8 @@ std::optional<RegionCrossing> CrossingStore::prepare(
         .to_region = std::move(to_region),
         .position = position,
         .velocity = velocity,
+        .attachment_state = std::move(attachment_state),
+        .script_state = std::move(script_state),
         .state = CrossingState::prepared,
         .created_unix = now,
         .expires_unix = expires_unix,
@@ -178,7 +183,7 @@ void CrossingStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 14) continue;
+        if (fields.size() != 14 && fields.size() != 16) continue;
         try {
             RegionCrossing crossing{
                 .id = fields[0],
@@ -187,6 +192,12 @@ void CrossingStore::load() {
                 .to_region = fields[3],
                 .position = {std::stod(fields[4]), std::stod(fields[5]), std::stod(fields[6])},
                 .velocity = {std::stod(fields[7]), std::stod(fields[8]), std::stod(fields[9])},
+                .attachment_state = fields.size() == 16
+                                        ? security::base64_decode(fields[14], 64U * 1024U)
+                                        : std::string{},
+                .script_state = fields.size() == 16
+                                    ? security::base64_decode(fields[15], 64U * 1024U)
+                                    : std::string{},
                 .state = parse_state(fields[10]),
                 .created_unix = std::stoll(fields[11]),
                 .expires_unix = std::stoll(fields[12]),
@@ -204,7 +215,7 @@ void CrossingStore::persist_locked() const {
 
     std::ofstream output(temp, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write crossing store");
-    output << "# OpenGenesisLINK crossing store v1\n";
+    output << "# OpenGenesisLINK crossing store v2\n";
     output << std::setprecision(17);
 
     std::vector<RegionCrossing> rows;
@@ -221,7 +232,9 @@ void CrossingStore::persist_locked() const {
                << crossing.velocity.x << '\t' << crossing.velocity.y << '\t' << crossing.velocity.z << '\t'
                << crossing_state_name(crossing.state) << '\t'
                << crossing.created_unix << '\t' << crossing.expires_unix << '\t'
-               << crossing.completed_unix << '\n';
+               << crossing.completed_unix << '\t'
+               << security::base64_encode(crossing.attachment_state) << '\t'
+               << security::base64_encode(crossing.script_state) << '\n';
     }
 
     output.close();
