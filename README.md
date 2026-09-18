@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **3.5.0-dev**.
+Current development version: **4.0.0-dev**.
 
-`3.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`4.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -42,6 +42,10 @@ Current development version: **3.5.0-dev**.
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
 - OpenSimulator Hypergrid compatibility gateway with `link_region`, `get_region`, `get_server_urls`, `verify_agent`, `verify_client`, `agent_is_coming_home` and `logout_agent`
 - persistent Hypergrid home-travel and verified foreign-visitor sessions
+- Hypergrid Friends compatibility mapped directly into the native FriendsStore, including offers, validation, permissions, status and removal
+- export-safe Hypergrid Asset GET compatibility for full Asset XML, metadata and raw data with deterministic legacy UUID mapping
+- persistent native Avatar Appearance records with wearables, attachments and revision tracking
+- authenticated Avatar Appearance Core API with Asset ownership checks
 - `/foreignagent` JSON AgentCircuitData ingestion with HomeURI callback verification and destination/service-token validation; legacy simulator data-plane handoff remains explicitly incomplete
 - cross-platform socket layer for Linux/POSIX and Windows Winsock
 - Linux x86_64, Linux ARM64/aarch64 and Windows x86_64 CI targets
@@ -126,6 +130,12 @@ POST /v1/federation/sessions/logout
 GET  /v1/hypergrid/info
 POST /v1/hypergrid/travel/issue
 GET  /v1/hypergrid/sessions
+
+GET  /v1/avatar/appearance
+POST /v1/avatar/appearance/wearable
+POST /v1/avatar/appearance/wearable/remove
+POST /v1/avatar/appearance/attachment
+POST /v1/avatar/appearance/attachment/remove
 ```
 
 The admin/API and Scene listeners bind to loopback by default. Replace all development secrets before exposing anything beyond a trusted host. TLS termination, key rotation, distributed replay protection, mature admin roles and production abuse controls are not complete yet.
@@ -168,7 +178,7 @@ Run the full Linux process-level test:
 ./scripts/smoke-test.sh
 ```
 
-The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, crossing transactions, Script Runtime, rate limiting, schema versioning and Voice provider validation.
+The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, teleport/handoff policy, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends mapping, export-safe HG Assets, Avatar Appearance persistence, crossing transactions, Script Runtime, rate limiting, schema versioning and Voice provider validation.
 
 ## Documentation
 
