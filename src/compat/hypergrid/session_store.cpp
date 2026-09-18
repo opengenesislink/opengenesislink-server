@@ -133,7 +133,7 @@ bool HypergridSessionStore::verify_client(const std::string_view session_id,
     const auto it = home_.find(std::string{session_id});
     return it != home_.end() &&
            (it->second.state == TravelState::active ||
-            it->second.state == TravelState::returning) &&
+            it->second.state == TravelState::returning_home) &&
            it->second.expires_unix > unix_now() && !reported_ip.empty() &&
            it->second.client_ip == reported_ip;
 }
@@ -254,7 +254,9 @@ std::size_t HypergridSessionStore::purge_expired(const std::int64_t now_unix) {
     std::scoped_lock lock(mutex_);
     std::size_t changed = 0;
     for (auto& [_, session] : home_) {
-        if (session.state == TravelState::active && session.expires_unix <= now_unix) {
+        if ((session.state == TravelState::active ||
+             session.state == TravelState::returning_home) &&
+            session.expires_unix <= now_unix) {
             session.state = TravelState::expired;
             session.ended_unix = now_unix;
             ++changed;
@@ -340,8 +342,6 @@ void HypergridSessionStore::persist_locked() const {
                << session.im_uri << '\t' << session.service_token << '\t'
                << session.destination_region << '\t' << session.first_name << '\t'
                << session.last_name << '\t' << session.client_ip << '\t'
-               << session.asset_uri << '\t' << session.inventory_uri << '\t'
-               << session.avatar_uri << '\t' << session.im_uri << '\t'
                << (session.verified ? '1' : '0') << '\t' << session.created_unix << '\t'
                << session.expires_unix << '\n';
     }
