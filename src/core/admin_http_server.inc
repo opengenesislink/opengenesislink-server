@@ -186,7 +186,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -368,6 +368,51 @@ void AdminHttpServer::run() {
                                 std::to_string(travel.expires_unix) + "}";
                         } catch (const std::exception&) {
                             response = {.status = 400, .body = "{\"error\":\"hypergrid-travel-issue-failed\"}"};
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/hypergrid/travel/return") {
+                    auto [session, user] = auth();
+                    const auto session_id = json_string(request->body, "session_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!session_id) {
+                        response = {.status = 400, .body = "{\"error\":\"missing-hypergrid-session-id\"}"};
+                    } else if (!hypergrid_sessions_->request_return_home(
+                                   user->id, *session_id,
+                                   hypergrid_service_->config().external_name)) {
+                        response = {.status = 404, .body = "{\"error\":\"hypergrid-session-not-found\"}"};
+                    } else {
+                        const auto home = hypergrid_service_->handle(
+                            compat::hypergrid::XmlRpcCall{.method = "get_home_region",
+                                                         .fields = {{"userID",
+                                                                     compat::hypergrid::legacy_uuid_from_seed(user->id)}}});
+                        const auto uuid = home.contains("uuid") ? home.at("uuid") : std::string{};
+                        const auto name = home.contains("region_name") ? home.at("region_name") : std::string{};
+                        response.body =
+                            "{\"status\":\"returning-home\",\"session_id\":\"" +
+                            json_escape(*session_id) +
+                            "\",\"home_uri\":\"" +
+                            json_escape(hypergrid_service_->config().home_uri) +
+                            "\",\"home_region_uuid\":\"" + json_escape(uuid) +
+                            "\",\"home_region_name\":\"" + json_escape(name) + "\"}";
+                    }
+                } else if (method == "POST" && path == "/v1/hypergrid/im/send") {
+                    auto [session, user] = auth();
+                    const auto target = json_string(request->body, "target_agent_id");
+                    const auto text_value = json_string(request->body, "message");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!target || !text_value || text_value->empty()) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-hypergrid-im-fields\"}"};
+                    } else {
+                        std::string reason;
+                        if (!hypergrid_im_->send_remote(
+                                user->id, user->display_name, *target, *text_value, reason)) {
+                            response = {.status = 502,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            response.status = 201;
+                            response.body = "{\"status\":\"sent\"}";
                         }
                     }
                 } else if (method == "GET" && path == "/v1/hypergrid/sessions") {
