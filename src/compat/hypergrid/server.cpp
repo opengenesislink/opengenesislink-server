@@ -181,13 +181,15 @@ HypergridServer::HypergridServer(
     const std::uint16_t port,
     std::shared_ptr<HypergridService> service,
     std::shared_ptr<HypergridSessionStore> sessions,
-    std::shared_ptr<IHypergridHomeVerifier> verifier)
+    std::shared_ptr<IHypergridHomeVerifier> verifier,
+    std::shared_ptr<HypergridFriendsAdapter> friends)
     : address_(std::move(address)),
       port_(port),
       service_(std::move(service)),
       sessions_(std::move(sessions)),
-      verifier_(std::move(verifier)) {
-    if (!service_ || !sessions_ || !verifier_) {
+      verifier_(std::move(verifier)),
+      friends_(std::move(friends)) {
+    if (!service_ || !sessions_ || !verifier_ || !friends_) {
         throw std::invalid_argument("Hypergrid server dependencies required");
     }
 }
@@ -263,7 +265,16 @@ void HypergridServer::run() {
                     continue;
                 }
 
-                if (request->path.starts_with("/foreignagent")) {
+                if (request->path == "/hgfriends" || request->path == "/hgfriends/") {
+                    if (request->content_type.find("application/x-www-form-urlencoded") ==
+                        std::string::npos) {
+                        send_response(client, 406, "text/xml",
+                                      "<?xml version=\"1.0\"?><ServerResponse><RESULT>Failure</RESULT><Message>form encoding required</Message></ServerResponse>");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    send_response(client, 200, "text/xml", friends_->handle_form(request->body));
+                } else if (request->path.starts_with("/foreignagent")) {
                     if (request->content_type.find("application/json") == std::string::npos) {
                         send_response(client, 406, "application/json",
                                       foreign_response(false, "application/json required", remote));
