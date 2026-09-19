@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **5.0.0-dev**.
+Current development version: **5.5.0-dev**.
 
-`5.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`5.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -39,7 +39,8 @@ Current development version: **5.0.0-dev**.
 - transactional one-time Region Crossing records with position, velocity, Avatar Appearance/attachment context and persistent Script state
 - crossing IDs are signed into destination Scene Tickets and consumed exactly once through the Handoff completion flow
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
-- persistent Script Runtime with source hashing, restart-safe VM state and automatic timer execution
+- policy-controlled ScriptHost with owner Notifications and local friend-only direct messaging
+- persistent Script Runtime with source hashing, restart-safe VM state and automatic timer execution through the same ScriptHost policy layer
 - reusable runtime Rate Limiter and storage Schema Version guard
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
 - OpenSimulator Hypergrid compatibility gateway with `link_region`, `get_region`, `get_server_urls`, `verify_agent`, `verify_client`, `agent_is_coming_home` and `logout_agent`
@@ -50,7 +51,7 @@ Current development version: **5.0.0-dev**.
 - authenticated Avatar Appearance Core API with Asset ownership checks
 - Hypergrid Instant Messaging with incoming messages persisted in the native MessageStore and Notifications
 - outbound HG IM routing using the foreign visitor's advertised IMServerURI
-- read-only OpenSim XInventory compatibility for root, skeleton, folder content/items and Asset permissions
+- OpenSim XInventory compatibility with read operations always available and guarded write operations available only when explicitly enabled
 - Hypergrid AvatarService exchange for AvatarHeight, VisualParams, export-safe wearables and attachments
 - persistent foreign visitor Asset/Inventory/Avatar/IM service URLs
 - Hypergrid `get_home_region` and return-home session lifecycle
@@ -158,7 +159,7 @@ The admin/API and Scene listeners bind to loopback by default. Replace all devel
 
 ### Hypergrid compatibility endpoints
 
-When Hypergrid compatibility is enabled, the dedicated HG listener exposes legacy endpoints such as `/hgfriends`, `/assets/<uuid>`, `/xinventory`, `/avatar` and XML-RPC methods including `grid_instant_message` and `get_home_region`. XInventory is intentionally read-only in this milestone. Outbound legacy callbacks support HTTP and HTTPS; HTTPS uses certificate-chain and hostname verification through OpenSSL.
+When Hypergrid compatibility is enabled, the dedicated HG listener exposes legacy endpoints such as `/hgfriends`, `/assets/<uuid>`, `/xinventory`, `/avatar` and XML-RPC methods including `grid_instant_message` and `get_home_region`. XInventory reads are available by default. Legacy writes are an explicit opt-in through `hypergrid.inventory_write_enabled = true`; the default remains `false`. Folder/item ownership, parent relationships and Asset export/transfer rights are checked server-side. The legacy write surface should remain on a trusted network until stronger service-to-service authentication is added. Outbound legacy callbacks support HTTP and HTTPS; HTTPS uses certificate-chain and hostname verification through OpenSSL.
 
 ## Authenticated world flow
 
@@ -171,7 +172,7 @@ When Hypergrid compatibility is enabled, the dedicated HG listener exposes legac
 7. Core can issue a teleport or adjacent-Region handoff ticket after target policy checks.
 8. The destination Region validates the new ticket and creates the authenticated Presence there.
 
-`5.0.0-dev` upgrades adjacent-Region handoff to a persistent transaction. Core prepares a short-lived Crossing record, captures velocity plus Avatar Appearance/attachment context and owned Script VM state, signs the Crossing ID into the destination Scene Ticket, and exposes a one-time completion endpoint. Replays, wrong users, wrong destinations and expired Crossings are rejected. The Viewer still coordinates the final connection switch, but the runtime state transfer is no longer an unsigned client-only hint.
+`5.5.0-dev` upgrades adjacent-Region handoff to a persistent transaction. Core prepares a short-lived Crossing record, captures velocity plus Avatar Appearance/attachment context and owned Script VM state, signs the Crossing ID into the destination Scene Ticket, and exposes a one-time completion endpoint. Replays, wrong users, wrong destinations and expired Crossings are rejected. The Viewer still coordinates the final connection switch, but the runtime state transfer is no longer an unsigned client-only hint.
 
 ## Federation and Voice foundations
 
@@ -198,7 +199,7 @@ Run the full Linux process-level test:
 ./scripts/smoke-test.sh
 ```
 
-The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, transactional teleport/handoff, Script VM execution, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends, HG IM, read-only XInventory, export-safe HG Assets, AvatarService exchange, return-home lifecycle, signed one-time Crossing transactions, sandboxed Script VM budgets/state persistence, rate limiting, schema versioning and Voice provider validation.
+The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, transactional teleport/handoff, Script VM execution, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends, HG IM, guarded writable XInventory with persistent legacy IDs, export-safe HG Assets, AvatarService exchange, return-home lifecycle, signed one-time Crossing transactions, sandboxed Script VM budgets/state persistence, ScriptHost policy actions, rate limiting, schema versioning and Voice provider validation.
 
 ## Documentation
 
@@ -220,6 +221,8 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/VOICE-PROVIDER-v0.md`
 - `docs/HYPERGRID-COMPAT-v0.md`
 - `docs/SCRIPT-RUNTIME-v1.md`
+- `docs/SCRIPT-HOST-v1.md`
+- `docs/HYPERGRID-XINVENTORY-v1.md`
 - `docs/REGION-CROSSING-v1.md`
 
 ## License

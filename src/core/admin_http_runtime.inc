@@ -22,6 +22,8 @@ std::string script_actions_json(const std::vector<scripting::ScriptAction>& acti
         if (action.type == scripting::ScriptActionType::state_change) type = "state";
         else if (action.type == scripting::ScriptActionType::set_timer) type = "timer";
         else if (action.type == scripting::ScriptActionType::listen) type = "listen";
+        else if (action.type == scripting::ScriptActionType::notify_owner) type = "notify";
+        else if (action.type == scripting::ScriptActionType::direct_message) type = "message";
         out << "{\"type\":\"" << type << "\",\"value\":\"" << json_escape(action.value)
             << "\",\"number\":" << action.number << "}";
     }
@@ -48,4 +50,16 @@ std::string crossing_json(const RegionCrossing& crossing) {
            ",\"created_unix\":" + std::to_string(crossing.created_unix) +
            ",\"expires_unix\":" + std::to_string(crossing.expires_unix) +
            ",\"completed_unix\":" + std::to_string(crossing.completed_unix) + "}";
+}
+
+
+std::string string_list_json(const std::vector<std::string>& values) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) out << ',';
+        out << "\"" << json_escape(values[i]) << "\"";
+    }
+    out << ']';
+    return out.str();
 }

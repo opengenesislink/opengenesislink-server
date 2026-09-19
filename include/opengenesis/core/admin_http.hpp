@@ -20,6 +20,7 @@
 #include "opengenesis/core/world_registry.hpp"
 #include "opengenesis/core/crossing_store.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
+#include "opengenesis/scripting/script_host.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
@@ -58,6 +59,7 @@ public:
                     std::shared_ptr<GroupChannelStore> group_channels,
                     std::shared_ptr<CrossingStore> crossings,
                     std::shared_ptr<scripting::ScriptRuntime> scripts,
+                    std::shared_ptr<scripting::ScriptHost> script_host,
                     std::shared_ptr<federation::FederationRuntime> federation_runtime,
                     std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service,
                     std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
@@ -95,6 +97,7 @@ private:
     std::shared_ptr<GroupChannelStore> group_channels_;
     std::shared_ptr<CrossingStore> crossings_;
     std::shared_ptr<scripting::ScriptRuntime> scripts_;
+    std::shared_ptr<scripting::ScriptHost> script_host_;
     std::shared_ptr<federation::FederationRuntime> federation_runtime_;
     std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service_;
     std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions_;

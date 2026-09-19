@@ -22,6 +22,7 @@
 #include "opengenesis/core/world_registry.hpp"
 #include "opengenesis/core/crossing_store.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
+#include "opengenesis/scripting/script_host.hpp"
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
@@ -171,6 +172,8 @@ int main(int argc, char** argv) {
             config.get_string("storage.crossings", "data/crossings.db"));
         auto scripts = std::make_shared<opengenesis::scripting::ScriptRuntime>(
             config.get_string("storage.scripts", "data/scripts.db"));
+        auto script_host = std::make_shared<opengenesis::scripting::ScriptHost>(
+            identities, friends, messages, notifications);
         auto federation_identity = std::make_shared<opengenesis::federation::GridIdentityStore>(
             config.get_string("storage.federation_identity", "data/federation-identity.db"),
             config.get_string("federation.grid_id", "local.opengenesislink"),
@@ -220,7 +223,8 @@ int main(int argc, char** argv) {
                 identities, messages, notifications, hypergrid_sessions);
         auto hypergrid_inventory =
             std::make_shared<opengenesis::compat::hypergrid::HypergridInventoryAdapter>(
-                identities, inventory, assets);
+                identities, inventory, assets,
+                config.get_bool("hypergrid.inventory_write_enabled", false));
         auto hypergrid_appearance =
             std::make_shared<opengenesis::compat::hypergrid::HypergridAppearanceAdapter>(
                 identities, appearance, inventory, assets, hypergrid_sessions);
@@ -245,7 +249,7 @@ int main(int argc, char** argv) {
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
             identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, crossings, scripts,
-            federation_runtime,
+            script_host, federation_runtime,
             hypergrid_service, hypergrid_sessions, hypergrid_im, admin_api_key,
             scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
@@ -274,8 +278,15 @@ int main(int argc, char** argv) {
                 (void)crossings->purge_expired(now_unix);
                 const auto now_ms = now_unix * 1000;
                 for (const auto& event : scripts->due_timers(now_ms)) {
+                    const auto script = scripts->find(event.script_id);
+                    if (!script) continue;
                     std::string reason;
-                    (void)scripts->execute_event(event.script_id, event.type, now_ms, reason);
+                    const auto result =
+                        scripts->execute_event(event.script_id, event.type, now_ms, reason);
+                    if (result) {
+                        (void)script_host->apply(
+                            script->owner_user_id, script->id, result->actions);
+                    }
                 }
                 std::this_thread::sleep_for(std::chrono::seconds{1});
             }

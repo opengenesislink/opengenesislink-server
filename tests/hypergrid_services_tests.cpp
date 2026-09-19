@@ -107,6 +107,96 @@ int main() {
                 "XInventory item returned");
         require(content_xml.find("<ITEMS type=\"List\">") != std::string::npos,
                 "XInventory item list encoded");
+        const auto blocked_write = hg_inventory.handle_form(
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Blocked&Owner=" + legacy_user +
+            "&ID=11111111-1111-4111-8111-111111111111");
+        require(blocked_write.find("<RESULT>False</RESULT>") != std::string::npos,
+                "XInventory writes disabled by default");
+
+        opengenesis::compat::hypergrid::HypergridInventoryAdapter hg_inventory_write(
+            identities, inventory, assets, true);
+        const std::string legacy_folder_a =
+            "22222222-2222-4222-8222-222222222222";
+        const std::string legacy_folder_b =
+            "33333333-3333-4333-8333-333333333333";
+        const std::string legacy_write_item =
+            "44444444-4444-4444-8444-444444444444";
+        const auto legacy_asset_for_write =
+            opengenesis::compat::hypergrid::HypergridAssetAdapter::legacy_asset_uuid(
+                asset->id);
+
+        auto write_xml = hg_inventory_write.handle_form(
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Remote+Folder&Owner=" + legacy_user +
+            "&ID=" + legacy_folder_a);
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory folder add accepted");
+
+        write_xml = hg_inventory_write.handle_form(
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Destination&Owner=" + legacy_user +
+            "&ID=" + legacy_folder_b);
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory second folder add accepted");
+
+        write_xml = hg_inventory_write.handle_form(
+            "METHOD=ADDITEM&AssetID=" + legacy_asset_for_write +
+            "&AssetType=5&Name=Remote+Wearable&Owner=" + legacy_user +
+            "&ID=" + legacy_write_item +
+            "&InvType=18&Folder=" + legacy_folder_a +
+            "&CreatorId=" + legacy_user +
+            "&Description=&NextPermissions=0&CurrentPermissions=0"
+            "&BasePermissions=0&EveryOnePermissions=0&GroupPermissions=0"
+            "&GroupID=00000000-0000-0000-0000-000000000000"
+            "&GroupOwned=False&SalePrice=0&SaleType=0&Flags=0&CreationDate=0");
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory item add accepted");
+
+        write_xml = hg_inventory_write.handle_form(
+            "METHOD=MOVEITEMS&PRINCIPAL=" + legacy_user +
+            "&IDLIST[]=" + legacy_write_item +
+            "&DESTLIST[]=" + legacy_folder_b);
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory item move accepted");
+
+        write_xml = hg_inventory_write.handle_form(
+            "METHOD=UPDATEFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=2&Name=Renamed+Destination&Owner=" + legacy_user +
+            "&ID=" + legacy_folder_b);
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory folder update accepted");
+
+        {
+            auto restored_inventory = std::make_shared<opengenesis::core::InventoryStore>(
+                (root / "inventory.db").string());
+            opengenesis::compat::hypergrid::HypergridInventoryAdapter restored_adapter(
+                identities, restored_inventory, assets, true);
+            const auto restored_xml = restored_adapter.handle_form(
+                "METHOD=GETFOLDER&PRINCIPAL=" + legacy_user +
+                "&ID=" + legacy_folder_b);
+            require(restored_xml.find(legacy_folder_b) != std::string::npos &&
+                        restored_xml.find("Renamed Destination") != std::string::npos,
+                    "legacy folder alias survives Inventory restart");
+            const auto restored_item = restored_adapter.handle_form(
+                "METHOD=GETITEM&PRINCIPAL=" + legacy_user +
+                "&ID=" + legacy_write_item);
+            require(restored_item.find(legacy_write_item) != std::string::npos,
+                    "legacy item alias survives Inventory restart");
+        }
+
+        write_xml = hg_inventory_write.handle_form(
+            "METHOD=DELETEITEMS&PRINCIPAL=" + legacy_user +
+            "&ITEMS[]=" + legacy_write_item);
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory item delete accepted");
+
+        write_xml = hg_inventory_write.handle_form(
+            "METHOD=DELETEFOLDERS&PRINCIPAL=" + legacy_user +
+            "&FOLDERS[]=" + legacy_folder_a +
+            "&FOLDERS[]=" + legacy_folder_b);
+        require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
+                "XInventory folder delete accepted");
 
         opengenesis::compat::hypergrid::HypergridAppearanceAdapter hg_appearance(
             identities, appearance, inventory, assets, sessions);
@@ -246,10 +336,10 @@ int main() {
         }
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 4.5 HG services tests: PASS\n";
+        std::cout << "OpenGenesisLINK 5.5 HG services tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 4.5 test failure: "
+        std::cerr << "OpenGenesisLINK 5.5 test failure: "
                   << error.what() << '\n';
         return 1;
     }

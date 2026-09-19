@@ -1,27 +1,493 @@
 #include "opengenesis/core/inventory_store.hpp"
+
 #include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
+
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <utility>
 #include <vector>
-namespace opengenesis::core { namespace {
-std::int64_t now(){return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();}
-std::string hex(std::string_view v){constexpr char h[]="0123456789abcdef";std::string o(v.size()*2,'0');for(size_t i=0;i<v.size();++i){auto c=(unsigned char)v[i];o[i*2]=h[c>>4];o[i*2+1]=h[c&15];}return o;}
-unsigned char nib(char c){if(c>='0'&&c<='9')return static_cast<unsigned char>(c-'0');if(c>='a'&&c<='f')return static_cast<unsigned char>(c-'a'+10);if(c>='A'&&c<='F')return static_cast<unsigned char>(c-'A'+10);throw std::runtime_error("hex");}
-std::string unhex(std::string_view v){if(v.size()%2)throw std::runtime_error("hex");std::string o(v.size()/2,'\0');for(size_t i=0;i<o.size();++i)o[i]=(char)((nib(v[i*2])<<4)|nib(v[i*2+1]));return o;}
-std::vector<std::string> tabs(const std::string& l){std::vector<std::string>f;size_t s=0;for(;;){auto e=l.find('\t',s);f.push_back(l.substr(s,e==std::string::npos?e:e-s));if(e==std::string::npos)break;s=e+1;}return f;}
-bool valid_name(std::string_view v){return !v.empty()&&v.size()<=128&&std::none_of(v.begin(),v.end(),[](unsigned char c){return c<0x20||c==0x7f;});}
+
+namespace opengenesis::core {
+namespace {
+
+std::int64_t now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
 }
-InventoryStore::InventoryStore(std::string path):path_(std::move(path)){load();}
-InventoryFolder InventoryStore::ensure_root(std::string user){std::scoped_lock l(mutex_);if(auto it=root_by_user_.find(user);it!=root_by_user_.end())return folders_.at(it->second);InventoryFolder f{.id=security::random_hex(16),.owner_user_id=std::move(user),.parent_id={},.name="My Inventory",.created_unix=now()};root_by_user_[f.owner_user_id]=f.id;folders_[f.id]=f;persist_locked();return f;}
-bool InventoryStore::folder_belongs_locked(std::string_view id,std::string_view user)const{auto it=folders_.find(std::string{id});return it!=folders_.end()&&it->second.owner_user_id==user;}
-std::optional<InventoryFolder> InventoryStore::create_folder(std::string user,std::string parent,std::string name,std::string& reason){if(!valid_name(name)){reason="invalid-name";return std::nullopt;}std::scoped_lock l(mutex_);if(parent.empty()){auto it=root_by_user_.find(user);if(it==root_by_user_.end()){reason="missing-root";return std::nullopt;}parent=it->second;}if(!folder_belongs_locked(parent,user)){reason="invalid-parent";return std::nullopt;}InventoryFolder f{.id=security::random_hex(16),.owner_user_id=std::move(user),.parent_id=std::move(parent),.name=std::move(name),.created_unix=now()};folders_[f.id]=f;persist_locked();reason.clear();return f;}
-std::optional<InventoryItem> InventoryStore::create_item(std::string user,std::string parent,std::string asset,std::string name,std::string& reason){if(asset.empty()){reason="invalid-asset";return std::nullopt;}if(!valid_name(name)){reason="invalid-name";return std::nullopt;}std::scoped_lock l(mutex_);if(parent.empty()){auto it=root_by_user_.find(user);if(it==root_by_user_.end()){reason="missing-root";return std::nullopt;}parent=it->second;}if(!folder_belongs_locked(parent,user)){reason="invalid-parent";return std::nullopt;}InventoryItem item{.id=security::random_hex(16),.owner_user_id=std::move(user),.parent_id=std::move(parent),.asset_id=std::move(asset),.name=std::move(name),.created_unix=now()};items_[item.id]=item;persist_locked();reason.clear();return item;}
-UserInventory InventoryStore::list(std::string_view user){auto root=ensure_root(std::string{user});std::scoped_lock l(mutex_);UserInventory inv{.root=root, .folders={}, .items={}};for(auto&[_,f]:folders_)if(f.owner_user_id==user&&f.id!=root.id)inv.folders.push_back(f);for(auto&[_,i]:items_)if(i.owner_user_id==user)inv.items.push_back(i);std::sort(inv.folders.begin(),inv.folders.end(),[](auto&a,auto&b){return a.created_unix<b.created_unix;});std::sort(inv.items.begin(),inv.items.end(),[](auto&a,auto&b){return a.created_unix<b.created_unix;});return inv;}
-std::size_t InventoryStore::folder_count()const{std::scoped_lock l(mutex_);return folders_.size();} std::size_t InventoryStore::item_count()const{std::scoped_lock l(mutex_);return items_.size();}
-void InventoryStore::load(){std::scoped_lock l(mutex_);folders_.clear();items_.clear();root_by_user_.clear();std::ifstream in(path_);if(!in)return;std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;auto f=tabs(line);try{if(f.size()==6&&f[0]=="F"){InventoryFolder x{.id=f[1],.owner_user_id=f[2],.parent_id=f[3],.name=unhex(f[4]),.created_unix=std::stoll(f[5])};folders_[x.id]=x;if(x.parent_id.empty())root_by_user_[x.owner_user_id]=x.id;}else if(f.size()==7&&f[0]=="I"){InventoryItem x{.id=f[1],.owner_user_id=f[2],.parent_id=f[3],.asset_id=f[4],.name=unhex(f[5]),.created_unix=std::stoll(f[6])};items_[x.id]=x;}}catch(...){}}}
-void InventoryStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto tmp=p.string()+".tmp";std::ofstream out(tmp,std::ios::trunc);if(!out)throw std::runtime_error("cannot write inventory");out<<"# OpenGenesisLINK inventory v1\n";for(auto&[_,f]:folders_)out<<"F\t"<<f.id<<'\t'<<f.owner_user_id<<'\t'<<f.parent_id<<'\t'<<hex(f.name)<<'\t'<<f.created_unix<<'\n';for(auto&[_,i]:items_)out<<"I\t"<<i.id<<'\t'<<i.owner_user_id<<'\t'<<i.parent_id<<'\t'<<i.asset_id<<'\t'<<hex(i.name)<<'\t'<<i.created_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush inventory");opengenesis::platform::replace_file(tmp,p);}
+
+std::string hex(std::string_view value) {
+    constexpr char digits[] = "0123456789abcdef";
+    std::string output(value.size() * 2, '0');
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        const auto c = static_cast<unsigned char>(value[i]);
+        output[i * 2] = digits[c >> 4U];
+        output[i * 2 + 1] = digits[c & 0x0fU];
+    }
+    return output;
+}
+
+unsigned char nibble(const char c) {
+    if (c >= '0' && c <= '9') return static_cast<unsigned char>(c - '0');
+    if (c >= 'a' && c <= 'f') return static_cast<unsigned char>(c - 'a' + 10);
+    if (c >= 'A' && c <= 'F') return static_cast<unsigned char>(c - 'A' + 10);
+    throw std::runtime_error("invalid inventory hex");
+}
+
+std::string unhex(std::string_view value) {
+    if ((value.size() % 2U) != 0U) throw std::runtime_error("invalid inventory hex length");
+    std::string output(value.size() / 2U, '\0');
+    for (std::size_t i = 0; i < output.size(); ++i) {
+        output[i] = static_cast<char>((nibble(value[i * 2U]) << 4U) |
+                                      nibble(value[i * 2U + 1U]));
+    }
+    return output;
+}
+
+std::vector<std::string> tabs(const std::string& line) {
+    std::vector<std::string> fields;
+    std::size_t start = 0;
+    while (true) {
+        const auto end = line.find('\t', start);
+        fields.push_back(line.substr(start, end == std::string::npos
+                                               ? std::string::npos
+                                               : end - start));
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return fields;
+}
+
+bool valid_name(const std::string_view value) {
+    return !value.empty() && value.size() <= 128U &&
+           std::none_of(value.begin(), value.end(), [](const unsigned char c) {
+               return c < 0x20U || c == 0x7fU;
+           });
+}
+
+bool valid_legacy_id(const std::string_view value) {
+    if (value.empty()) return true;
+    if (value.size() != 36U) return false;
+    for (std::size_t i = 0; i < value.size(); ++i) {
+        if (i == 8U || i == 13U || i == 18U || i == 23U) {
+            if (value[i] != '-') return false;
+        } else {
+            const auto c = static_cast<unsigned char>(value[i]);
+            if (std::isxdigit(c) == 0) return false;
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+InventoryStore::InventoryStore(std::string path) : path_(std::move(path)) {
+    load();
+}
+
+InventoryFolder InventoryStore::ensure_root(std::string user_id) {
+    std::scoped_lock lock(mutex_);
+    if (const auto it = root_by_user_.find(user_id); it != root_by_user_.end()) {
+        return folders_.at(it->second);
+    }
+
+    InventoryFolder folder{
+        .id = security::random_hex(16),
+        .owner_user_id = std::move(user_id),
+        .parent_id = {},
+        .name = "My Inventory",
+        .legacy_id = {},
+        .created_unix = now()};
+    root_by_user_[folder.owner_user_id] = folder.id;
+    folders_[folder.id] = folder;
+    persist_locked();
+    return folder;
+}
+
+bool InventoryStore::folder_belongs_locked(const std::string_view id,
+                                           const std::string_view user) const {
+    const auto it = folders_.find(std::string{id});
+    return it != folders_.end() && it->second.owner_user_id == user;
+}
+
+bool InventoryStore::folder_is_descendant_locked(const std::string_view candidate_parent,
+                                                 const std::string_view folder_id) const {
+    std::string current{candidate_parent};
+    for (std::size_t depth = 0; depth < folders_.size() + 1U && !current.empty(); ++depth) {
+        if (current == folder_id) return true;
+        const auto it = folders_.find(current);
+        if (it == folders_.end()) return false;
+        current = it->second.parent_id;
+    }
+    return false;
+}
+
+void InventoryStore::collect_descendants_locked(const std::string_view folder_id,
+                                                std::vector<std::string>& output) const {
+    for (const auto& [id, folder] : folders_) {
+        if (folder.parent_id != folder_id) continue;
+        output.push_back(id);
+        collect_descendants_locked(id, output);
+    }
+}
+
+std::optional<InventoryFolder> InventoryStore::create_folder(
+    std::string user_id,
+    std::string parent_id,
+    std::string name,
+    std::string& reason,
+    std::string legacy_id) {
+    if (!valid_name(name) || !valid_legacy_id(legacy_id)) {
+        reason = "invalid-folder";
+        return std::nullopt;
+    }
+
+    std::scoped_lock lock(mutex_);
+    if (parent_id.empty()) {
+        const auto root = root_by_user_.find(user_id);
+        if (root == root_by_user_.end()) {
+            reason = "missing-root";
+            return std::nullopt;
+        }
+        parent_id = root->second;
+    }
+    if (!folder_belongs_locked(parent_id, user_id)) {
+        reason = "invalid-parent";
+        return std::nullopt;
+    }
+    if (!legacy_id.empty()) {
+        for (const auto& [_, folder] : folders_) {
+            if (folder.owner_user_id == user_id && folder.legacy_id == legacy_id) {
+                reason = "legacy-folder-exists";
+                return std::nullopt;
+            }
+        }
+    }
+
+    InventoryFolder folder{
+        .id = security::random_hex(16),
+        .owner_user_id = std::move(user_id),
+        .parent_id = std::move(parent_id),
+        .name = std::move(name),
+        .legacy_id = std::move(legacy_id),
+        .created_unix = now()};
+    folders_[folder.id] = folder;
+    persist_locked();
+    reason.clear();
+    return folder;
+}
+
+std::optional<InventoryItem> InventoryStore::create_item(
+    std::string user_id,
+    std::string parent_id,
+    std::string asset_id,
+    std::string name,
+    std::string& reason,
+    std::string legacy_id) {
+    if (asset_id.empty() || !valid_name(name) || !valid_legacy_id(legacy_id)) {
+        reason = "invalid-item";
+        return std::nullopt;
+    }
+
+    std::scoped_lock lock(mutex_);
+    if (parent_id.empty()) {
+        const auto root = root_by_user_.find(user_id);
+        if (root == root_by_user_.end()) {
+            reason = "missing-root";
+            return std::nullopt;
+        }
+        parent_id = root->second;
+    }
+    if (!folder_belongs_locked(parent_id, user_id)) {
+        reason = "invalid-parent";
+        return std::nullopt;
+    }
+    if (!legacy_id.empty()) {
+        for (const auto& [_, item] : items_) {
+            if (item.owner_user_id == user_id && item.legacy_id == legacy_id) {
+                reason = "legacy-item-exists";
+                return std::nullopt;
+            }
+        }
+    }
+
+    InventoryItem item{
+        .id = security::random_hex(16),
+        .owner_user_id = std::move(user_id),
+        .parent_id = std::move(parent_id),
+        .asset_id = std::move(asset_id),
+        .name = std::move(name),
+        .legacy_id = std::move(legacy_id),
+        .created_unix = now()};
+    items_[item.id] = item;
+    persist_locked();
+    reason.clear();
+    return item;
+}
+
+bool InventoryStore::update_folder(const std::string_view user_id,
+                                   const std::string_view folder_id,
+                                   std::string parent_id,
+                                   std::string name,
+                                   std::string& reason) {
+    if (!valid_name(name)) {
+        reason = "invalid-name";
+        return false;
+    }
+
+    std::scoped_lock lock(mutex_);
+    const auto it = folders_.find(std::string{folder_id});
+    if (it == folders_.end() || it->second.owner_user_id != user_id ||
+        it->second.parent_id.empty()) {
+        reason = "folder-not-found-or-root";
+        return false;
+    }
+    if (!folder_belongs_locked(parent_id, user_id) ||
+        parent_id == folder_id ||
+        folder_is_descendant_locked(parent_id, folder_id)) {
+        reason = "invalid-parent";
+        return false;
+    }
+    it->second.parent_id = std::move(parent_id);
+    it->second.name = std::move(name);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool InventoryStore::move_folder(const std::string_view user_id,
+                                 const std::string_view folder_id,
+                                 std::string parent_id,
+                                 std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = folders_.find(std::string{folder_id});
+    if (it == folders_.end() || it->second.owner_user_id != user_id ||
+        it->second.parent_id.empty()) {
+        reason = "folder-not-found-or-root";
+        return false;
+    }
+    if (!folder_belongs_locked(parent_id, user_id) ||
+        parent_id == folder_id ||
+        folder_is_descendant_locked(parent_id, folder_id)) {
+        reason = "invalid-parent";
+        return false;
+    }
+    it->second.parent_id = std::move(parent_id);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool InventoryStore::delete_folder(const std::string_view user_id,
+                                   const std::string_view folder_id,
+                                   const bool delete_self,
+                                   std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = folders_.find(std::string{folder_id});
+    if (it == folders_.end() || it->second.owner_user_id != user_id ||
+        it->second.parent_id.empty()) {
+        reason = "folder-not-found-or-root";
+        return false;
+    }
+
+    std::vector<std::string> folders_to_remove;
+    collect_descendants_locked(folder_id, folders_to_remove);
+    if (delete_self) folders_to_remove.push_back(std::string{folder_id});
+
+    for (auto item = items_.begin(); item != items_.end();) {
+        const bool in_target = item->second.owner_user_id == user_id &&
+            (item->second.parent_id == folder_id ||
+             std::find(folders_to_remove.begin(), folders_to_remove.end(),
+                       item->second.parent_id) != folders_to_remove.end());
+        if (in_target) item = items_.erase(item);
+        else ++item;
+    }
+
+    for (const auto& id : folders_to_remove) folders_.erase(id);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool InventoryStore::update_item(const std::string_view user_id,
+                                 const std::string_view item_id,
+                                 std::string parent_id,
+                                 std::string asset_id,
+                                 std::string name,
+                                 std::string& reason) {
+    if (asset_id.empty() || !valid_name(name)) {
+        reason = "invalid-item";
+        return false;
+    }
+    std::scoped_lock lock(mutex_);
+    const auto it = items_.find(std::string{item_id});
+    if (it == items_.end() || it->second.owner_user_id != user_id) {
+        reason = "item-not-found";
+        return false;
+    }
+    if (!folder_belongs_locked(parent_id, user_id)) {
+        reason = "invalid-parent";
+        return false;
+    }
+    it->second.parent_id = std::move(parent_id);
+    it->second.asset_id = std::move(asset_id);
+    it->second.name = std::move(name);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool InventoryStore::move_item(const std::string_view user_id,
+                               const std::string_view item_id,
+                               std::string parent_id,
+                               std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = items_.find(std::string{item_id});
+    if (it == items_.end() || it->second.owner_user_id != user_id) {
+        reason = "item-not-found";
+        return false;
+    }
+    if (!folder_belongs_locked(parent_id, user_id)) {
+        reason = "invalid-parent";
+        return false;
+    }
+    it->second.parent_id = std::move(parent_id);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool InventoryStore::delete_item(const std::string_view user_id,
+                                 const std::string_view item_id,
+                                 std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = items_.find(std::string{item_id});
+    if (it == items_.end() || it->second.owner_user_id != user_id) {
+        reason = "item-not-found";
+        return false;
+    }
+    items_.erase(it);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+std::optional<InventoryFolder> InventoryStore::find_folder(
+    const std::string_view user_id,
+    const std::string_view folder_id) const {
+    std::scoped_lock lock(mutex_);
+    const auto it = folders_.find(std::string{folder_id});
+    if (it == folders_.end() || it->second.owner_user_id != user_id) return std::nullopt;
+    return it->second;
+}
+
+std::optional<InventoryItem> InventoryStore::find_item(
+    const std::string_view user_id,
+    const std::string_view item_id) const {
+    std::scoped_lock lock(mutex_);
+    const auto it = items_.find(std::string{item_id});
+    if (it == items_.end() || it->second.owner_user_id != user_id) return std::nullopt;
+    return it->second;
+}
+
+UserInventory InventoryStore::list(const std::string_view user_id) {
+    const auto root = ensure_root(std::string{user_id});
+    std::scoped_lock lock(mutex_);
+    UserInventory inventory{.root = root, .folders = {}, .items = {}};
+    for (const auto& [_, folder] : folders_) {
+        if (folder.owner_user_id == user_id && folder.id != root.id) {
+            inventory.folders.push_back(folder);
+        }
+    }
+    for (const auto& [_, item] : items_) {
+        if (item.owner_user_id == user_id) inventory.items.push_back(item);
+    }
+    std::sort(inventory.folders.begin(), inventory.folders.end(),
+              [](const auto& a, const auto& b) { return a.created_unix < b.created_unix; });
+    std::sort(inventory.items.begin(), inventory.items.end(),
+              [](const auto& a, const auto& b) { return a.created_unix < b.created_unix; });
+    return inventory;
+}
+
+std::size_t InventoryStore::folder_count() const {
+    std::scoped_lock lock(mutex_);
+    return folders_.size();
+}
+
+std::size_t InventoryStore::item_count() const {
+    std::scoped_lock lock(mutex_);
+    return items_.size();
+}
+
+void InventoryStore::load() {
+    std::scoped_lock lock(mutex_);
+    folders_.clear();
+    items_.clear();
+    root_by_user_.clear();
+
+    std::ifstream input(path_);
+    if (!input) return;
+
+    std::string line;
+    while (std::getline(input, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        const auto fields = tabs(line);
+        try {
+            if ((fields.size() == 6U || fields.size() == 7U) && fields[0] == "F") {
+                InventoryFolder folder{
+                    .id = fields[1],
+                    .owner_user_id = fields[2],
+                    .parent_id = fields[3],
+                    .name = unhex(fields[4]),
+                    .legacy_id = fields.size() == 7U ? fields[6] : std::string{},
+                    .created_unix = std::stoll(fields[5])};
+                folders_[folder.id] = folder;
+                if (folder.parent_id.empty()) root_by_user_[folder.owner_user_id] = folder.id;
+            } else if ((fields.size() == 7U || fields.size() == 8U) && fields[0] == "I") {
+                InventoryItem item{
+                    .id = fields[1],
+                    .owner_user_id = fields[2],
+                    .parent_id = fields[3],
+                    .asset_id = fields[4],
+                    .name = unhex(fields[5]),
+                    .legacy_id = fields.size() == 8U ? fields[7] : std::string{},
+                    .created_unix = std::stoll(fields[6])};
+                items_[item.id] = item;
+            }
+        } catch (...) {
+        }
+    }
+}
+
+void InventoryStore::persist_locked() const {
+    const std::filesystem::path path(path_);
+    if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path());
+    const auto temp = path.string() + ".tmp";
+
+    std::ofstream output(temp, std::ios::trunc);
+    if (!output) throw std::runtime_error("cannot write inventory");
+    output << "# OpenGenesisLINK inventory v2\n";
+
+    for (const auto& [_, folder] : folders_) {
+        output << "F\t" << folder.id << '\t' << folder.owner_user_id << '\t'
+               << folder.parent_id << '\t' << hex(folder.name) << '\t'
+               << folder.created_unix << '\t' << folder.legacy_id << '\n';
+    }
+    for (const auto& [_, item] : items_) {
+        output << "I\t" << item.id << '\t' << item.owner_user_id << '\t'
+               << item.parent_id << '\t' << item.asset_id << '\t'
+               << hex(item.name) << '\t' << item.created_unix << '\t'
+               << item.legacy_id << '\n';
+    }
+
+    output.close();
+    if (!output) throw std::runtime_error("cannot flush inventory");
+    platform::replace_file(temp, path);
+}
+
 } // namespace opengenesis::core

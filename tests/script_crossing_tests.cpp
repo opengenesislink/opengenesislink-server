@@ -1,4 +1,9 @@
 #include "opengenesis/core/crossing_store.hpp"
+#include "opengenesis/core/friends_store.hpp"
+#include "opengenesis/core/identity_store.hpp"
+#include "opengenesis/core/message_store.hpp"
+#include "opengenesis/core/notification_store.hpp"
+#include "opengenesis/scripting/script_host.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
 #include "opengenesis/scripting/script_vm.hpp"
 #include "opengenesis/security/scene_ticket.hpp"
@@ -6,6 +11,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -77,6 +83,49 @@ int main() {
             opengenesis::scripting::deserialize_vm_state(state_encoded, reason);
         require(state_decoded && state_decoded->variables.at("count") == "3",
                 "VM state roundtrip");
+        auto identities = std::make_shared<opengenesis::core::IdentityStore>(
+            (root / "users.db").string());
+        const auto alice = identities->register_user(
+            "script.alice", "Script Alice", "correct horse battery staple", reason);
+        const auto bob = identities->register_user(
+            "script.bob", "Script Bob", "correct horse battery staple", reason);
+        require(alice && bob, "Script host identities created");
+
+        auto friends = std::make_shared<opengenesis::core::FriendsStore>(
+            (root / "friends.db").string());
+        require(friends->request(alice->id, bob->id, reason).has_value(),
+                "Script host friendship requested");
+        require(friends->accept(bob->id, alice->id, reason).has_value(),
+                "Script host friendship accepted");
+
+        auto messages = std::make_shared<opengenesis::core::MessageStore>(
+            (root / "messages.db").string());
+        auto notifications = std::make_shared<opengenesis::core::NotificationStore>(
+            (root / "notifications.db").string());
+        opengenesis::scripting::ScriptHost host(
+            identities, friends, messages, notifications);
+
+        const std::string host_program =
+            "event touch\n"
+            "notify Script owner notified\n"
+            "message " + bob->id + " Hello from script\n"
+            "end\n";
+        const auto host_compiled =
+            opengenesis::scripting::compile_script(host_program, reason);
+        require(host_compiled.has_value(), "Script host program compiles");
+        const auto host_vm = opengenesis::scripting::execute_script_event(
+            *host_compiled, "touch", {});
+        require(host_vm.ok && host_vm.actions.size() == 2,
+                "Script host actions emitted");
+        const auto host_result = host.apply(
+            alice->id, "host-script", host_vm.actions);
+        require(host_result.applied == 2 && host_result.errors.empty(),
+                "Script host actions applied");
+        require(messages->count() == 1 && messages->unread_count(bob->id) == 1,
+                "Script friend message persisted");
+        require(notifications->unread_count(alice->id) == 1 &&
+                    notifications->unread_count(bob->id) == 1,
+                "Script notifications persisted");
 
         const auto scripts_path = (root / "scripts.db").string();
         {
@@ -155,10 +204,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 5.0 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 5.5 Script/Crossing runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 5.0 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 5.5 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }

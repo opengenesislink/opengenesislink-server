@@ -1,5 +1,24 @@
 # Changelog
 
+## 5.5.0-dev — 2026-09-19
+
+Script host-policy and guarded writable Hypergrid Inventory milestone.
+
+- added policy-controlled ScriptHost execution after VM events and timer events
+- added `notify` Script opcode for native owner Notifications
+- added `message <user-id> <text>` Script opcode for local friend-only direct messages
+- Script VM still has no direct filesystem, socket, database or unrestricted service access
+- added native Inventory folder/item update, move and delete operations
+- upgraded Inventory persistence to v2 with stable legacy folder/item UUID aliases while retaining v1 loading
+- added opt-in writable OpenSim XInventory compatibility for folders and items
+- added `ADDFOLDER`, `UPDATEFOLDER`, `MOVEFOLDER`, `DELETEFOLDERS`, `PURGEFOLDER`, `ADDITEM`, `UPDATEITEM`, `MOVEITEMS` and `DELETEITEMS`
+- XInventory write mode remains disabled by default
+- write operations enforce local ownership, folder-parent integrity and Asset export/transfer permissions
+- added restart tests for legacy inventory UUID stability
+- added ScriptHost tests for Notifications and friend-only messaging
+- added API capability discovery for ScriptHost and XInventory v2
+- stronger service-to-service authentication for legacy XInventory writes remains production hardening work
+
 ## 5.0.0-dev — 2026-09-18
 
 Sandboxed scripting and transactional Region Crossing milestone.
