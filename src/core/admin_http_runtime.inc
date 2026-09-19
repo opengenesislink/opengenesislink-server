@@ -31,6 +31,10 @@ std::string script_actions_json(const std::vector<scripting::ScriptAction>& acti
         else if (action.type == scripting::ScriptActionType::world_chat_say) type = "say";
         else if (action.type == scripting::ScriptActionType::world_chat_whisper) type = "whisper";
         else if (action.type == scripting::ScriptActionType::world_chat_shout) type = "shout";
+        else if (action.type == scripting::ScriptActionType::world_query_object) type = "object_info";
+        else if (action.type == scripting::ScriptActionType::world_query_region) type = "region_info";
+        else if (action.type == scripting::ScriptActionType::world_query_terrain) type = "terrain_height";
+        else if (action.type == scripting::ScriptActionType::world_query_nearby) type = "nearby_avatars";
         out << "{\"type\":\"" << type << "\",\"value\":\"" << json_escape(action.value)
             << "\",\"number\":" << action.number << "}";
     }
