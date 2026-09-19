@@ -46,6 +46,7 @@ add_library(opengenesis-foundation
     src/core/parcel_store.cpp
     src/core/moderation_store.cpp
     src/core/audit_store.cpp
+    src/core/admin_role_store.cpp
     src/core/estate_store.cpp
     src/core/landmark_store.cpp
     src/core/notification_store.cpp
