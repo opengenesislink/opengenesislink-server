@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <ctime>
