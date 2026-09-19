@@ -38,6 +38,7 @@ notifications = "data/notifications.db"
 group_channels = "data/group_channels.db"
 crossings = "data/crossings.db"
 scripts = "data/scripts.db"
+script_world_actions = "data/script-world-actions.db"
 federation_identity = "data/federation-identity.db"
 federation_trust = "data/federation-trust.db"
 federation_sessions = "data/federation-sessions.db"
@@ -48,6 +49,9 @@ max_bytes = 1048576
 
 [scripting]
 max_pending_world_actions = 4096
+world_action_max_attempts = 5
+world_action_lease_ms = 2000
+world_action_ttl_ms = 60000
 
 [federation]
 grid_id = "local.opengenesislink"
