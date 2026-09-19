@@ -641,6 +641,10 @@ int main(int argc, char** argv) {
                                         accepted = object_crossings->record_cleanup(
                                             crossing_id, region_id, result_reason);
                                         break;
+                                    case core::ObjectCrossingCommandType::restore_source:
+                                        accepted = object_crossings->record_restore(
+                                            crossing_id, region_id, result_reason);
+                                        break;
                                 }
                             } else {
                                 accepted = object_crossings->reject_command(
