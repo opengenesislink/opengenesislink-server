@@ -41,11 +41,14 @@
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/security/crypto.hpp"
+#include "opengenesis/storage/database.hpp"
+#include "opengenesis/storage/migrations.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -181,21 +184,166 @@ int main(int argc, char** argv) {
             config.get_int("identity.session_lifetime_seconds", 86400)};
         const auto scene_ticket_lifetime = std::chrono::seconds{
             config.get_int("identity.scene_ticket_lifetime_seconds", 60)};
-        const auto scene_ticket_secret = config.get_string(
-            "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
-        const auto admin_api_key = config.get_string(
-            "security.admin_api_key", "development-only-change-this-admin-api-key");
-        if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
-        if (admin_api_key.size() < 24) throw std::runtime_error("security.admin_api_key must contain at least 24 bytes");
+        const auto production_mode =
+            config.get_bool("security.production_mode", false);
+        const auto secret_from_env =
+            [&](const std::string& value_key,
+                const std::string& env_key,
+                const std::string& fallback) {
+                const auto env_name =
+                    config.get_string(env_key, "");
+                if (!env_name.empty()) {
+                    if (const auto* value = std::getenv(env_name.c_str());
+                        value && *value != '\0') {
+                        return std::string{value};
+                    }
+                }
+                return config.get_string(value_key, fallback);
+            };
+        const auto scene_ticket_secret = secret_from_env(
+            "security.scene_ticket_secret",
+            "security.scene_ticket_secret_env",
+            "development-only-change-this-scene-ticket-secret");
+        const auto admin_api_key = secret_from_env(
+            "security.admin_api_key",
+            "security.admin_api_key_env",
+            "development-only-change-this-admin-api-key");
+        if (scene_ticket_secret.size() < 32) {
+            throw std::runtime_error(
+                "security.scene_ticket_secret must contain at least 32 bytes");
+        }
+        if (admin_api_key.size() < 24) {
+            throw std::runtime_error(
+                "security.admin_api_key must contain at least 24 bytes");
+        }
+        if (production_mode &&
+            (scene_ticket_secret ==
+                 "development-only-change-this-scene-ticket-secret" ||
+             admin_api_key ==
+                 "development-only-change-this-admin-api-key")) {
+            throw std::runtime_error(
+                "production_mode refuses development security secrets");
+        }
 
-        auto worlds = std::make_shared<core::WorldRegistry>(
-            config.get_string("storage.worlds", "data/worlds.db"));
-        auto regions = std::make_shared<core::RegionRegistry>(
-            config.get_string("storage.regions", "data/regions.db"));
-        auto identities = std::make_shared<core::IdentityStore>(
-            config.get_string("storage.users", "data/users.db"));
-        auto auth_sessions = std::make_shared<core::SessionStore>(
-            config.get_string("storage.sessions", "data/sessions.db"), session_lifetime);
+        std::shared_ptr<opengenesis::storage::DatabasePool> database;
+        const auto database_backend =
+            config.get_string("database.backend", "file");
+        if (database_backend != "file") {
+            const auto parsed_backend =
+                opengenesis::storage::parse_database_backend(
+                    database_backend);
+            if (!parsed_backend) {
+                throw std::runtime_error(
+                    "database.backend must be file, sqlite, postgresql or mariadb");
+            }
+            const auto pool_size =
+                config.get_int("database.pool_size", 4);
+            const auto connect_timeout =
+                config.get_int(
+                    "database.connect_timeout_seconds", 5);
+            if (pool_size < 1 || pool_size > 64 ||
+                connect_timeout < 1 || connect_timeout > 120) {
+                throw std::runtime_error(
+                    "invalid database pool or timeout configuration");
+            }
+
+            std::string database_password =
+                config.get_string("database.password", "");
+            const auto password_env =
+                config.get_string(
+                    "database.password_env",
+                    "OGL_DATABASE_PASSWORD");
+            if (!password_env.empty()) {
+                if (const auto* value =
+                        std::getenv(password_env.c_str());
+                    value && *value != '\0') {
+                    database_password = value;
+                }
+            }
+
+            opengenesis::storage::DatabaseConfig database_config{
+                .backend = *parsed_backend,
+                .sqlite_path =
+                    config.get_string(
+                        "database.sqlite_path",
+                        "data/opengenesis.db"),
+                .host =
+                    config.get_string(
+                        "database.host", "127.0.0.1"),
+                .port = static_cast<std::uint16_t>(
+                    std::max<std::int64_t>(
+                        0, config.get_int("database.port", 0))),
+                .database =
+                    config.get_string(
+                        "database.name", "opengenesislink"),
+                .user =
+                    config.get_string("database.user", ""),
+                .password = std::move(database_password),
+                .ssl_mode =
+                    config.get_string(
+                        "database.ssl_mode", "preferred"),
+                .pool_size =
+                    static_cast<std::size_t>(pool_size),
+                .connect_timeout_seconds =
+                    static_cast<std::uint32_t>(
+                        connect_timeout)};
+
+            if (database_config.backend !=
+                    opengenesis::storage::DatabaseBackend::sqlite &&
+                production_mode &&
+                database_config.password.empty()) {
+                throw std::runtime_error(
+                    "production SQL backend requires a database password");
+            }
+            if (production_mode &&
+                database_config.backend !=
+                    opengenesis::storage::DatabaseBackend::sqlite &&
+                database_config.ssl_mode == "disable") {
+                throw std::runtime_error(
+                    "production SQL backend refuses database.ssl_mode=disable");
+            }
+
+            database =
+                opengenesis::storage::DatabasePool::connect(
+                    std::move(database_config));
+            opengenesis::storage::MigrationRunner migrations(
+                database);
+            migrations.migrate();
+            if (!database->ping()) {
+                throw std::runtime_error(
+                    "database health check failed after migration");
+            }
+            opengenesis::common::log(
+                LogLevel::info,
+                "core.storage",
+                "SQL storage ready: " +
+                    database->backend_name() +
+                    " schema=" +
+                    std::to_string(migrations.current_version()));
+        }
+
+        auto worlds = database
+            ? std::make_shared<core::WorldRegistry>(database)
+            : std::make_shared<core::WorldRegistry>(
+                  config.get_string(
+                      "storage.worlds", "data/worlds.db"));
+        auto regions = database
+            ? std::make_shared<core::RegionRegistry>(database)
+            : std::make_shared<core::RegionRegistry>(
+                  config.get_string(
+                      "storage.regions", "data/regions.db"));
+        auto identities = database
+            ? std::make_shared<core::IdentityStore>(database)
+            : std::make_shared<core::IdentityStore>(
+                  config.get_string(
+                      "storage.users", "data/users.db"));
+        auto auth_sessions = database
+            ? std::make_shared<core::SessionStore>(
+                  database, session_lifetime)
+            : std::make_shared<core::SessionStore>(
+                  config.get_string(
+                      "storage.sessions", "data/sessions.db"),
+                  session_lifetime);
         auto appearance = std::make_shared<opengenesis::avatar::AppearanceStore>(
             config.get_string("storage.appearance", "data/appearance.db"));
         auto assets = std::make_shared<core::AssetStore>(
@@ -213,10 +361,16 @@ int main(int argc, char** argv) {
             config.get_string("storage.groups", "data/groups.db"));
         auto parcels = std::make_shared<core::ParcelStore>(
             config.get_string("storage.parcels", "data/parcels.db"));
-        auto moderation = std::make_shared<core::ModerationStore>(
-            config.get_string("storage.moderation", "data/moderation.db"));
-        auto audit = std::make_shared<core::AuditStore>(
-            config.get_string("storage.audit", "data/audit.log"));
+        auto moderation = database
+            ? std::make_shared<core::ModerationStore>(database)
+            : std::make_shared<core::ModerationStore>(
+                  config.get_string(
+                      "storage.moderation", "data/moderation.db"));
+        auto audit = database
+            ? std::make_shared<core::AuditStore>(database)
+            : std::make_shared<core::AuditStore>(
+                  config.get_string(
+                      "storage.audit", "data/audit.log"));
         auto estates = std::make_shared<core::EstateStore>(
             config.get_string("storage.estates", "data/estates.db"));
         auto landmarks = std::make_shared<core::LandmarkStore>(
@@ -312,11 +466,15 @@ int main(int argc, char** argv) {
             hypergrid_assets, hypergrid_im, hypergrid_inventory, hypergrid_appearance);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
-        if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
+        if (!production_mode &&
+            scene_ticket_secret ==
+                "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "core.security",
                                      "Using development scene-ticket secret; replace it before network exposure");
         }
-        if (admin_api_key == "development-only-change-this-admin-api-key") {
+        if (!production_mode &&
+            admin_api_key ==
+                "development-only-change-this-admin-api-key") {
             opengenesis::common::log(LogLevel::warning, "core.security",
                                      "Using development admin API key; replace it before network exposure");
         }
