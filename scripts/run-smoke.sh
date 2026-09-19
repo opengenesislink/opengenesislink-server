@@ -17,6 +17,8 @@ path=Path("scripts/smoke-test.sh")
 text=path.read_text()
 text=text.replace("6.0.0-dev", dev_version)
 text=text.replace("6.0.0", numeric_version)
+text=text.replace("'region-handoff-v1'", "'region-handoff-v2'")
+text=text.replace("'crossing-v2'", "'crossing-v3','crossing-reservation-v1'")
 
 old_handoff="""st,_,raw=api('/v1/viewer/handoff','POST',{'from_region':'genesis-central','to_region':'genesis-east','vx':4.0,'vy':0.0,'vz':0.0},at); assert st==200"""
 new_handoff="""st,_,raw=api('/v1/viewer/handoff','POST',{'from_region':'genesis-central','to_region':'genesis-east','vx':4.0,'vy':0.0,'vz':0.0,'rx':0.0,'ry':0.0,'rz':90.0,'avx':0.0,'avy':0.0,'avz':1.25},at); assert st==200"""
