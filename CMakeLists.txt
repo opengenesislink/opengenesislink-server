@@ -68,6 +68,7 @@ add_library(opengenesis-foundation
     src/scripting/ogl_engine.cpp
     src/scripting/lsl_engine.cpp
     src/scripting/lsl_catalog.cpp
+    src/scripting/lsl_builtins.cpp
     src/scripting/script_host.cpp
     src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
