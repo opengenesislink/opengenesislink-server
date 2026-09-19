@@ -38,6 +38,19 @@ struct Entity {
     std::uint64_t physics_body{0};
 };
 
+struct ObjectTransferSnapshot {
+    std::uint64_t source_entity_id{0};
+    std::string name;
+    std::string owner_user_id;
+    std::string group_id;
+    core::PermissionMask owner_permissions{core::perm_all};
+    core::PermissionMask group_permissions{0};
+    core::PermissionMask everyone_permissions{0};
+    Transform transform{};
+    physics::Vec3 velocity{};
+    bool physical{false};
+};
+
 struct SceneEvent {
     std::uint64_t sequence{0};
     std::string type;
@@ -86,6 +99,13 @@ public:
     bool move_avatar(std::uint64_t id, Transform transform, physics::Vec3 velocity,
                      std::string& boundary);
     bool set_terrain_height(std::size_t x, std::size_t y, double value);
+
+    [[nodiscard]] std::optional<ObjectTransferSnapshot> export_object(
+        std::uint64_t id) const;
+    bool import_object(const ObjectTransferSnapshot& snapshot,
+                       std::uint64_t destination_entity_id,
+                       physics::Vec3 destination_position,
+                       std::string& reason);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
     [[nodiscard]] std::vector<Entity> snapshot_entities() const;
