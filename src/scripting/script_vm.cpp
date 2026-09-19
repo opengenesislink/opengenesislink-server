@@ -94,7 +94,7 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         if(op=="event"){
             std::string event; parts>>event;
             if(!atom(event)){reason="invalid-event";return std::nullopt;}
-            result.handlers.push_back({.event=std::move(event),.instructions={}});
+            result.handlers.push_back({.state="*",.event=std::move(event),.instructions={}});
             current=&result.handlers.back();
             continue;
         }
@@ -188,7 +188,10 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
                                     const ScriptVmState& initial_state,const ScriptVmLimits& limits) {
     ScriptVmResult result{.ok=false,.error={},.instructions_executed=0,.state=initial_state,.actions={}};
     const auto handler=std::find_if(program.handlers.begin(),program.handlers.end(),
-        [&](const ScriptHandler& candidate){return candidate.event==event;});
+        [&](const ScriptHandler& candidate){
+            return candidate.event==event &&
+                   (candidate.state=="*" || candidate.state==initial_state.state);
+        });
     if(handler==program.handlers.end()){result.ok=true;return result;}
 
     for(const auto& ins:handler->instructions){
