@@ -23,6 +23,7 @@
 #include "opengenesis/core/crossing_store.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
 #include "opengenesis/scripting/script_host.hpp"
+#include "opengenesis/scripting/world_action_queue.hpp"
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
@@ -172,8 +173,12 @@ int main(int argc, char** argv) {
             config.get_string("storage.crossings", "data/crossings.db"));
         auto scripts = std::make_shared<opengenesis::scripting::ScriptRuntime>(
             config.get_string("storage.scripts", "data/scripts.db"));
+        auto script_world_actions =
+            std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(
+                static_cast<std::size_t>(
+                    config.get_int("scripting.max_pending_world_actions", 4096)));
         auto script_host = std::make_shared<opengenesis::scripting::ScriptHost>(
-            identities, friends, messages, notifications);
+            identities, friends, messages, notifications, script_world_actions);
         auto federation_identity = std::make_shared<opengenesis::federation::GridIdentityStore>(
             config.get_string("storage.federation_identity", "data/federation-identity.db"),
             config.get_string("federation.grid_id", "local.opengenesislink"),
@@ -286,7 +291,8 @@ int main(int argc, char** argv) {
                         scripts->execute_event(event.script_id, event.type, now_ms, reason);
                     if (result) {
                         (void)script_host->apply(
-                            script->owner_user_id, script->id, result->actions);
+                            script->owner_user_id, script->id, result->actions,
+                            script->object_id);
                     }
                 }
                 std::this_thread::sleep_for(std::chrono::seconds{1});
@@ -296,7 +302,8 @@ int main(int argc, char** argv) {
         while (running) {
             auto accepted = listener.accept_for(std::chrono::milliseconds{250});
             if (!accepted) continue;
-            std::thread([socket = std::move(*accepted), worlds, regions, presences, node_sessions, lease_timeout]() mutable {
+            std::thread([socket = std::move(*accepted), worlds, regions, presences,
+                         node_sessions, script_world_actions, lease_timeout]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -399,6 +406,41 @@ int main(int argc, char** argv) {
                                                frame.request_id,
                                                protocol::payload_from_string(
                                                    ok ? "status=ok\n" : "reason=stale-region\n")});
+                        } else if (frame.type == protocol::MessageType::script_action_poll) {
+                            const auto region_id = field(body, "region");
+                            const auto region = regions->find(region_id);
+                            const bool owns_region =
+                                region && region->node_id == node_id &&
+                                region->node_generation == generation;
+                            if (!owns_region) {
+                                socket.send_frame({
+                                    protocol::MessageType::error, frame.request_id,
+                                    protocol::payload_from_string(
+                                        "reason=stale-region\n")});
+                                continue;
+                            }
+                            const auto action = script_world_actions->take(region_id);
+                            if (!action) {
+                                socket.send_frame({
+                                    protocol::MessageType::script_action, frame.request_id,
+                                    protocol::payload_from_string("status=none\n")});
+                                continue;
+                            }
+                            std::ostringstream action_body;
+                            action_body << "status=action\n"
+                                        << "id=" << action->id << '\n'
+                                        << "region=" << action->region_id << '\n'
+                                        << "entity=" << action->entity_id << '\n'
+                                        << "owner=" << action->owner_user_id << '\n'
+                                        << "script=" << action->script_id << '\n'
+                                        << "type="
+                                        << opengenesis::scripting::script_world_action_name(
+                                               action->type)
+                                        << '\n'
+                                        << "payload=" << action->payload << '\n';
+                            socket.send_frame({
+                                protocol::MessageType::script_action, frame.request_id,
+                                protocol::payload_from_string(action_body.str())});
                         } else if (frame.type == protocol::MessageType::goodbye) {
                             break;
                         } else {
