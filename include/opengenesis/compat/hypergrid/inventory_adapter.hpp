@@ -17,7 +17,8 @@ public:
     HypergridInventoryAdapter(std::shared_ptr<core::IdentityStore> identities,
                               std::shared_ptr<core::InventoryStore> inventory,
                               std::shared_ptr<core::AssetStore> assets,
-                              bool write_enabled = false);
+                              bool write_enabled = false,
+                              std::string write_secret = {});
 
     [[nodiscard]] std::string handle_form(std::string_view body) const;
     [[nodiscard]] static std::string legacy_folder_uuid(std::string_view native_id);
@@ -41,6 +42,7 @@ private:
     std::shared_ptr<core::InventoryStore> inventory_;
     std::shared_ptr<core::AssetStore> assets_;
     bool write_enabled_{false};
+    std::string write_secret_;
 };
 
 } // namespace opengenesis::compat::hypergrid
