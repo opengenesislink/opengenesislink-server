@@ -115,6 +115,31 @@ std::optional<double> json_number(const std::string_view json, const std::string
     try { return std::stod(std::string{json.substr(position,end-position)}); } catch (...) { return std::nullopt; }
 }
 
+std::optional<std::uint64_t> json_u64(
+    const std::string_view json, const std::string_view key) {
+    const std::string needle = "\"" + std::string(key) + "\"";
+    auto position = json.find(needle);
+    if (position == std::string_view::npos) return std::nullopt;
+    position = json.find(':', position + needle.size());
+    if (position == std::string_view::npos) return std::nullopt;
+    ++position;
+    while (position < json.size() &&
+           std::isspace(static_cast<unsigned char>(json[position]))) {
+        ++position;
+    }
+    std::size_t end = position;
+    while (end < json.size() &&
+           std::isdigit(static_cast<unsigned char>(json[end]))) {
+        ++end;
+    }
+    if (end == position) return std::nullopt;
+    std::uint64_t value = 0;
+    const auto [ptr, ec] = std::from_chars(
+        json.data() + position, json.data() + end, value);
+    if (ec != std::errc{} || ptr != json.data() + end) return std::nullopt;
+    return value;
+}
+
 std::optional<bool> json_bool(const std::string_view json, const std::string_view key) {
     const std::string needle = "\"" + std::string(key) + "\"";
     auto position = json.find(needle);
@@ -196,6 +221,8 @@ std::string status_text(const int status) {
     switch (status) {
         case 200: return "200 OK";
         case 201: return "201 Created";
+        case 202: return "202 Accepted";
+        case 204: return "204 No Content";
         case 400: return "400 Bad Request";
         case 401: return "401 Unauthorized";
         case 403: return "403 Forbidden";

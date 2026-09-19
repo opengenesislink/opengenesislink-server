@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 7.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 7.5.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,7 @@ add_library(opengenesis-foundation
     src/core/group_channel_store.cpp
     src/avatar/appearance_store.cpp
     src/core/crossing_store.cpp
+    src/core/object_crossing_store.cpp
     src/federation/grid_identity.cpp
     src/federation/grid_identity_store.cpp
     src/federation/travel_token.cpp
@@ -138,4 +139,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-script-crossing-tests tests/script_crossing_tests.cpp)
     target_link_libraries(ogl-script-crossing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME script-crossing COMMAND ogl-script-crossing-tests)
+
+    add_executable(ogl-object-crossing-tests tests/object_crossing_tests.cpp)
+    target_link_libraries(ogl-object-crossing-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME object-crossing COMMAND ogl-object-crossing-tests)
 endif()

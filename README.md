@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **7.0.0-dev**.
+Current development version: **7.5.0-dev**.
 
-`7.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`7.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -39,6 +39,10 @@ Current development version: **7.0.0-dev**.
 - transactional Region Crossing v3 records with position, velocity, rotation, angular velocity, Avatar Appearance/attachment context, persistent Script state and bounded physics/linkset context
 - two-phase adjacent-Region handoff with destination reservation token, explicit commit, replay rejection and rollback
 - crossing IDs remain signed into destination Scene Tickets; destination reservation is separately bound to user, Region and short-lived transaction state
+- persistent Object Crossing v1 orchestration across adjacent Regions with Core-mediated export, destination import ACK, source removal and rollback recovery
+- single-object crossing preserves ownership, group, permission masks, transform, physical state and linear velocity; destination imports are idempotent
+- source objects are removed only after destination import acknowledgement; rollback after import cleans the destination and restores the source from the preserved snapshot, including lost-remove-ACK recovery
+- Scene object persistence v4 preserves physical linear velocity while remaining readable from earlier v1-v3 scene records
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions
 - durable Core-to-World Script action routing for object move/rotate/scale, physics and local say/whisper/shout with leases, ACK/NACK, retry, expiry and World-side owner validation
@@ -93,6 +97,9 @@ POST /v1/viewer/handoff/reserve
 POST /v1/viewer/handoff/complete
 POST /v1/viewer/handoff/rollback
 GET  /v1/presence
+
+GET/POST /v1/world/object-crossings
+POST     /v1/world/object-crossings/rollback
 
 GET  /v1/scripts
 POST /v1/scripts
@@ -204,7 +211,7 @@ Run the full Linux process-level test:
 ./scripts/smoke-test.sh
 ```
 
-The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, transactional teleport/handoff, Script VM execution, metrics, object/terrain persistence, Core restart and full World restart recovery. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends, HG IM, guarded writable XInventory with persistent legacy IDs, export-safe HG Assets, AvatarService exchange, return-home lifecycle, signed one-time Crossing transactions, sandboxed Script VM budgets/state persistence, ScriptHost policy actions, rate limiting, schema versioning and Voice provider validation.
+The process smoke test covers two accounts, Social, Groups, Group notices, Notifications, Parcels, Estates, Landmarks, Asset transfer permissions, moderation, audit, authenticated Scene access, movement, transactional teleport/handoff, Script VM execution, metrics, object/terrain persistence, Core restart and full World restart recovery. Dedicated Linux process smokes additionally verify Script World query/ACK delivery, Crossing v3 reserve/rollback and end-to-end Object Crossing between adjacent Regions. Cross-platform unit tests additionally cover OGL-FED signing/verification, trust/revocation, replay protection, Hypergrid travel sessions/circuit parsing/XML-RPC callbacks, HG Friends, HG IM, guarded writable XInventory with persistent legacy IDs, export-safe HG Assets, AvatarService exchange, return-home lifecycle, signed one-time Crossing transactions, sandboxed Script VM budgets/state persistence, ScriptHost policy actions, rate limiting, schema versioning and Voice provider validation.
 
 ## Documentation
 
@@ -232,6 +239,7 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/HYPERGRID-XINVENTORY-v1.md`
 - `docs/REGION-CROSSING-v1.md`
 - `docs/REGION-CROSSING-v3.md`
+- `docs/OBJECT-CROSSING-v1.md`
 
 ## License
 

@@ -20,6 +20,8 @@ void log(const LogLevel level, const std::string_view component, const std::stri
     if (localtime_r(&now, &tm) == nullptr) tm = {};
 #endif
     std::scoped_lock lock(g_log_mutex);
-    std::clog << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << " [" << label << "] [" << component << "] " << message << '\n';
+    std::clog << std::put_time(&tm, "%Y-%m-%d %H:%M:%S")
+              << " [" << label << "] [" << component << "] "
+              << message << std::endl;
 }
 }

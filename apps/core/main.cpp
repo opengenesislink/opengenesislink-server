@@ -21,6 +21,7 @@
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
 #include "opengenesis/core/crossing_store.hpp"
+#include "opengenesis/core/object_crossing_store.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
 #include "opengenesis/scripting/script_host.hpp"
 #include "opengenesis/scripting/world_action_queue.hpp"
@@ -179,6 +180,10 @@ int main(int argc, char** argv) {
             config.get_string("storage.group_channels", "data/group_channels.db"));
         auto crossings = std::make_shared<core::CrossingStore>(
             config.get_string("storage.crossings", "data/crossings.db"));
+        auto object_crossings = std::make_shared<core::ObjectCrossingStore>(
+            config.get_string("storage.object_crossings", "data/object-crossings.db"),
+            static_cast<std::uint32_t>(std::max<std::int64_t>(
+                1, config.get_int("crossing.object_max_attempts", 5))));
         auto scripts = std::make_shared<opengenesis::scripting::ScriptRuntime>(
             config.get_string("storage.scripts", "data/scripts.db"));
         const auto script_world_max_pending =
@@ -273,8 +278,8 @@ int main(int argc, char** argv) {
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
             identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
-            moderation, audit, estates, landmarks, notifications, group_channels, crossings, scripts,
-            script_host, federation_runtime,
+            moderation, audit, estates, landmarks, notifications, group_channels, crossings,
+            object_crossings, scripts, script_host, federation_runtime,
             hypergrid_service, hypergrid_sessions, hypergrid_im, admin_api_key,
             scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
@@ -301,6 +306,7 @@ int main(int argc, char** argv) {
                 (void)federation_runtime->maintenance(now_unix);
                 (void)hypergrid_sessions->purge_expired(now_unix);
                 (void)crossings->purge_expired(now_unix);
+                (void)object_crossings->maintenance(now_unix);
                 const auto now_ms = unix_ms();
                 (void)script_world_actions->purge_expired(now_ms);
                 for (const auto& event : scripts->due_timers(now_ms)) {
@@ -323,7 +329,8 @@ int main(int argc, char** argv) {
             auto accepted = listener.accept_for(std::chrono::milliseconds{250});
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
-                         node_sessions, script_world_actions, scripts, lease_timeout]() mutable {
+                         node_sessions, script_world_actions, object_crossings, scripts,
+                         lease_timeout]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -522,6 +529,136 @@ int main(int argc, char** argv) {
                                 protocol::payload_from_string(
                                     accepted ? "status=acked\n"
                                              : "status=retry-or-dropped\n")});
+                        } else if (frame.type ==
+                                   protocol::MessageType::object_crossing_poll) {
+                            const auto region_id = field(body, "region");
+                            const auto region = regions->find(region_id);
+                            const bool owns_region =
+                                region && region->node_id == node_id &&
+                                region->node_generation == generation;
+                            if (!owns_region) {
+                                socket.send_frame({
+                                    protocol::MessageType::error, frame.request_id,
+                                    protocol::payload_from_string(
+                                        "reason=stale-region\n")});
+                                continue;
+                            }
+
+                            const auto command =
+                                object_crossings->command_for_region(region_id);
+                            if (!command) {
+                                socket.send_frame({
+                                    protocol::MessageType::object_crossing_command,
+                                    frame.request_id,
+                                    protocol::payload_from_string(
+                                        "status=none\n")});
+                                continue;
+                            }
+
+                            const auto& crossing = command->crossing;
+                            std::ostringstream command_body;
+                            command_body
+                                << "status=command\n"
+                                << "id=" << crossing.id << '\n'
+                                << "command="
+                                << core::object_crossing_command_name(command->type)
+                                << '\n'
+                                << "owner=" << crossing.owner_user_id << '\n'
+                                << "source_region=" << crossing.source_region << '\n'
+                                << "destination_region="
+                                << crossing.destination_region << '\n'
+                                << "source_entity="
+                                << crossing.source_entity_id << '\n'
+                                << "destination_entity="
+                                << crossing.destination_entity_id << '\n'
+                                << "x=" << crossing.destination_position.x << '\n'
+                                << "y=" << crossing.destination_position.y << '\n'
+                                << "z=" << crossing.destination_position.z << '\n'
+                                << "snapshot_b64="
+                                << opengenesis::security::base64_encode(
+                                       crossing.snapshot)
+                                << '\n';
+
+                            socket.send_frame({
+                                protocol::MessageType::object_crossing_command,
+                                frame.request_id,
+                                protocol::payload_from_string(
+                                    command_body.str())});
+                        } else if (frame.type ==
+                                   protocol::MessageType::object_crossing_result) {
+                            const auto crossing_id = field(body, "id");
+                            const auto region_id = field(body, "region");
+                            const auto command_name = field(body, "command");
+                            const auto status = field(body, "status");
+                            const auto region = regions->find(region_id);
+                            const bool owns_region =
+                                region && region->node_id == node_id &&
+                                region->node_generation == generation;
+                            const auto expected =
+                                object_crossings->command_for_region(region_id);
+
+                            if (!owns_region || !expected ||
+                                expected->crossing.id != crossing_id ||
+                                core::object_crossing_command_name(expected->type) !=
+                                    command_name) {
+                                socket.send_frame({
+                                    protocol::MessageType::object_crossing_result_ack,
+                                    frame.request_id,
+                                    protocol::payload_from_string(
+                                        "status=missing-or-stale\n")});
+                                continue;
+                            }
+
+                            bool accepted = false;
+                            std::string result_reason;
+                            if (status == "ok") {
+                                switch (expected->type) {
+                                    case core::ObjectCrossingCommandType::export_source:
+                                        try {
+                                            accepted =
+                                                object_crossings->record_export(
+                                                    crossing_id, region_id,
+                                                    opengenesis::security::base64_decode(
+                                                        field(body, "snapshot_b64"),
+                                                        64U * 1024U),
+                                                    result_reason);
+                                        } catch (...) {
+                                            result_reason =
+                                                "object-snapshot-decode-failed";
+                                        }
+                                        break;
+                                    case core::ObjectCrossingCommandType::import_destination:
+                                        accepted = object_crossings->record_import(
+                                            crossing_id, region_id,
+                                            u64(body, "destination_entity"),
+                                            result_reason);
+                                        break;
+                                    case core::ObjectCrossingCommandType::remove_source:
+                                        accepted = object_crossings->record_remove(
+                                            crossing_id, region_id, result_reason);
+                                        break;
+                                    case core::ObjectCrossingCommandType::cleanup_destination:
+                                        accepted = object_crossings->record_cleanup(
+                                            crossing_id, region_id, result_reason);
+                                        break;
+                                    case core::ObjectCrossingCommandType::restore_source:
+                                        accepted = object_crossings->record_restore(
+                                            crossing_id, region_id, result_reason);
+                                        break;
+                                }
+                            } else {
+                                accepted = object_crossings->reject_command(
+                                    crossing_id, expected->type,
+                                    field(body, "error"), result_reason);
+                            }
+
+                            socket.send_frame({
+                                protocol::MessageType::object_crossing_result_ack,
+                                frame.request_id,
+                                protocol::payload_from_string(
+                                    accepted ? "status=acked\n"
+                                             : "status=rejected\nreason=" +
+                                                   result_reason + "\n")});
                         } else if (frame.type == protocol::MessageType::goodbye) {
                             break;
                         } else {

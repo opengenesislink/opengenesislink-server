@@ -1,5 +1,27 @@
 # Changelog
 
+## 7.5.0-dev — 2026-09-19
+
+Object Crossing v1 orchestration milestone.
+
+- added a persistent `ObjectCrossingStore` for adjacent-Region Scene-object migration
+- added the transactional forward path `prepare → export → import → remove → completed`
+- added rollback recovery `imported → cleanup_pending → restore_pending → rolled_back`
+- source objects are not removed until the destination World Node has imported and acknowledged the object
+- lost source-remove acknowledgements are recoverable: rollback removes the destination copy and reconstructs the source from the preserved snapshot
+- destination imports use deterministic transfer entity IDs and are idempotent across command retries
+- transfer snapshots preserve object name, owner, group, owner/group/everyone permissions, transform, physical flag and linear velocity
+- added Core/World message types for object-crossing poll, command, result and result acknowledgement
+- Core accepts crossing commands/results only from the World Node owning the Region in its current node generation
+- added authenticated `GET|POST /v1/world/object-crossings` and `POST /v1/world/object-crossings/rollback`
+- crossing preparation validates Region adjacency/online state, moderation, Estate policy and destination Parcel build policy; source ownership is revalidated by the source World Node
+- added bounded forward-phase retry counters, safety reconciliation for cleanup/source restoration, expiry handling and 24-hour terminal retention
+- upgraded Scene-object persistence to v4 so physical linear velocity survives World restart while v1/v2/v3 records remain readable
+- added Object Crossing state-machine/runtime unit coverage, including the lost-remove-ACK rollback race
+- added an end-to-end Core+World Scene-object crossing smoke test on Linux x86_64 and ARM64
+- Object Crossing v1 intentionally covers single Scene objects; linksets, attachment graphs, vehicle state, angular velocity and object-attached Script execution ownership remain later work
+
+
 ## 7.0.0-dev — 2026-09-19
 
 Transactional Region Crossing v3 milestone.

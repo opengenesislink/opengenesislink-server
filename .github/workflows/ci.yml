@@ -29,3 +29,5 @@ jobs:
         run: bash ./scripts/smoke-script-world.sh
       - name: Crossing v3 reserve and rollback smoke test
         run: bash ./scripts/smoke-crossing-v3.sh
+      - name: Object Crossing end-to-end smoke test
+        run: bash ./scripts/smoke-object-crossing.sh
