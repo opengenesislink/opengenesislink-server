@@ -378,7 +378,10 @@ std::vector<ScriptEvent> ScriptRuntime::dispatch_chat(const std::int32_t channel
 
     for (auto& [_, script] : scripts_) {
         if (!script.enabled || !script.chat_enabled || script.chat_channel != channel) continue;
-        events.push_back({.script_id = script.id, .type = "chat", .payload = payload});
+        events.push_back({
+            .script_id = script.id,
+            .type = script.language == ScriptLanguage::lsl ? "listen" : "chat",
+            .payload = payload});
         ++script.event_count;
     }
     if (!events.empty()) persist_locked();
