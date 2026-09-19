@@ -150,6 +150,15 @@ std::string unquote(std::string value) {
     return value;
 }
 
+std::string value_expression(std::string value) {
+    value = trim(std::move(value));
+    if (value.size() >= 2U && value.front() == '"' && value.back() == '"') {
+        return value.substr(1U, value.size() - 2U);
+    }
+    if (identifier(value)) return "$" + value;
+    return value;
+}
+
 std::optional<std::string> vector3(std::string value) {
     value = trim(std::move(value));
     if (value.size() < 5U || value.front() != '<' || value.back() != '>') {
@@ -171,7 +180,7 @@ std::optional<std::string> translate_call(
     std::string& reason) {
     auto text_arg = [&](const std::size_t index) -> std::optional<std::string> {
         if (index >= args.size()) return std::nullopt;
-        auto value = unquote(args[index]);
+        auto value = value_expression(args[index]);
         if (value.size() > 2048U) return std::nullopt;
         return value;
     };
@@ -388,6 +397,7 @@ bool parse_state_body(
             reason = "lsl-event-signature-required";
             return false;
         }
+        const auto parameter_open = pos;
         int depth = 1;
         ++pos;
         while (pos < body.size() && depth > 0) {
@@ -398,6 +408,22 @@ bool parse_state_body(
         if (depth != 0) {
             reason = "lsl-event-signature-unclosed";
             return false;
+        }
+        const auto parameter_text = body.substr(
+            parameter_open + 1U, pos - parameter_open - 2U);
+        std::vector<std::string> parameters;
+        for (const auto& declaration : split_args(parameter_text)) {
+            std::istringstream declaration_stream(declaration);
+            std::string token;
+            std::string name;
+            while (declaration_stream >> token) name = token;
+            if (!name.empty()) {
+                if (!identifier(name)) {
+                    reason = "lsl-invalid-event-parameter";
+                    return false;
+                }
+                parameters.push_back(std::move(name));
+            }
         }
         while (pos < body.size() &&
                std::isspace(static_cast<unsigned char>(body[pos])) != 0) {
@@ -417,6 +443,7 @@ bool parse_state_body(
                 output, reason)) {
             return false;
         }
+        output.handlers.back().parameters = std::move(parameters);
         pos = close + 1U;
     }
     return true;
