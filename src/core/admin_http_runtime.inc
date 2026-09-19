@@ -85,6 +85,73 @@ std::string crossing_json(const RegionCrossing& crossing) {
 }
 
 
+std::string object_crossing_json(
+    const ObjectCrossingRecord& crossing) {
+    return "{\"id\":\"" + json_escape(crossing.id) +
+           "\",\"owner_user_id\":\"" + json_escape(crossing.owner_user_id) +
+           "\",\"source_region\":\"" + json_escape(crossing.source_region) +
+           "\",\"destination_region\":\"" +
+           json_escape(crossing.destination_region) +
+           "\",\"source_entity_id\":" +
+           std::to_string(crossing.source_entity_id) +
+           ",\"destination_entity_id\":" +
+           std::to_string(crossing.destination_entity_id) +
+           ",\"state\":\"" +
+           std::string(object_crossing_state_name(crossing.state)) +
+           "\",\"destination_position\":{\"x\":" +
+           std::to_string(crossing.destination_position.x) +
+           ",\"y\":" + std::to_string(crossing.destination_position.y) +
+           ",\"z\":" + std::to_string(crossing.destination_position.z) +
+           "},\"export_attempts\":" +
+           std::to_string(crossing.export_attempts) +
+           ",\"import_attempts\":" +
+           std::to_string(crossing.import_attempts) +
+           ",\"remove_attempts\":" +
+           std::to_string(crossing.remove_attempts) +
+           ",\"cleanup_attempts\":" +
+           std::to_string(crossing.cleanup_attempts) +
+           ",\"created_unix\":" +
+           std::to_string(crossing.created_unix) +
+           ",\"expires_unix\":" +
+           std::to_string(crossing.expires_unix) +
+           ",\"exported_unix\":" +
+           std::to_string(crossing.exported_unix) +
+           ",\"imported_unix\":" +
+           std::to_string(crossing.imported_unix) +
+           ",\"completed_unix\":" +
+           std::to_string(crossing.completed_unix) +
+           ",\"rolled_back_unix\":" +
+           std::to_string(crossing.rolled_back_unix) +
+           ",\"last_error\":" +
+           (crossing.last_error.empty()
+                ? "null"
+                : "\"" + json_escape(crossing.last_error) + "\"") +
+           ",\"rollback_reason\":" +
+           (crossing.rollback_reason.empty()
+                ? "null"
+                : "\"" + json_escape(crossing.rollback_reason) + "\"") +
+           "}";
+}
+
+std::string object_crossings_json(
+    const std::vector<ObjectCrossingRecord>& crossings,
+    const std::string_view owner_user_id) {
+    std::ostringstream out;
+    out << '[';
+    bool first = true;
+    for (const auto& crossing : crossings) {
+        if (!owner_user_id.empty() &&
+            crossing.owner_user_id != owner_user_id) {
+            continue;
+        }
+        if (!first) out << ',';
+        first = false;
+        out << object_crossing_json(crossing);
+    }
+    out << ']';
+    return out.str();
+}
+
 std::string string_list_json(const std::vector<std::string>& values) {
     std::ostringstream out;
     out << '[';
