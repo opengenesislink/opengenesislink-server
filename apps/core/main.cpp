@@ -39,6 +39,7 @@
 #include "opengenesis/compat/hypergrid/session_store.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
+#include "opengenesis/security/crypto.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -57,6 +58,12 @@ namespace core = opengenesis::core;
 namespace {
 std::atomic_bool running{true};
 void signal_handler(int) { running = false; }
+
+std::int64_t unix_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
 
 std::string field(const std::string& payload, const std::string& key) {
     std::istringstream input(payload);
