@@ -156,7 +156,8 @@ std::optional<bool> json_bool(const std::string_view json, const std::string_vie
 bool admin_authorized(const HttpRequest& request, std::string_view key) {
     if (key.empty()) return false;
     const auto it = request.headers.find("x-opengenesis-admin-key");
-    return it != request.headers.end() && it->second == key;
+    return it != request.headers.end() &&
+           security::secure_equals(it->second, key);
 }
 
 bool recv_more(const platform::SocketHandle fd, std::string& buffer) {
