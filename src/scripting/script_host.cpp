@@ -126,7 +126,12 @@ ScriptHostResult ScriptHost::apply(
                  .owner_user_id = std::string{owner_user_id},
                  .script_id = std::string{script_id},
                  .type = *world_type,
-                 .payload = action.value})) {
+                 .payload = action.value,
+                 .created_unix_ms = 0,
+                 .expires_unix_ms = 0,
+                 .lease_until_unix_ms = 0,
+                 .attempts = 0,
+                 .last_error = {}})) {
             result.errors.push_back("world-action-queue-rejected");
             continue;
         }
