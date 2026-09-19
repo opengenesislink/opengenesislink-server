@@ -3,6 +3,7 @@
 #include "opengenesis/compat/hypergrid/friends_adapter.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
 #include "opengenesis/core/permissions.hpp"
+#include "opengenesis/security/crypto.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -178,13 +179,19 @@ HypergridInventoryAdapter::HypergridInventoryAdapter(
     std::shared_ptr<core::IdentityStore> identities,
     std::shared_ptr<core::InventoryStore> inventory,
     std::shared_ptr<core::AssetStore> assets,
-    const bool write_enabled)
+    const bool write_enabled,
+    std::string write_secret)
     : identities_(std::move(identities)),
       inventory_(std::move(inventory)),
       assets_(std::move(assets)),
-      write_enabled_(write_enabled) {
+      write_enabled_(write_enabled),
+      write_secret_(std::move(write_secret)) {
     if (!identities_ || !inventory_ || !assets_) {
         throw std::invalid_argument("HG Inventory dependencies required");
+    }
+    if (write_enabled_ && write_secret_.size() < 24U) {
+        throw std::invalid_argument(
+            "HG Inventory write mode requires hypergrid.inventory_write_secret with at least 24 bytes");
     }
 }
 
@@ -385,6 +392,12 @@ std::string HypergridInventoryAdapter::handle_form(const std::string_view body) 
     }
 
     if (!write_enabled_) return bool_response(false);
+
+    const auto service_key = fields.find("SERVICEKEY");
+    if (service_key == fields.end() ||
+        !security::secure_equals(service_key->second, write_secret_)) {
+        return bool_response(false);
+    }
 
     if (method == "ADDFOLDER" || method == "UPDATEFOLDER") {
         const auto user = owner_user();
