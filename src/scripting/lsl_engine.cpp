@@ -621,7 +621,7 @@ const std::vector<ScriptFeature>& lsl_event_catalog() {
         {"remote_data", "event", ScriptFeatureStatus::recognized},
         {"run_time_permissions", "event", ScriptFeatureStatus::recognized},
         {"sensor", "event", ScriptFeatureStatus::recognized},
-        {"state_entry", "event", ScriptFeatureStatus::implemented},
+        {"state_entry", "event", ScriptFeatureStatus::partial},
         {"state_exit", "event", ScriptFeatureStatus::recognized},
         {"timer", "event", ScriptFeatureStatus::implemented},
         {"touch", "event", ScriptFeatureStatus::recognized},
