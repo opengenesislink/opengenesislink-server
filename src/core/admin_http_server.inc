@@ -799,8 +799,6 @@ void AdminHttpServer::run() {
                     auto [session, user] = auth();
                     const auto crossing_id = json_string(request->body, "crossing_id");
                     const auto region_id = json_string(request->body, "region");
-                    const auto reservation_token =
-                        json_string(request->body, "reservation_token");
                     if (!session || !user) {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!crossing_id || !region_id) {
@@ -825,6 +823,8 @@ void AdminHttpServer::run() {
                     auto [session, user] = auth();
                     const auto crossing_id = json_string(request->body, "crossing_id");
                     const auto region_id = json_string(request->body, "region");
+                    const auto reservation_token =
+                        json_string(request->body, "reservation_token");
                     if (!session || !user) {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!crossing_id || !region_id) {
