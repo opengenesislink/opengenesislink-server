@@ -124,6 +124,10 @@ std::string object_crossing_json(
            std::to_string(crossing.completed_unix) +
            ",\"rolled_back_unix\":" +
            std::to_string(crossing.rolled_back_unix) +
+           ",\"entity_map\":" +
+           (crossing.entity_map.empty()
+                ? "null"
+                : "\"" + json_escape(crossing.entity_map) + "\"") +
            ",\"last_error\":" +
            (crossing.last_error.empty()
                 ? "null"
