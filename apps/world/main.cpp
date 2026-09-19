@@ -506,6 +506,7 @@ int main(int argc, char** argv) {
         const auto lease = std::chrono::seconds{config.get_int("core.lease_seconds", 5)};
         const auto tick_hz = config.get_double("runtime.tick_hz", 45.0);
         const auto terrain_base = config.get_double("runtime.terrain_base_height", 21.0);
+        const auto water_height = config.get_double("runtime.water_height", 20.0);
         const auto scene_ticket_secret = config.get_string(
             "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
         if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
@@ -530,7 +531,8 @@ int main(int argc, char** argv) {
         runtimes.reserve(region_configs.size());
         persistence.reserve(region_configs.size());
         for (const auto& region : region_configs) {
-            auto runtime = std::make_shared<world::RegionRuntime>(region.id, tick_hz, terrain_base);
+            auto runtime = std::make_shared<world::RegionRuntime>(
+                region.id, tick_hz, terrain_base, water_height);
             auto store = std::make_unique<world::RegionPersistence>(storage_root / region.id);
             store->load(*runtime);
             runtime->start();
