@@ -39,6 +39,7 @@ ObjectCrossingState parse_state(const std::string_view value) {
     if (value == "exported") return ObjectCrossingState::exported;
     if (value == "imported") return ObjectCrossingState::imported;
     if (value == "cleanup_pending") return ObjectCrossingState::cleanup_pending;
+    if (value == "restore_pending") return ObjectCrossingState::restore_pending;
     if (value == "completed") return ObjectCrossingState::completed;
     if (value == "rolled_back") return ObjectCrossingState::rolled_back;
     return ObjectCrossingState::prepared;
@@ -63,6 +64,7 @@ std::string_view object_crossing_state_name(
         case ObjectCrossingState::exported: return "exported";
         case ObjectCrossingState::imported: return "imported";
         case ObjectCrossingState::cleanup_pending: return "cleanup_pending";
+        case ObjectCrossingState::restore_pending: return "restore_pending";
         case ObjectCrossingState::completed: return "completed";
         case ObjectCrossingState::rolled_back: return "rolled_back";
     }
@@ -76,6 +78,7 @@ std::string_view object_crossing_command_name(
         case ObjectCrossingCommandType::import_destination: return "import";
         case ObjectCrossingCommandType::remove_source: return "remove";
         case ObjectCrossingCommandType::cleanup_destination: return "cleanup";
+        case ObjectCrossingCommandType::restore_source: return "restore";
     }
     return "export";
 }
@@ -168,6 +171,10 @@ std::optional<ObjectCrossingCommand> ObjectCrossingStore::command_for_region(
                    record.destination_region == region_id) {
             matches = true;
             candidate = ObjectCrossingCommandType::cleanup_destination;
+        } else if (record.state == ObjectCrossingState::restore_pending &&
+                   record.source_region == region_id) {
+            matches = true;
+            candidate = ObjectCrossingCommandType::restore_source;
         }
         if (!matches) continue;
         if (!selected || record.created_unix < selected->created_unix) {
@@ -296,7 +303,8 @@ bool ObjectCrossingStore::record_cleanup(
         reason = "object-crossing-region-mismatch";
         return false;
     }
-    if (record.state == ObjectCrossingState::rolled_back) {
+    if (record.state == ObjectCrossingState::restore_pending ||
+        record.state == ObjectCrossingState::rolled_back) {
         reason.clear();
         return true;
     }
@@ -304,12 +312,42 @@ bool ObjectCrossingStore::record_cleanup(
         reason = "object-crossing-cleanup-not-pending";
         return false;
     }
-    record.state = ObjectCrossingState::rolled_back;
-    record.rolled_back_unix = unix_now();
+    record.state = ObjectCrossingState::restore_pending;
     record.last_error.clear();
     if (record.rollback_reason.empty()) {
         record.rollback_reason = "destination-cleanup-complete";
     }
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool ObjectCrossingStore::record_restore(
+    const std::string_view crossing_id,
+    const std::string_view source_region,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = crossings_.find(std::string{crossing_id});
+    if (it == crossings_.end()) {
+        reason = "object-crossing-not-found";
+        return false;
+    }
+    auto& record = it->second;
+    if (record.source_region != source_region) {
+        reason = "object-crossing-region-mismatch";
+        return false;
+    }
+    if (record.state == ObjectCrossingState::rolled_back) {
+        reason.clear();
+        return true;
+    }
+    if (record.state != ObjectCrossingState::restore_pending) {
+        reason = "object-crossing-restore-not-pending";
+        return false;
+    }
+    record.state = ObjectCrossingState::rolled_back;
+    record.rolled_back_unix = unix_now();
+    record.last_error.clear();
     persist_locked();
     reason.clear();
     return true;
@@ -362,6 +400,13 @@ bool ObjectCrossingStore::reject_command(
             }
             attempts = &record.cleanup_attempts;
             break;
+        case ObjectCrossingCommandType::restore_source:
+            if (record.state != ObjectCrossingState::restore_pending) {
+                reason = "object-crossing-command-state-mismatch";
+                return false;
+            }
+            attempts = &record.restore_attempts;
+            break;
     }
 
     ++(*attempts);
@@ -372,6 +417,8 @@ bool ObjectCrossingStore::reject_command(
             record.rollback_reason = "source-remove-failed:" + error;
         } else if (command == ObjectCrossingCommandType::cleanup_destination) {
             record.rollback_reason = "destination-cleanup-failed:" + error;
+        } else if (command == ObjectCrossingCommandType::restore_source) {
+            record.rollback_reason = "source-restore-failed:" + error;
         } else {
             record.state = ObjectCrossingState::rolled_back;
             record.rolled_back_unix = now;
@@ -512,6 +559,7 @@ void ObjectCrossingStore::load() {
             record.import_attempts = static_cast<std::uint32_t>(std::stoul(fields[11]));
             record.remove_attempts = static_cast<std::uint32_t>(std::stoul(fields[12]));
             record.cleanup_attempts = static_cast<std::uint32_t>(std::stoul(fields[13]));
+            record.restore_attempts = static_cast<std::uint32_t>(std::stoul(fields[23]));
             record.created_unix = std::stoll(fields[14]);
             record.expires_unix = std::stoll(fields[15]);
             record.exported_unix = std::stoll(fields[16]);
@@ -570,7 +618,7 @@ void ObjectCrossingStore::persist_locked() const {
                << security::base64_encode(record.snapshot) << '\t'
                << security::base64_encode(record.last_error) << '\t'
                << security::base64_encode(record.rollback_reason) << '\t'
-               << "0\t0\t0\n";
+               << record.restore_attempts << "\t0\t0\n";
     }
 
     output.close();
