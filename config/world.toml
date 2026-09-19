@@ -18,6 +18,7 @@ scene_ticket_secret = "development-only-change-this-scene-ticket-secret"
 [runtime]
 tick_hz = 45.0
 terrain_base_height = 21.0
+water_height = 20.0
 
 [storage]
 root = "data/world"
