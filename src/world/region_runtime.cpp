@@ -689,7 +689,8 @@ bool RegionRuntime::import_linkset(
     const std::uint64_t destination_root_entity_id,
     physics::Vec3 destination_position,
     std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map,
-    std::string& reason) {
+    std::string& reason,
+    const bool preserve_source_ids) {
     entity_map.clear();
     if (destination_root_entity_id == 0 ||
         snapshot.source_root_entity_id == 0 ||
@@ -795,12 +796,14 @@ bool RegionRuntime::import_linkset(
     entity_map.reserve(snapshot.members.size());
     for (const auto& member : snapshot.members) {
         const auto destination_id =
-            member.source_entity_id == snapshot.source_root_entity_id
-                ? destination_root_entity_id
-                : transfer_member_id(
-                      destination_root_entity_id,
-                      member.source_entity_id,
-                      member.link_number);
+            preserve_source_ids
+                ? member.source_entity_id
+                : (member.source_entity_id == snapshot.source_root_entity_id
+                       ? destination_root_entity_id
+                       : transfer_member_id(
+                             destination_root_entity_id,
+                             member.source_entity_id,
+                             member.link_number));
         if (std::find_if(
                 entity_map.begin(), entity_map.end(),
                 [&](const auto& pair) {
