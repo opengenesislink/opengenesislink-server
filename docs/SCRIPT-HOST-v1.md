@@ -1,6 +1,6 @@
 # ScriptHost v1
 
-OpenGenesisLINK 5.5.0-dev adds a policy-controlled host layer between the sandboxed Script VM and native server services.
+OpenGenesisLINK 6.0.0-dev provides a policy-controlled host layer between the sandboxed Script VM and native server services.
 
 ## Principle
 
@@ -41,6 +41,22 @@ Behavior:
 - recipient receives a native direct-message Notification
 - non-friends and unknown users are rejected by host policy
 
+### World actions
+
+6.0 adds policy-routed World actions:
+
+- `move <x> <y> <z>`
+- `rotate <x> <y> <z>`
+- `scale <x> <y> <z>`
+- `physics <0|1>`
+- `say <text>`
+- `whisper <text>`
+- `shout <text>`
+
+World actions require the Script's object binding to use `<region-id>/<entity-id>`. ScriptHost validates the binding and places the typed request in a bounded Core queue. The owning World Node then independently validates Region ownership and object ownership before applying the action.
+
+See `SCRIPT-WORLD-API-v1.md`.
+
 ## Execution paths
 
 ScriptHost is used for:
@@ -64,6 +80,6 @@ Not implemented yet:
 - filesystem/process execution
 - Inventory mutation from Scripts
 - Group/Land mutation from Scripts
-- unrestricted object/world mutation
+- unrestricted object/world mutation beyond the explicit 6.0 action allowlist
 - permission-dialog workflow
 - per-Region/per-owner production quotas
