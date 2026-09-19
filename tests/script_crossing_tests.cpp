@@ -11,6 +11,7 @@
 #include <chrono>
 #include <filesystem>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
