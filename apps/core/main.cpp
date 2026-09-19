@@ -47,10 +47,12 @@
 #include <chrono>
 #include <csignal>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 using opengenesis::common::LogLevel;
@@ -97,6 +99,51 @@ std::vector<std::string> split_pipe(const std::string& text) {
         start = end + 1;
     }
     return result;
+}
+
+std::optional<std::vector<std::pair<std::uint64_t, std::uint64_t>>>
+parse_entity_map(const std::string_view text) {
+    if (text.empty() || text.size() > 16U * 1024U) return std::nullopt;
+    std::vector<std::pair<std::uint64_t, std::uint64_t>> result;
+    std::size_t start = 0;
+    while (start <= text.size()) {
+        const auto end = text.find(',', start);
+        const auto token = text.substr(
+            start, end == std::string_view::npos
+                       ? std::string_view::npos
+                       : end - start);
+        const auto split = token.find(':');
+        if (split == std::string_view::npos || split == 0 ||
+            split + 1U >= token.size()) {
+            return std::nullopt;
+        }
+        try {
+            const auto source =
+                std::stoull(std::string{token.substr(0, split)});
+            const auto destination =
+                std::stoull(std::string{token.substr(split + 1U)});
+            if (source == 0 || destination == 0 ||
+                std::find_if(
+                    result.begin(), result.end(),
+                    [&](const auto& item) {
+                        return item.first == source ||
+                               item.second == destination;
+                    }) != result.end()) {
+                return std::nullopt;
+            }
+            result.emplace_back(source, destination);
+        } catch (...) {
+            return std::nullopt;
+        }
+        if (result.size() > 64U) return std::nullopt;
+        if (end == std::string_view::npos) break;
+        start = end + 1U;
+    }
+    return result.empty()
+               ? std::nullopt
+               : std::optional<std::vector<
+                     std::pair<std::uint64_t, std::uint64_t>>>{
+                     std::move(result)};
 }
 
 std::vector<core::PresenceInfo> parse_presences(const std::string& payload) {
@@ -620,7 +667,7 @@ int main(int argc, char** argv) {
                                                     crossing_id, region_id,
                                                     opengenesis::security::base64_decode(
                                                         field(body, "snapshot_b64"),
-                                                        64U * 1024U),
+                                                        256U * 1024U),
                                                     result_reason);
                                         } catch (...) {
                                             result_reason =
@@ -628,15 +675,51 @@ int main(int argc, char** argv) {
                                         }
                                         break;
                                     case core::ObjectCrossingCommandType::import_destination:
-                                        accepted = object_crossings->record_import(
-                                            crossing_id, region_id,
-                                            u64(body, "destination_entity"),
-                                            result_reason);
+                                        try {
+                                            const auto entity_map =
+                                                opengenesis::security::base64_decode(
+                                                    field(body, "entity_map_b64"),
+                                                    16U * 1024U);
+                                            if (!parse_entity_map(entity_map)) {
+                                                result_reason =
+                                                    "object-crossing-entity-map-invalid";
+                                                accepted = false;
+                                            } else {
+                                                accepted =
+                                                    object_crossings->record_import(
+                                                        crossing_id, region_id,
+                                                        u64(body, "destination_entity"),
+                                                        entity_map,
+                                                        result_reason);
+                                            }
+                                        } catch (...) {
+                                            result_reason =
+                                                "object-crossing-entity-map-decode-failed";
+                                        }
                                         break;
-                                    case core::ObjectCrossingCommandType::remove_source:
+                                    case core::ObjectCrossingCommandType::remove_source: {
+                                        const auto entity_map =
+                                            parse_entity_map(
+                                                expected->crossing.entity_map);
+                                        if (!entity_map) {
+                                            result_reason =
+                                                "object-crossing-entity-map-invalid";
+                                            accepted = false;
+                                            break;
+                                        }
+                                        if (!scripts->rebind_objects(
+                                                expected->crossing.source_region,
+                                                expected->crossing.destination_region,
+                                                *entity_map,
+                                                expected->crossing.owner_user_id,
+                                                result_reason)) {
+                                            accepted = false;
+                                            break;
+                                        }
                                         accepted = object_crossings->record_remove(
                                             crossing_id, region_id, result_reason);
                                         break;
+                                    }
                                     case core::ObjectCrossingCommandType::cleanup_destination:
                                         accepted = object_crossings->record_cleanup(
                                             crossing_id, region_id, result_reason);
