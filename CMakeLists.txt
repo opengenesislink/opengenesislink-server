@@ -129,8 +129,10 @@ add_executable(opengenesis-core apps/core/main.cpp)
 target_link_libraries(opengenesis-core PRIVATE OpenGenesis::Foundation)
 add_executable(opengenesis-world apps/world/main.cpp)
 target_link_libraries(opengenesis-world PRIVATE OpenGenesis::Foundation)
+add_executable(opengenesis-storage apps/storage/main.cpp)
+target_link_libraries(opengenesis-storage PRIVATE OpenGenesis::Foundation)
 
-install(TARGETS opengenesis-foundation opengenesis-core opengenesis-world
+install(TARGETS opengenesis-foundation opengenesis-core opengenesis-world opengenesis-storage
     RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config/ DESTINATION share/opengenesislink/config)
