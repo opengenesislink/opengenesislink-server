@@ -84,6 +84,119 @@ int main() {
             opengenesis::scripting::deserialize_vm_state(state_encoded, reason);
         require(state_decoded && state_decoded->variables.at("count") == "3",
                 "VM state roundtrip");
+
+        const std::string ogl_program =
+            "@ogl 1\n"
+            "state default\n"
+            "on touch\n"
+            "let count = 1\n"
+            "inc count by 2\n"
+            "world.say Hello from OGL\n"
+            "world.move 10 20 30\n"
+            "goto active\n"
+            "end\n"
+            "state active\n"
+            "on timer\n"
+            "world.text OGL active\n"
+            "end\n";
+        const auto ogl_compiled =
+            opengenesis::scripting::compile_script_source(
+                opengenesis::scripting::ScriptLanguage::ogl,
+                ogl_program, reason);
+        require(ogl_compiled && ogl_compiled->handlers.size() == 2,
+                "native OGL language compiles state handlers");
+        const auto ogl_touch =
+            opengenesis::scripting::execute_script_event(
+                *ogl_compiled, "touch", {});
+        require(ogl_touch.ok &&
+                    ogl_touch.state.state == "active" &&
+                    ogl_touch.state.variables.at("count") == "3" &&
+                    ogl_touch.actions.size() == 3,
+                "OGL touch event executes through shared VM");
+        const auto ogl_timer =
+            opengenesis::scripting::execute_script_event(
+                *ogl_compiled, "timer", ogl_touch.state);
+        require(ogl_timer.ok && ogl_timer.actions.size() == 1 &&
+                    ogl_timer.actions.front().type ==
+                        opengenesis::scripting::ScriptActionType::world_text,
+                "OGL active-state timer selects state-specific handler");
+
+        const std::string lsl_program =
+            "default {\n"
+            "  state_entry() {\n"
+            "    llOwnerSay(\"ready\");\n"
+            "    llSetTimerEvent(1.5);\n"
+            "  }\n"
+            "  listen(integer channel, string name, key id, string message) {\n"
+            "    llSay(0, message);\n"
+            "  }\n"
+            "  touch_start(integer total_number) {\n"
+            "    llSetPos(<10,20,30>);\n"
+            "    state active;\n"
+            "  }\n"
+            "}\n"
+            "active {\n"
+            "  timer() {\n"
+            "    llSetText(\"active\", <1,1,1>, 1.0);\n"
+            "  }\n"
+            "}\n";
+        const auto lsl_compiled =
+            opengenesis::scripting::compile_script_source(
+                opengenesis::scripting::ScriptLanguage::lsl,
+                lsl_program, reason);
+        require(lsl_compiled && lsl_compiled->handlers.size() == 4,
+                "LSL compatibility frontend compiles default and named states");
+
+        const auto lsl_entry =
+            opengenesis::scripting::execute_script_event(
+                *lsl_compiled, "state_entry", {});
+        require(lsl_entry.ok && lsl_entry.actions.size() == 2 &&
+                    lsl_entry.actions[0].type ==
+                        opengenesis::scripting::ScriptActionType::notify_owner &&
+                    lsl_entry.actions[1].type ==
+                        opengenesis::scripting::ScriptActionType::set_timer &&
+                    lsl_entry.actions[1].number == 1500,
+                "LSL state_entry maps owner say and timer semantics");
+
+        const auto lsl_listen =
+            opengenesis::scripting::execute_script_event(
+                *lsl_compiled, "listen", {}, {},
+                "7\nAlice Example\nagent-key\nHello from listen");
+        require(lsl_listen.ok && lsl_listen.actions.size() == 1 &&
+                    lsl_listen.actions.front().type ==
+                        opengenesis::scripting::ScriptActionType::world_chat_say &&
+                    lsl_listen.actions.front().value == "Hello from listen" &&
+                    lsl_listen.state.variables.at("channel") == "7" &&
+                    lsl_listen.state.variables.at("message") ==
+                        "Hello from listen",
+                "LSL event parameters bind into VM variables");
+
+        const auto lsl_touch =
+            opengenesis::scripting::execute_script_event(
+                *lsl_compiled, "touch_start", lsl_entry.state, {},
+                "1");
+        require(lsl_touch.ok &&
+                    lsl_touch.state.state == "active" &&
+                    lsl_touch.actions.size() == 2 &&
+                    lsl_touch.actions.front().type ==
+                        opengenesis::scripting::ScriptActionType::world_move,
+                "LSL state change and world mutation execute");
+
+        const auto lsl_timer =
+            opengenesis::scripting::execute_script_event(
+                *lsl_compiled, "timer", lsl_touch.state);
+        require(lsl_timer.ok && lsl_timer.actions.size() == 1 &&
+                    lsl_timer.actions.front().type ==
+                        opengenesis::scripting::ScriptActionType::world_text,
+                "LSL named-state timer executes correct handler");
+
+        require(opengenesis::scripting::lsl_function_catalog().size() >= 500,
+                "LSL canonical function catalog is populated");
+        require(opengenesis::scripting::lsl_event_catalog().size() == 44,
+                "LSL event category catalog mirrors official event pages");
+        require(opengenesis::scripting::ogl_feature_catalog().size() >= 30,
+                "OGL native command catalog is populated");
+
         auto identities = std::make_shared<opengenesis::core::IdentityStore>(
             (root / "users.db").string());
         const auto alice = identities->register_user(
@@ -262,6 +375,44 @@ int main() {
                     "VM state survives restart");
         }
 
+        {
+            opengenesis::scripting::ScriptRuntime scripts(scripts_path);
+            require(scripts.upsert(
+                        {.id = "script-lsl",
+                         .object_id = "region-a/77",
+                         .owner_user_id = "user-1",
+                         .source_hash = "pending",
+                         .language =
+                             opengenesis::scripting::ScriptLanguage::lsl,
+                         .source = {},
+                         .vm_state = {},
+                         .state = "default",
+                         .enabled = true,
+                         .timer_interval_ms = 0,
+                         .next_timer_unix_ms = 0,
+                         .chat_channel = 0,
+                         .chat_enabled = false,
+                         .event_count = 0},
+                        reason),
+                    "LSL runtime record created");
+            require(scripts.set_program("script-lsl", lsl_program, reason),
+                    "LSL source persists through common Script Runtime");
+            const auto entry =
+                scripts.execute_event(
+                    "script-lsl", "state_entry", 20000, reason);
+            require(entry && entry->actions.size() == 2,
+                    "persisted LSL script executes");
+        }
+        {
+            opengenesis::scripting::ScriptRuntime scripts(scripts_path);
+            const auto restored_lsl = scripts.find("script-lsl");
+            require(restored_lsl &&
+                        restored_lsl->language ==
+                            opengenesis::scripting::ScriptLanguage::lsl,
+                    "Script language survives Runtime restart");
+        }
+
+
         const auto crossing_path = (root / "crossings.db").string();
         std::string crossing_id;
         std::string reservation_token;
@@ -366,10 +517,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 8.0 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 9.0 ScriptEngine/LSL/OGL runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 8.0 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 9.0 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }
