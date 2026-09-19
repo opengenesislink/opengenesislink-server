@@ -469,27 +469,15 @@ std::optional<CompiledScript> compile_lsl_script(
         if (pos >= clean.size()) break;
 
         std::string state;
-        if (clean.compare(pos, 7U, "default") == 0 &&
-            (pos + 7U == clean.size() ||
-             std::isspace(static_cast<unsigned char>(clean[pos + 7U])) != 0 ||
-             clean[pos + 7U] == '{')) {
-            state = "default";
-            pos += 7U;
-        } else if (clean.compare(pos, 5U, "state") == 0) {
-            pos += 5U;
-            while (pos < clean.size() &&
-                   std::isspace(static_cast<unsigned char>(clean[pos])) != 0) {
-                ++pos;
-            }
-            const auto start = pos;
-            while (pos < clean.size() &&
-                   (std::isalnum(static_cast<unsigned char>(clean[pos])) != 0 ||
-                    clean[pos] == '_')) {
-                ++pos;
-            }
-            state = clean.substr(start, pos - start);
-        } else {
-            reason = "lsl-only-state-declarations-supported-at-top-level";
+        const auto state_start = pos;
+        while (pos < clean.size() &&
+               (std::isalnum(static_cast<unsigned char>(clean[pos])) != 0 ||
+                clean[pos] == '_')) {
+            ++pos;
+        }
+        state = clean.substr(state_start, pos - state_start);
+        if (state == "state") {
+            reason = "lsl-state-keyword-is-only-valid-for-state-change";
             return std::nullopt;
         }
 
