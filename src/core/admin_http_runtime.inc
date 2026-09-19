@@ -110,6 +110,8 @@ std::string object_crossing_json(
            std::to_string(crossing.remove_attempts) +
            ",\"cleanup_attempts\":" +
            std::to_string(crossing.cleanup_attempts) +
+           ",\"restore_attempts\":" +
+           std::to_string(crossing.restore_attempts) +
            ",\"created_unix\":" +
            std::to_string(crossing.created_unix) +
            ",\"expires_unix\":" +
