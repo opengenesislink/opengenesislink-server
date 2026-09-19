@@ -123,6 +123,25 @@ void AdminHttpServer::run() {
                     const auto user = session ? identities_->find_by_id(session->user_id) : std::nullopt;
                     return {session, user};
                 };
+                const auto admin_allowed =
+                    [&](const std::string_view minimum_role) {
+                        if (admin_authorized(*request, admin_api_key_)) {
+                            return true;
+                        }
+                        const auto [session, user] = auth();
+                        return session && user &&
+                               admin_roles_->has_role(
+                                   user->id, minimum_role);
+                    };
+                const auto admin_actor = [&]() {
+                    if (admin_authorized(*request, admin_api_key_)) {
+                        return std::string{"admin-api-key"};
+                    }
+                    const auto [session, user] = auth();
+                    return session && user
+                               ? user->id
+                               : std::string{"unknown-admin"};
+                };
                 const auto estate_entry_error = [&](const UserInfo& user, const RegionInfo& region) -> std::string {
                     const auto policy = estates_->policy_for_region(region.id);
                     if (!policy) return {};
@@ -510,7 +529,7 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "GET" && path == "/v1/hypergrid/sessions") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
+                    if (!admin_allowed("administrator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     } else {
                         response.body =
@@ -526,14 +545,14 @@ void AdminHttpServer::run() {
                                     "\",\"base_url\":\"" + json_escape(info.base_url) +
                                     "\",\"public_key\":\"" + json_escape(info.public_key_hex) + "\"}";
                 } else if (method == "GET" && path == "/v1/federation/peers") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
+                    if (!admin_allowed("administrator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     } else {
                         response.body = "{\"peers\":" +
                                         federation_peers_json(federation_runtime_->peers()) + "}";
                     }
                 } else if (method == "POST" && path == "/v1/federation/trust") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
+                    if (!admin_allowed("administrator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     } else {
                         const auto grid_id = json_string(request->body, "grid_id");
@@ -562,7 +581,7 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "POST" && path == "/v1/federation/revoke") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
+                    if (!admin_allowed("administrator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     } else {
                         const auto grid_id = json_string(request->body, "grid_id");
@@ -663,14 +682,14 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "GET" && path == "/v1/federation/sessions") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
+                    if (!admin_allowed("administrator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     } else {
                         response.body = "{\"sessions\":" +
                                         federation_sessions_json(federation_runtime_->sessions()) + "}";
                     }
                 } else if (method == "POST" && path == "/v1/federation/sessions/logout") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
+                    if (!admin_allowed("administrator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     } else {
                         const auto session_id = json_string(request->body, "session_id");
@@ -1577,10 +1596,10 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "GET" && path == "/v1/admin/moderation") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("administrator")) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     else response.body = "{\"bans\":" + bans_json(moderation_->list()) + "}";
                 } else if (method == "POST" && path == "/v1/admin/moderation/ban") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("administrator")) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     else {
                         const auto user_id = json_string(request->body, "user_id");
                         const auto scope = json_string(request->body, "scope");
@@ -1596,14 +1615,14 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "POST" && path == "/v1/admin/moderation/unban") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("administrator")) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     else {
                         const auto ban_id = json_string(request->body, "ban_id");
                         if (!ban_id || !moderation_->unban(*ban_id)) response = {.status = 404, .body = "{\"error\":\"ban-not-found\"}"};
                         else { audit_->append("admin-api", "moderation.unban", *ban_id); response.body = "{\"status\":\"removed\"}"; }
                     }
                 } else if (method == "GET" && path == "/v1/admin/audit") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("administrator")) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
                     else response.body = "{\"events\":" + audit_json(audit_->recent()) + "}";
                 } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
                            path == "/v1/auth/logout" || path == "/v1/viewer/session" ||
