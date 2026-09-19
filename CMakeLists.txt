@@ -84,6 +84,7 @@ add_library(opengenesis-foundation
     src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
     src/storage/database.cpp
+    src/storage/database_config.cpp
     src/storage/migrations.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
