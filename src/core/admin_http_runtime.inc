@@ -24,6 +24,13 @@ std::string script_actions_json(const std::vector<scripting::ScriptAction>& acti
         else if (action.type == scripting::ScriptActionType::listen) type = "listen";
         else if (action.type == scripting::ScriptActionType::notify_owner) type = "notify";
         else if (action.type == scripting::ScriptActionType::direct_message) type = "message";
+        else if (action.type == scripting::ScriptActionType::world_move) type = "move";
+        else if (action.type == scripting::ScriptActionType::world_rotate) type = "rotate";
+        else if (action.type == scripting::ScriptActionType::world_scale) type = "scale";
+        else if (action.type == scripting::ScriptActionType::world_physics) type = "physics";
+        else if (action.type == scripting::ScriptActionType::world_chat_say) type = "say";
+        else if (action.type == scripting::ScriptActionType::world_chat_whisper) type = "whisper";
+        else if (action.type == scripting::ScriptActionType::world_chat_shout) type = "shout";
         out << "{\"type\":\"" << type << "\",\"value\":\"" << json_escape(action.value)
             << "\",\"number\":" << action.number << "}";
     }
