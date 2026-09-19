@@ -117,7 +117,14 @@ std::string serialize_object_snapshot(
         << "vx=" << snapshot.velocity.x << '\n'
         << "vy=" << snapshot.velocity.y << '\n'
         << "vz=" << snapshot.velocity.z << '\n'
-        << "physical=" << (snapshot.physical ? 1 : 0) << '\n';
+        << "avx=" << snapshot.angular_velocity.x << '\n'
+        << "avy=" << snapshot.angular_velocity.y << '\n'
+        << "avz=" << snapshot.angular_velocity.z << '\n'
+        << "physical=" << (snapshot.physical ? 1 : 0) << '\n'
+        << "parent_source=" << snapshot.parent_source_entity_id << '\n'
+        << "link_number=" << snapshot.link_number << '\n'
+        << "text_b64="
+        << opengenesis::security::base64_encode(snapshot.floating_text) << '\n';
     return out.str();
 }
 
@@ -157,7 +164,26 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
             std::stod(field(encoded, "vx")),
             std::stod(field(encoded, "vy")),
             std::stod(field(encoded, "vz"))};
+        const auto avx = field(encoded, "avx");
+        const auto avy = field(encoded, "avy");
+        const auto avz = field(encoded, "avz");
+        if (!avx.empty() && !avy.empty() && !avz.empty()) {
+            snapshot.angular_velocity = {
+                std::stod(avx), std::stod(avy), std::stod(avz)};
+        }
         snapshot.physical = field(encoded, "physical") == "1";
+        const auto parent = field(encoded, "parent_source");
+        if (!parent.empty()) snapshot.parent_source_entity_id = std::stoull(parent);
+        const auto link_number = field(encoded, "link_number");
+        if (!link_number.empty()) {
+            snapshot.link_number =
+                static_cast<std::uint32_t>(std::stoul(link_number));
+        }
+        const auto text_b64 = field(encoded, "text_b64");
+        if (!text_b64.empty()) {
+            snapshot.floating_text = opengenesis::security::base64_decode(
+                text_b64, 512U);
+        }
         if (snapshot.source_entity_id == 0 || snapshot.owner_user_id.empty()) {
             reason = "invalid-object-transfer-snapshot";
             return std::nullopt;
@@ -170,10 +196,76 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
     }
 }
 
+std::string serialize_linkset_snapshot(
+    const world::ObjectLinksetTransferSnapshot& snapshot) {
+    std::ostringstream out;
+    out << "format=linkset-v2\n"
+        << "root=" << snapshot.source_root_entity_id << '\n'
+        << "count=" << snapshot.members.size() << '\n';
+    for (std::size_t index = 0; index < snapshot.members.size(); ++index) {
+        out << "member" << index << "_b64="
+            << opengenesis::security::base64_encode(
+                   serialize_object_snapshot(snapshot.members[index]))
+            << '\n';
+    }
+    return out.str();
+}
+
+std::optional<world::ObjectLinksetTransferSnapshot> deserialize_linkset_snapshot(
+    const std::string& encoded, std::string& reason) {
+    try {
+        if (field(encoded, "format") != "linkset-v2") {
+            reason = "unsupported-linkset-snapshot";
+            return std::nullopt;
+        }
+        world::ObjectLinksetTransferSnapshot snapshot;
+        snapshot.source_root_entity_id =
+            std::stoull(field(encoded, "root"));
+        const auto count = std::stoull(field(encoded, "count"));
+        if (snapshot.source_root_entity_id == 0 || count == 0 || count > 64U) {
+            reason = "invalid-linkset-snapshot";
+            return std::nullopt;
+        }
+        snapshot.members.reserve(static_cast<std::size_t>(count));
+        bool root_found = false;
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto key = "member" + std::to_string(index) + "_b64";
+            const auto member_encoded = opengenesis::security::base64_decode(
+                field(encoded, key), 8U * 1024U);
+            auto member = deserialize_object_snapshot(member_encoded, reason);
+            if (!member) return std::nullopt;
+            if (member->source_entity_id == snapshot.source_root_entity_id) {
+                root_found = true;
+            }
+            snapshot.members.push_back(std::move(*member));
+        }
+        if (!root_found) {
+            reason = "linkset-root-missing";
+            return std::nullopt;
+        }
+        reason.clear();
+        return snapshot;
+    } catch (...) {
+        reason = "invalid-linkset-snapshot";
+        return std::nullopt;
+    }
+}
+
+std::string serialize_entity_map(
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map) {
+    std::ostringstream out;
+    for (std::size_t index = 0; index < entity_map.size(); ++index) {
+        if (index != 0) out << ',';
+        out << entity_map[index].first << ':' << entity_map[index].second;
+    }
+    return out.str();
+}
+
 struct ObjectCrossingApplyResult {
     bool ok{false};
     std::string snapshot;
     std::uint64_t destination_entity_id{0};
+    std::string entity_map;
     std::string error;
 };
 
@@ -195,45 +287,69 @@ ObjectCrossingApplyResult apply_object_crossing_command(
     }
 
     if (command == "export") {
-        const auto snapshot = runtime.export_object(source_entity_id);
-        if (!snapshot) return {.error = "source-object-not-found"};
-        if (snapshot->owner_user_id != owner) {
+        const auto snapshot = runtime.export_linkset(source_entity_id);
+        if (!snapshot) return {.error = "source-linkset-not-found"};
+        const auto root = std::find_if(
+            snapshot->members.begin(), snapshot->members.end(),
+            [&](const auto& member) {
+                return member.source_entity_id == snapshot->source_root_entity_id;
+            });
+        if (root == snapshot->members.end() || root->owner_user_id != owner) {
             return {.error = "source-object-owner-mismatch"};
         }
-        return {.ok = true, .snapshot = serialize_object_snapshot(*snapshot)};
+        return {
+            .ok = true,
+            .snapshot = serialize_linkset_snapshot(*snapshot)};
     }
 
-    if (command == "import") {
+    if (command == "import" || command == "restore") {
         std::string reason;
         std::string decoded;
         try {
             decoded = opengenesis::security::base64_decode(
-                field(body, "snapshot_b64"), 64U * 1024U);
+                field(body, "snapshot_b64"), 256U * 1024U);
         } catch (...) {
             return {.error = "object-snapshot-decode-failed"};
         }
-        const auto snapshot = deserialize_object_snapshot(decoded, reason);
+        const auto snapshot = deserialize_linkset_snapshot(decoded, reason);
         if (!snapshot) return {.error = reason};
-        if (snapshot->owner_user_id != owner) {
+
+        const auto root = std::find_if(
+            snapshot->members.begin(), snapshot->members.end(),
+            [&](const auto& member) {
+                return member.source_entity_id == snapshot->source_root_entity_id;
+            });
+        if (root == snapshot->members.end() || root->owner_user_id != owner) {
             return {.error = "destination-object-owner-mismatch"};
         }
 
-        opengenesis::physics::Vec3 position;
-        try {
-            position = {
-                std::stod(field(body, "x")),
-                std::stod(field(body, "y")),
-                std::stod(field(body, "z"))};
-        } catch (...) {
-            return {.error = "invalid-destination-position"};
+        opengenesis::physics::Vec3 position = root->transform.position;
+        bool preserve_source_ids = command == "restore";
+        if (!preserve_source_ids) {
+            try {
+                position = {
+                    std::stod(field(body, "x")),
+                    std::stod(field(body, "y")),
+                    std::stod(field(body, "z"))};
+            } catch (...) {
+                return {.error = "invalid-destination-position"};
+            }
         }
 
-        if (!runtime.import_object(
-                *snapshot, destination_entity_id, position, reason)) {
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> entity_map;
+        const auto root_destination_id =
+            preserve_source_ids
+                ? snapshot->source_root_entity_id
+                : destination_entity_id;
+        if (!runtime.import_linkset(
+                *snapshot, root_destination_id, position,
+                entity_map, reason, preserve_source_ids)) {
             return {.error = reason};
         }
-        return {.ok = true,
-                .destination_entity_id = destination_entity_id};
+        return {
+            .ok = true,
+            .destination_entity_id = root_destination_id,
+            .entity_map = serialize_entity_map(entity_map)};
     }
 
     if (command == "remove") {
@@ -243,8 +359,8 @@ ObjectCrossingApplyResult apply_object_crossing_command(
                 existing->owner_user_id != owner) {
                 return {.error = "source-object-owner-mismatch"};
             }
-            if (!runtime.remove_entity(source_entity_id)) {
-                return {.error = "source-object-remove-failed"};
+            if (!runtime.remove_linkset(source_entity_id)) {
+                return {.error = "source-linkset-remove-failed"};
             }
         }
         return {.ok = true};
@@ -257,35 +373,13 @@ ObjectCrossingApplyResult apply_object_crossing_command(
                 existing->owner_user_id != owner) {
                 return {.error = "destination-object-owner-mismatch"};
             }
-            if (!runtime.remove_entity(destination_entity_id)) {
-                return {.error = "destination-object-cleanup-failed"};
+            if (!runtime.remove_linkset(destination_entity_id)) {
+                return {.error = "destination-linkset-cleanup-failed"};
             }
         }
-        return {.ok = true,
-                .destination_entity_id = destination_entity_id};
-    }
-
-    if (command == "restore") {
-        std::string reason;
-        std::string decoded;
-        try {
-            decoded = opengenesis::security::base64_decode(
-                field(body, "snapshot_b64"), 64U * 1024U);
-        } catch (...) {
-            return {.error = "object-snapshot-decode-failed"};
-        }
-        const auto snapshot = deserialize_object_snapshot(decoded, reason);
-        if (!snapshot) return {.error = reason};
-        if (snapshot->owner_user_id != owner ||
-            snapshot->source_entity_id != source_entity_id) {
-            return {.error = "source-object-restore-binding-mismatch"};
-        }
-        if (!runtime.import_object(
-                *snapshot, source_entity_id,
-                snapshot->transform.position, reason)) {
-            return {.error = reason};
-        }
-        return {.ok = true};
+        return {
+            .ok = true,
+            .destination_entity_id = destination_entity_id};
     }
 
     return {.error = "unsupported-object-crossing-command"};
