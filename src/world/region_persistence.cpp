@@ -129,7 +129,8 @@ void RegionPersistence::load(RegionRuntime& runtime) {
             if (line.empty() || line[0] == '#') continue;
             const auto fields = split_tabs(line);
             if (fields.size() != 12 && fields.size() != 13 &&
-                fields.size() != 17 && fields.size() != 20) {
+                fields.size() != 17 && fields.size() != 20 &&
+                fields.size() != 26) {
                 continue;
             }
             try {
@@ -142,7 +143,8 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                 const bool physical = fields[11] == "1";
                 const auto owner = fields.size() >= 13 ? text_unhex(fields[12]) : std::string{};
                 const bool has_permissions =
-                    fields.size() == 17 || fields.size() == 20;
+                    fields.size() == 17 || fields.size() == 20 ||
+                    fields.size() == 26;
                 const auto group =
                     has_permissions ? text_unhex(fields[13]) : std::string{};
                 const auto owner_permissions =
@@ -160,16 +162,30 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                         ? static_cast<core::PermissionMask>(
                               std::stoul(fields[16]))
                         : 0U;
-                if (runtime.restore_object(
-                        id, name, transform, physical, owner, group,
-                        owner_permissions, group_permissions,
-                        everyone_permissions) &&
-                    fields.size() == 20 && physical) {
-                    const physics::Vec3 velocity{
+                physics::Vec3 velocity{};
+                physics::Vec3 angular_velocity{};
+                std::uint64_t parent_entity_id = 0;
+                std::uint32_t link_number = 1;
+                std::string floating_text;
+                if (fields.size() == 20 || fields.size() == 26) {
+                    velocity = {
                         std::stod(fields[17]), std::stod(fields[18]),
                         std::stod(fields[19])};
-                    (void)runtime.set_velocity(id, velocity);
                 }
+                if (fields.size() == 26) {
+                    angular_velocity = {
+                        std::stod(fields[20]), std::stod(fields[21]),
+                        std::stod(fields[22])};
+                    parent_entity_id = std::stoull(fields[23]);
+                    link_number =
+                        static_cast<std::uint32_t>(std::stoul(fields[24]));
+                    floating_text = text_unhex(fields[25]);
+                }
+                (void)runtime.restore_object(
+                    id, name, transform, physical, owner, group,
+                    owner_permissions, group_permissions,
+                    everyone_permissions, parent_entity_id, link_number,
+                    floating_text, velocity, angular_velocity);
             } catch (...) {
             }
         }
@@ -209,15 +225,16 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
         const auto temporary = path.string() + ".tmp";
         std::ofstream output(temporary, std::ios::trunc);
         if (!output) throw std::runtime_error("cannot write scene persistence");
-        output << "# OpenGenesisLINK persistent scene objects v4\n"
+        output << "# OpenGenesisLINK persistent scene objects v5\n"
                << std::setprecision(17);
         for (const auto& entity : runtime.snapshot_entities()) {
             if (entity.kind != EntityKind::object) continue;
             const auto& t = entity.transform;
             physics::Vec3 velocity{};
-            if (entity.physics_body != 0) {
-                const auto transfer = runtime.export_object(entity.id);
-                if (transfer) velocity = transfer->velocity;
+            physics::Vec3 angular_velocity{};
+            if (const auto transfer = runtime.export_object(entity.id)) {
+                velocity = transfer->velocity;
+                angular_velocity = transfer->angular_velocity;
             }
             output << entity.id << '\t' << text_hex(entity.name) << '\t'
                    << t.position.x << '\t' << t.position.y << '\t'
@@ -232,7 +249,13 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
                    << entity.group_permissions << '\t'
                    << entity.everyone_permissions << '\t'
                    << velocity.x << '\t' << velocity.y << '\t'
-                   << velocity.z << '\n';
+                   << velocity.z << '\t'
+                   << angular_velocity.x << '\t'
+                   << angular_velocity.y << '\t'
+                   << angular_velocity.z << '\t'
+                   << entity.parent_entity_id << '\t'
+                   << entity.link_number << '\t'
+                   << text_hex(entity.floating_text) << '\n';
         }
         output.close();
         if (!output) throw std::runtime_error("cannot flush scene persistence");
