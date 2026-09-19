@@ -124,6 +124,19 @@ void AdminHttpServer::run() {
                     }
                     return {};
                 };
+                const auto object_estate_error =
+                    [&](const UserInfo& user,
+                        const RegionInfo& region) -> std::string {
+                    const auto policy =
+                        estates_->policy_for_region(region.id);
+                    if (!policy) return {};
+                    if (!policy->public_access &&
+                        !estates_->can_manage(
+                            policy->estate_id, user.id)) {
+                        return "estate-object-entry-denied";
+                    }
+                    return {};
+                };
                 const auto viewer_response = [&](const UserInfo& user, const RegionInfo& region,
                                                  const WorldNodeInfo& world,
                                                  std::string handoff_from = {},
@@ -943,7 +956,7 @@ void AdminHttpServer::run() {
                                 response = {.status = 403,
                                             .body = "{\"error\":\"user-banned\"}"};
                             } else if (const auto error =
-                                           estate_entry_error(
+                                           object_estate_error(
                                                *user, *destination);
                                        !error.empty()) {
                                 response = {
