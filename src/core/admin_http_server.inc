@@ -1003,12 +1003,12 @@ void AdminHttpServer::run() {
                                         .status = 503,
                                         .body = "{\"error\":\"object-crossing-store-unavailable\"}"};
                                 }
-                                if (response.status == 200 && !crossing) {
+                                if (!crossing && response.status != 503) {
                                     response = {
                                         .status = 409,
                                         .body = "{\"error\":\"" +
                                                 json_escape(reason) + "\"}"};
-                                } else if (response.status == 200 && crossing) {
+                                } else if (crossing) {
                                     response.status = 202;
                                     response.body =
                                         object_crossing_json(*crossing);
