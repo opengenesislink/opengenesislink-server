@@ -125,7 +125,11 @@ std::optional<ScriptWorldAction> ScriptWorldActionQueue::lease(
 
     bool changed = false;
     for (auto it = actions_.begin(); it != actions_.end();) {
-        if (it->expires_unix_ms <= now_unix_ms) {
+        const bool expired = it->expires_unix_ms <= now_unix_ms;
+        const bool attempts_exhausted =
+            it->attempts >= max_attempts_ &&
+            it->lease_until_unix_ms <= now_unix_ms;
+        if (expired || attempts_exhausted) {
             it = actions_.erase(it);
             changed = true;
         } else {
