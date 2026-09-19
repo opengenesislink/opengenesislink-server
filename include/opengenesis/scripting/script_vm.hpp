@@ -10,7 +10,7 @@
 
 namespace opengenesis::scripting {
 
-enum class ScriptOpcode { set, add, emit, state, timer, listen, stop };
+enum class ScriptOpcode { set, add, emit, state, timer, listen, notify, message, stop };
 
 struct ScriptInstruction {
     ScriptOpcode opcode{ScriptOpcode::stop};
@@ -32,7 +32,7 @@ struct ScriptVmState {
     std::unordered_map<std::string, std::string> variables;
 };
 
-enum class ScriptActionType { emit, state_change, set_timer, listen };
+enum class ScriptActionType { emit, state_change, set_timer, listen, notify_owner, direct_message };
 
 struct ScriptAction {
     ScriptActionType type{ScriptActionType::emit};
