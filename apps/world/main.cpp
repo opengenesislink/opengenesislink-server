@@ -331,6 +331,12 @@ ScriptActionApplyResult apply_script_action(
     }
 
     if (type == "query_object") {
+        const auto transfer = (*runtime)->export_object(entity_id);
+        const auto linkset = (*runtime)->linkset_members(entity_id);
+        const opengenesis::physics::Vec3 velocity =
+            transfer ? transfer->velocity : opengenesis::physics::Vec3{};
+        const opengenesis::physics::Vec3 angular =
+            transfer ? transfer->angular_velocity : opengenesis::physics::Vec3{};
         std::ostringstream out;
         out << std::fixed << std::setprecision(3)
             << "name=" << clean_wire_field(entity->name) << '\n'
@@ -340,7 +346,13 @@ ScriptActionApplyResult apply_script_action(
             << entity->transform.rotation.y << ' ' << entity->transform.rotation.z << '\n'
             << "scale=" << entity->transform.scale.x << ' '
             << entity->transform.scale.y << ' ' << entity->transform.scale.z << '\n'
+            << "velocity=" << velocity.x << ' ' << velocity.y << ' ' << velocity.z << '\n'
+            << "angular_velocity=" << angular.x << ' ' << angular.y << ' ' << angular.z << '\n'
             << "physical=" << (entity->physics_body != 0 ? 1 : 0) << '\n'
+            << "parent_entity=" << entity->parent_entity_id << '\n'
+            << "link_number=" << entity->link_number << '\n'
+            << "linkset_count=" << linkset.size() << '\n'
+            << "text=" << clean_wire_field(entity->floating_text) << '\n'
             << "group=" << clean_wire_field(entity->group_id) << '\n'
             << "owner_permissions=" << entity->owner_permissions << '\n'
             << "group_permissions=" << entity->group_permissions << '\n'
@@ -356,6 +368,7 @@ ScriptActionApplyResult apply_script_action(
             << "terrain_width=" << (*runtime)->terrain().width() << '\n'
             << "terrain_height=" << (*runtime)->terrain().height() << '\n'
             << "terrain_revision=" << (*runtime)->terrain().revision() << '\n'
+            << "water_height=" << (*runtime)->water_height() << '\n'
             << "entity_count=" << metrics.entities << '\n'
             << "avatar_count=" << metrics.avatars << '\n'
             << "sim_fps=" << metrics.sim_fps << '\n';
@@ -371,6 +384,22 @@ ScriptActionApplyResult apply_script_action(
             << "x=" << entity->transform.position.x << '\n'
             << "y=" << entity->transform.position.y << '\n';
         return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_water") {
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(3)
+            << "height=" << (*runtime)->water_height() << '\n';
+        return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_time") {
+        const auto current_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count();
+        return {.ok = true,
+                .result = "unix_ms=" + std::to_string(current_ms) + "\n"};
     }
 
     if (type == "query_nearby") {
@@ -424,7 +453,9 @@ ScriptActionApplyResult apply_script_action(
     }
 
     const bool modifies_object =
-        type == "move" || type == "rotate" || type == "scale" || type == "physics";
+        type == "move" || type == "rotate" || type == "scale" ||
+        type == "velocity" || type == "angular_velocity" ||
+        type == "physics" || type == "text";
     if (modifies_object &&
         !opengenesis::core::has_permission(
             entity->owner_permissions, opengenesis::core::perm_modify)) {
@@ -443,6 +474,11 @@ ScriptActionApplyResult apply_script_action(
                    ? ScriptActionApplyResult{.ok = true}
                    : ScriptActionApplyResult{.error = "physics-update-failed"};
     }
+    if (type == "text") {
+        return (*runtime)->set_floating_text(entity_id, payload)
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{.error = "object-text-update-failed"};
+    }
     if (type == "say" || type == "whisper" || type == "shout") {
         const auto event_type = type == "whisper" ? "chat_whisper"
                               : type == "shout" ? "chat_shout"
@@ -458,6 +494,21 @@ ScriptActionApplyResult apply_script_action(
         !std::isfinite(vector.z)) {
         return {.error = "invalid-world-vector"};
     }
+    if (type == "velocity" || type == "angular_velocity") {
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(), entity->transform.position.x,
+                entity->transform.position.y, owner, {})) {
+            return {.error = "parcel-build-denied"};
+        }
+        const bool ok =
+            type == "velocity"
+                ? (*runtime)->set_velocity(entity_id, vector)
+                : (*runtime)->set_angular_velocity(entity_id, vector);
+        return ok ? ScriptActionApplyResult{.ok = true}
+                  : ScriptActionApplyResult{.error = "physical-object-motion-update-failed"};
+    }
+
     auto transform = entity->transform;
     if (type == "move") {
         transform.position = vector;
