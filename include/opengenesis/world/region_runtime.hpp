@@ -79,6 +79,7 @@ public:
     bool remove_entity(std::uint64_t id);
     bool update_transform(std::uint64_t id, Transform transform);
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
+    bool set_physical(std::uint64_t id, bool enabled);
     bool set_object_permissions(std::uint64_t id, std::string group_id,
                                 core::PermissionMask group_permissions,
                                 core::PermissionMask everyone_permissions);
@@ -90,7 +91,8 @@ public:
     [[nodiscard]] std::vector<Entity> snapshot_entities() const;
     [[nodiscard]] std::vector<SceneEvent> events_since(std::uint64_t sequence,
                                                         std::size_t max_events = 256) const;
-    std::uint64_t chat(std::uint64_t sender_entity, std::string text);
+    std::uint64_t chat(std::uint64_t sender_entity, std::string text,
+                       std::string event_type = "chat");
 
     [[nodiscard]] RuntimeMetrics metrics() const;
     [[nodiscard]] std::uint64_t latest_sequence() const;

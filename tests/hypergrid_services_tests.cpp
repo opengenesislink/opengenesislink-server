@@ -114,8 +114,34 @@ int main() {
         require(blocked_write.find("<RESULT>False</RESULT>") != std::string::npos,
                 "XInventory writes disabled by default");
 
+        bool rejected_short_key = false;
+        try {
+            opengenesis::compat::hypergrid::HypergridInventoryAdapter invalid_write_adapter(
+                identities, inventory, assets, true, "too-short");
+        } catch (const std::invalid_argument&) {
+            rejected_short_key = true;
+        }
+        require(rejected_short_key,
+                "XInventory write mode rejects weak service secret");
+
+        const std::string write_key =
+            "test-xinventory-service-secret-123456";
         opengenesis::compat::hypergrid::HypergridInventoryAdapter hg_inventory_write(
-            identities, inventory, assets, true);
+            identities, inventory, assets, true, write_key);
+        const auto unauthenticated_write = hg_inventory_write.handle_form(
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Unauthorized&Owner=" + legacy_user +
+            "&ID=12121212-1212-4212-8212-121212121212");
+        require(unauthenticated_write.find("<RESULT>False</RESULT>") !=
+                    std::string::npos,
+                "XInventory write rejects missing service key");
+        const auto bad_key_write = hg_inventory_write.handle_form(
+            "SERVICEKEY=wrong-service-secret-xxxxxxxx&"
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Unauthorized&Owner=" + legacy_user +
+            "&ID=13131313-1313-4313-8313-131313131313");
+        require(bad_key_write.find("<RESULT>False</RESULT>") != std::string::npos,
+                "XInventory write rejects incorrect service key");
         const std::string legacy_folder_a =
             "22222222-2222-4222-8222-222222222222";
         const std::string legacy_folder_b =
@@ -127,21 +153,21 @@ int main() {
                 asset->id);
 
         auto write_xml = hg_inventory_write.handle_form(
-            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "SERVICEKEY=" + write_key + "&METHOD=ADDFOLDER&ParentID=" + legacy_root +
             "&Type=-1&Version=1&Name=Remote+Folder&Owner=" + legacy_user +
             "&ID=" + legacy_folder_a);
         require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
                 "XInventory folder add accepted");
 
         write_xml = hg_inventory_write.handle_form(
-            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "SERVICEKEY=" + write_key + "&METHOD=ADDFOLDER&ParentID=" + legacy_root +
             "&Type=-1&Version=1&Name=Destination&Owner=" + legacy_user +
             "&ID=" + legacy_folder_b);
         require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
                 "XInventory second folder add accepted");
 
         write_xml = hg_inventory_write.handle_form(
-            "METHOD=ADDITEM&AssetID=" + legacy_asset_for_write +
+            "SERVICEKEY=" + write_key + "&METHOD=ADDITEM&AssetID=" + legacy_asset_for_write +
             "&AssetType=5&Name=Remote+Wearable&Owner=" + legacy_user +
             "&ID=" + legacy_write_item +
             "&InvType=18&Folder=" + legacy_folder_a +
@@ -154,14 +180,14 @@ int main() {
                 "XInventory item add accepted");
 
         write_xml = hg_inventory_write.handle_form(
-            "METHOD=MOVEITEMS&PRINCIPAL=" + legacy_user +
+            "SERVICEKEY=" + write_key + "&METHOD=MOVEITEMS&PRINCIPAL=" + legacy_user +
             "&IDLIST[]=" + legacy_write_item +
             "&DESTLIST[]=" + legacy_folder_b);
         require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
                 "XInventory item move accepted");
 
         write_xml = hg_inventory_write.handle_form(
-            "METHOD=UPDATEFOLDER&ParentID=" + legacy_root +
+            "SERVICEKEY=" + write_key + "&METHOD=UPDATEFOLDER&ParentID=" + legacy_root +
             "&Type=-1&Version=2&Name=Renamed+Destination&Owner=" + legacy_user +
             "&ID=" + legacy_folder_b);
         require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
@@ -171,7 +197,7 @@ int main() {
             auto restored_inventory = std::make_shared<opengenesis::core::InventoryStore>(
                 (root / "inventory.db").string());
             opengenesis::compat::hypergrid::HypergridInventoryAdapter restored_adapter(
-                identities, restored_inventory, assets, true);
+                identities, restored_inventory, assets, true, write_key);
             const auto restored_xml = restored_adapter.handle_form(
                 "METHOD=GETFOLDER&PRINCIPAL=" + legacy_user +
                 "&ID=" + legacy_folder_b);
@@ -186,13 +212,13 @@ int main() {
         }
 
         write_xml = hg_inventory_write.handle_form(
-            "METHOD=DELETEITEMS&PRINCIPAL=" + legacy_user +
+            "SERVICEKEY=" + write_key + "&METHOD=DELETEITEMS&PRINCIPAL=" + legacy_user +
             "&ITEMS[]=" + legacy_write_item);
         require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,
                 "XInventory item delete accepted");
 
         write_xml = hg_inventory_write.handle_form(
-            "METHOD=DELETEFOLDERS&PRINCIPAL=" + legacy_user +
+            "SERVICEKEY=" + write_key + "&METHOD=DELETEFOLDERS&PRINCIPAL=" + legacy_user +
             "&FOLDERS[]=" + legacy_folder_a +
             "&FOLDERS[]=" + legacy_folder_b);
         require(write_xml.find("<RESULT>True</RESULT>") != std::string::npos,

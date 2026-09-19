@@ -1,5 +1,23 @@
 # Changelog
 
+## 6.0.0-dev — 2026-09-19
+
+Script World-action routing and authenticated writable Hypergrid Inventory milestone.
+
+- added native Script opcodes for object `move`, `rotate`, `scale`, `physics`, `say`, `whisper` and `shout`
+- added a bounded `ScriptWorldActionQueue` between Core ScriptHost policy and World Nodes
+- added Core/World wire messages for Region-scoped Script action delivery
+- Core verifies that a polling World Node owns the requested Region in its current node generation
+- World Nodes independently verify target object existence, object type and Script-owner/object-owner binding before mutation
+- added RegionRuntime physics enable/disable and distinct whisper/shout scene events
+- integrated smoke coverage now moves a real Scene object through the Core-to-World Script path and verifies the resulting Scene snapshot
+- writable XInventory now requires a minimum 24-byte shared service key in addition to explicit write enablement
+- XInventory write requests must carry the matching `SERVICEKEY`; comparison uses constant-time OpenSSL primitives
+- added `hypergrid-xinventory-auth-v1` and `script-world-actions-v1` capability discovery
+- added `[scripting].max_pending_world_actions` configuration
+- documented current limits: World-action delivery is not yet persistent/ACK-retried, object/avatar read queries remain open, and per-grid signed HG write requests remain future hardening
+
+
 ## 5.5.0-dev — 2026-09-19
 
 Script host-policy and guarded writable Hypergrid Inventory milestone.

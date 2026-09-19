@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 5.5.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 6.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,6 +64,7 @@ add_library(opengenesis-foundation
     src/scripting/script_runtime.cpp
     src/scripting/script_vm.cpp
     src/scripting/script_host.cpp
+    src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp

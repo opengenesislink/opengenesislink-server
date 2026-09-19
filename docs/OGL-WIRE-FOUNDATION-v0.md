@@ -15,7 +15,7 @@ Maximum payload: 1 MiB.
 
 Two transports currently use this frame:
 
-1. Core ↔ World Node control-plane connection (registration, leases, region state, metrics)
+1. Core ↔ World Node control-plane connection (registration, leases, region state, metrics, Script World-action delivery)
 2. World Node Scene development endpoint (join, snapshots, entities, chat, events, terrain samples)
 
-The payload is still a UTF-8 key/value bootstrap format. The wire format and message schemas are not frozen and currently carry no backward-compatibility guarantee.
+The 6.0 development wire additionally defines `script_action_poll` and `script_action`. A World Node may request queued Script actions only for Regions registered to its current node generation. The payload is still a UTF-8 key/value bootstrap format. The wire format and message schemas are not frozen and currently carry no backward-compatibility guarantee.

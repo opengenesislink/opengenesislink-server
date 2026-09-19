@@ -118,6 +118,25 @@ bool RegionRuntime::set_velocity(const std::uint64_t id, const physics::Vec3 vel
     return physics_.set_body_velocity(it->second.physics_body, velocity);
 }
 
+bool RegionRuntime::set_physical(const std::uint64_t id, const bool enabled) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end()) return false;
+    auto& entity = it->second;
+    if (enabled && entity.physics_body == 0) {
+        const double radius = entity.kind == EntityKind::avatar
+                                  ? 0.45
+                                  : std::max(0.1, entity.transform.scale.z * 0.5);
+        entity.physics_body =
+            physics_.add_body({.position = entity.transform.position, .radius = radius});
+    } else if (!enabled && entity.physics_body != 0) {
+        physics_.remove_body(entity.physics_body);
+        entity.physics_body = 0;
+    }
+    append_event_locked("physics_updated", id, entity.transform, enabled ? "1" : "0");
+    return true;
+}
+
 
 bool RegionRuntime::set_object_permissions(const std::uint64_t id, std::string group_id,
                                            const core::PermissionMask group_permissions,
@@ -199,11 +218,16 @@ std::vector<SceneEvent> RegionRuntime::events_since(const std::uint64_t sequence
     return result;
 }
 
-std::uint64_t RegionRuntime::chat(const std::uint64_t sender_entity, std::string text) {
+std::uint64_t RegionRuntime::chat(const std::uint64_t sender_entity, std::string text,
+                                  std::string event_type) {
     if (text.size() > 512) text.resize(512);
+    if (event_type != "chat" && event_type != "chat_whisper" &&
+        event_type != "chat_shout") {
+        event_type = "chat";
+    }
     std::scoped_lock lock(mutex_);
     if (sender_entity != 0 && !entities_.contains(sender_entity)) return 0;
-    return append_event_locked("chat", sender_entity, {}, std::move(text));
+    return append_event_locked(std::move(event_type), sender_entity, {}, std::move(text));
 }
 
 RuntimeMetrics RegionRuntime::metrics() const {

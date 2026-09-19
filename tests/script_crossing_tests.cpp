@@ -6,6 +6,7 @@
 #include "opengenesis/scripting/script_host.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
 #include "opengenesis/scripting/script_vm.hpp"
+#include "opengenesis/scripting/world_action_queue.hpp"
 #include "opengenesis/security/scene_ticket.hpp"
 
 #include <chrono>
@@ -102,25 +103,50 @@ int main() {
             (root / "messages.db").string());
         auto notifications = std::make_shared<opengenesis::core::NotificationStore>(
             (root / "notifications.db").string());
+        auto world_actions =
+            std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(16);
         opengenesis::scripting::ScriptHost host(
-            identities, friends, messages, notifications);
+            identities, friends, messages, notifications, world_actions);
 
         const std::string host_program =
             "event touch\n"
             "notify Script owner notified\n"
             "message " + bob->id + " Hello from script\n"
+            "move 10 20 30\n"
+            "rotate 0 0 90\n"
+            "scale 2 2 2\n"
+            "physics 1\n"
+            "say Hello region\n"
+            "whisper Quiet region\n"
+            "shout Loud region\n"
             "end\n";
         const auto host_compiled =
             opengenesis::scripting::compile_script(host_program, reason);
         require(host_compiled.has_value(), "Script host program compiles");
         const auto host_vm = opengenesis::scripting::execute_script_event(
             *host_compiled, "touch", {});
-        require(host_vm.ok && host_vm.actions.size() == 2,
-                "Script host actions emitted");
+        require(host_vm.ok && host_vm.actions.size() == 9,
+                "Script host and World actions emitted");
         const auto host_result = host.apply(
-            alice->id, "host-script", host_vm.actions);
-        require(host_result.applied == 2 && host_result.errors.empty(),
-                "Script host actions applied");
+            alice->id, "host-script", host_vm.actions, "region-a/42");
+        require(host_result.applied == 9 && host_result.errors.empty(),
+                "Script host and World actions applied");
+        require(world_actions->size() == 7,
+                "Script World Actions queued");
+        const auto move_action = world_actions->take("region-a");
+        require(move_action &&
+                    move_action->entity_id == 42 &&
+                    move_action->owner_user_id == alice->id &&
+                    move_action->type ==
+                        opengenesis::scripting::ScriptWorldActionType::move &&
+                    move_action->payload == "10 20 30",
+                "Script World Action binding and payload preserved");
+        for (int index = 0; index < 6; ++index) {
+            require(world_actions->take("region-a").has_value(),
+                    "remaining Script World Action dequeued");
+        }
+        require(world_actions->size() == 0,
+                "Script World Action queue drained");
         require(messages->count() == 1 && messages->unread_count(bob->id) == 1,
                 "Script friend message persisted");
         require(notifications->unread_count(alice->id) == 1 &&
@@ -204,10 +230,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 5.5 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 6.0 Script/Crossing runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 5.5 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 6.0 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }

@@ -1,5 +1,7 @@
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/config/toml_config.hpp"
+#include "opengenesis/core/parcel_store.hpp"
+#include "opengenesis/core/permissions.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/world/region_persistence.hpp"
@@ -9,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <filesystem>
@@ -80,6 +83,99 @@ std::string presence_snapshot_payload(const world::RegionRuntime& runtime) {
     body << "count=" << count << '\n';
     return body.str();
 }
+
+bool vector3(const std::string& text, opengenesis::physics::Vec3& value) {
+    std::istringstream input(text);
+    std::string extra;
+    if (!(input >> value.x >> value.y >> value.z) || (input >> extra)) return false;
+    return true;
+}
+
+bool apply_script_action(
+    const std::vector<std::shared_ptr<world::RegionRuntime>>& runtimes,
+    opengenesis::core::ParcelStore& parcels,
+    const std::string& body) {
+    const auto region_id = field(body, "region");
+    const auto owner = field(body, "owner");
+    const auto type = field(body, "type");
+    const auto payload = field(body, "payload");
+    const auto entity_text = field(body, "entity");
+    if (region_id.empty() || owner.empty() || type.empty() || entity_text.empty()) {
+        return false;
+    }
+
+    const auto runtime = std::find_if(
+        runtimes.begin(), runtimes.end(),
+        [&](const auto& candidate) { return candidate->id() == region_id; });
+    if (runtime == runtimes.end()) return false;
+
+    std::uint64_t entity_id = 0;
+    try {
+        entity_id = std::stoull(entity_text);
+    } catch (...) {
+        return false;
+    }
+
+    const auto entity = (*runtime)->entity(entity_id);
+    if (!entity || entity->kind != world::EntityKind::object ||
+        entity->owner_user_id != owner) {
+        return false;
+    }
+
+    const bool modifies_object =
+        type == "move" || type == "rotate" || type == "scale" || type == "physics";
+    if (modifies_object &&
+        !opengenesis::core::has_permission(
+            entity->owner_permissions, opengenesis::core::perm_modify)) {
+        return false;
+    }
+
+    if (type == "physics") {
+        if (payload != "0" && payload != "1") return false;
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(), entity->transform.position.x,
+                entity->transform.position.y, owner, {})) {
+            return false;
+        }
+        return (*runtime)->set_physical(entity_id, payload == "1");
+    }
+    if (type == "say" || type == "whisper" || type == "shout") {
+        const auto event_type = type == "whisper" ? "chat_whisper"
+                              : type == "shout" ? "chat_shout"
+                                                : "chat";
+        return (*runtime)->chat(entity_id, payload, event_type) != 0;
+    }
+
+    opengenesis::physics::Vec3 vector;
+    if (!vector3(payload, vector) ||
+        !std::isfinite(vector.x) || !std::isfinite(vector.y) ||
+        !std::isfinite(vector.z)) {
+        return false;
+    }
+    auto transform = entity->transform;
+    if (type == "move") {
+        transform.position = vector;
+    } else if (type == "rotate") {
+        transform.rotation = vector;
+    } else if (type == "scale") {
+        if (vector.x < 0.01 || vector.y < 0.01 || vector.z < 0.01 ||
+            vector.x > 256.0 || vector.y > 256.0 || vector.z > 256.0) {
+            return false;
+        }
+        transform.scale = vector;
+    } else {
+        return false;
+    }
+
+    parcels.reload();
+    if (!parcels.can_build(
+            (*runtime)->id(), transform.position.x, transform.position.y,
+            owner, {})) {
+        return false;
+    }
+    return (*runtime)->update_transform(entity_id, transform);
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -135,8 +231,12 @@ int main(int argc, char** argv) {
             persistence.push_back(std::move(store));
         }
 
+        const auto parcel_path =
+            config.get_string("storage.parcels", "data/parcels.db");
+        auto script_parcels =
+            std::make_shared<opengenesis::core::ParcelStore>(parcel_path);
         world::SceneServer scene_server(scene_address, scene_port, runtimes, scene_ticket_secret,
-                                       config.get_string("storage.parcels", "data/parcels.db"),
+                                       parcel_path,
                                        config.get_string("storage.moderation", "data/moderation.db"));
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "world.security",
@@ -210,6 +310,7 @@ int main(int argc, char** argv) {
 
                 auto next_lease = std::chrono::steady_clock::now();
                 auto next_metrics = next_lease;
+                auto next_script_poll = next_lease;
                 while (running) {
                     const auto now = std::chrono::steady_clock::now();
                     if (now >= next_lease) {
@@ -221,6 +322,27 @@ int main(int argc, char** argv) {
                             throw std::runtime_error("lease rejected");
                         }
                         next_lease = now + lease;
+                    }
+                    if (now >= next_script_poll) {
+                        for (const auto& runtime : runtimes) {
+                            socket.send_frame({
+                                protocol::MessageType::script_action_poll, ++request_id,
+                                protocol::payload_from_string(
+                                    "region=" + runtime->id() + "\n")});
+                            const auto action = socket.receive_frame();
+                            if (action.type != protocol::MessageType::script_action) {
+                                throw std::runtime_error("script action poll rejected");
+                            }
+                            const auto action_body = protocol::payload_as_string(action);
+                            if (field(action_body, "status") == "action" &&
+                                !apply_script_action(runtimes, *script_parcels, action_body)) {
+                                opengenesis::common::log(
+                                    LogLevel::warning, "world.script",
+                                    "Rejected Script World Action " +
+                                        field(action_body, "id"));
+                            }
+                        }
+                        next_script_poll = now + std::chrono::milliseconds{100};
                     }
                     if (now >= next_metrics) {
                         for (const auto& runtime : runtimes) {
