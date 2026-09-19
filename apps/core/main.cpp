@@ -438,7 +438,8 @@ int main(int argc, char** argv) {
                                         "reason=stale-region\n")});
                                 continue;
                             }
-                            const auto action = script_world_actions->take(region_id);
+                            const auto action =
+                                script_world_actions->lease(region_id, unix_ms());
                             if (!action) {
                                 socket.send_frame({
                                     protocol::MessageType::script_action, frame.request_id,
@@ -456,10 +457,70 @@ int main(int argc, char** argv) {
                                         << opengenesis::scripting::script_world_action_name(
                                                action->type)
                                         << '\n'
-                                        << "payload=" << action->payload << '\n';
+                                        << "payload=" << action->payload << '\n'
+                                        << "attempt=" << action->attempts << '\n'
+                                        << "expires_unix_ms=" << action->expires_unix_ms << '\n';
                             socket.send_frame({
                                 protocol::MessageType::script_action, frame.request_id,
                                 protocol::payload_from_string(action_body.str())});
+                        } else if (frame.type ==
+                                   protocol::MessageType::script_action_result) {
+                            const auto action_id = field(body, "id");
+                            const auto region_id = field(body, "region");
+                            const auto status = field(body, "status");
+                            const auto action = script_world_actions->find(action_id);
+                            const auto region = regions->find(region_id);
+                            const bool owns_region =
+                                region && region->node_id == node_id &&
+                                region->node_generation == generation;
+                            if (!action || action->region_id != region_id || !owns_region) {
+                                socket.send_frame({
+                                    protocol::MessageType::script_action_result_ack,
+                                    frame.request_id,
+                                    protocol::payload_from_string(
+                                        "status=missing-or-stale\n")});
+                                continue;
+                            }
+
+                            bool accepted = false;
+                            std::string result_error;
+                            if (status == "ok") {
+                                accepted = true;
+                                if (opengenesis::scripting::script_world_action_is_query(
+                                        action->type)) {
+                                    try {
+                                        const auto decoded =
+                                            opengenesis::security::base64_decode(
+                                                field(body, "result_b64"), 16U * 1024U);
+                                        accepted = scripts->apply_world_result(
+                                            action->script_id,
+                                            opengenesis::scripting::
+                                                script_world_action_result_prefix(*action),
+                                            decoded, result_error);
+                                    } catch (...) {
+                                        accepted = false;
+                                        result_error = "world-result-decode-failed";
+                                    }
+                                }
+                            } else {
+                                result_error = field(body, "error");
+                                if (result_error.empty()) {
+                                    result_error = "world-action-rejected";
+                                }
+                            }
+
+                            if (accepted) {
+                                (void)script_world_actions->ack(action_id);
+                            } else {
+                                (void)script_world_actions->nack(
+                                    action_id, result_error, unix_ms() + 250);
+                            }
+                            socket.send_frame({
+                                protocol::MessageType::script_action_result_ack,
+                                frame.request_id,
+                                protocol::payload_from_string(
+                                    accepted ? "status=acked\n"
+                                             : "status=retry-or-dropped\n")});
                         } else if (frame.type == protocol::MessageType::goodbye) {
                             break;
                         } else {
