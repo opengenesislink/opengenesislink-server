@@ -235,3 +235,26 @@ Still open:
 - seamless socket migration
 
 Those items can now build on the v3 transaction and persistence envelope instead of changing the basic transaction contract again.
+
+
+## 7.5 follow-up: Object Crossing v1
+
+OpenGenesisLINK 7.5 implements the first real server-orchestrated single-object migration path on top of the transaction principles established by Crossing v3.
+
+The following 7.0 items are therefore partially resolved for ordinary single Scene objects:
+
+- source object export/import is now implemented through the Core ↔ World control plane
+- destination import is acknowledged before source removal
+- rollback can clean an imported destination copy and reconstruct the source object
+- owner/group/permission masks, transform, physical flag and linear velocity are preserved
+
+The implementation is documented separately in `docs/OBJECT-CROSSING-v1.md`.
+
+Still not covered by Object Crossing v1:
+
+- multi-object/root-child linkset graph migration
+- attachment graph migration
+- vehicle-specific state and constraints
+- angular velocity in the current physics-body model
+- object-attached Script execution ownership migration
+- distributed multi-Core transaction coordination
