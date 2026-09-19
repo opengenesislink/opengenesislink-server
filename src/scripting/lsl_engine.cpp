@@ -527,6 +527,7 @@ const std::vector<ScriptFeature>& lsl_event_catalog() {
         {"control", "event", ScriptFeatureStatus::recognized},
         {"dataserver", "event", ScriptFeatureStatus::recognized},
         {"email", "event", ScriptFeatureStatus::recognized},
+        {"event_order", "documentation", ScriptFeatureStatus::unsupported},
         {"experience_permissions", "event", ScriptFeatureStatus::recognized},
         {"experience_permissions_denied", "event", ScriptFeatureStatus::recognized},
         {"final_damage", "event", ScriptFeatureStatus::recognized},
