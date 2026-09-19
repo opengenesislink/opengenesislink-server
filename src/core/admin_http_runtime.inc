@@ -54,13 +54,30 @@ std::string crossing_json(const RegionCrossing& crossing) {
            "},\"velocity\":{\"x\":" + std::to_string(crossing.velocity.x) +
            ",\"y\":" + std::to_string(crossing.velocity.y) +
            ",\"z\":" + std::to_string(crossing.velocity.z) +
-           "},\"attachment_state\":" +
+           "},\"rotation\":{\"x\":" + std::to_string(crossing.rotation.x) +
+           ",\"y\":" + std::to_string(crossing.rotation.y) +
+           ",\"z\":" + std::to_string(crossing.rotation.z) +
+           "},\"angular_velocity\":{\"x\":" +
+           std::to_string(crossing.angular_velocity.x) +
+           ",\"y\":" + std::to_string(crossing.angular_velocity.y) +
+           ",\"z\":" + std::to_string(crossing.angular_velocity.z) +
+           "},\"physical\":" + (crossing.physical ? "true" : "false") +
+           ",\"attachment_state\":" +
            (crossing.attachment_state.empty() ? "null" : crossing.attachment_state) +
            ",\"script_state\":" +
            (crossing.script_state.empty() ? "null" : crossing.script_state) +
-           ",\"created_unix\":" + std::to_string(crossing.created_unix) +
+           ",\"object_state\":\"" + json_escape(crossing.object_state) +
+           "\",\"linkset_state\":\"" + json_escape(crossing.linkset_state) +
+           "\",\"reservation_token\":\"" +
+           json_escape(crossing.reservation_token) +
+           "\",\"created_unix\":" + std::to_string(crossing.created_unix) +
            ",\"expires_unix\":" + std::to_string(crossing.expires_unix) +
-           ",\"completed_unix\":" + std::to_string(crossing.completed_unix) + "}";
+           ",\"reserved_unix\":" + std::to_string(crossing.reserved_unix) +
+           ",\"completed_unix\":" + std::to_string(crossing.completed_unix) +
+           ",\"rolled_back_unix\":" +
+           std::to_string(crossing.rolled_back_unix) +
+           ",\"rollback_reason\":\"" +
+           json_escape(crossing.rollback_reason) + "\"}";
 }
 
 
