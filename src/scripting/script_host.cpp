@@ -31,13 +31,19 @@ std::optional<ScriptWorldActionType> world_action_type(const ScriptActionType ty
         case ScriptActionType::world_move: return ScriptWorldActionType::move;
         case ScriptActionType::world_rotate: return ScriptWorldActionType::rotate;
         case ScriptActionType::world_scale: return ScriptWorldActionType::scale;
+        case ScriptActionType::world_velocity: return ScriptWorldActionType::velocity;
+        case ScriptActionType::world_angular_velocity:
+            return ScriptWorldActionType::angular_velocity;
         case ScriptActionType::world_physics: return ScriptWorldActionType::physics;
+        case ScriptActionType::world_text: return ScriptWorldActionType::text;
         case ScriptActionType::world_chat_say: return ScriptWorldActionType::chat_say;
         case ScriptActionType::world_chat_whisper: return ScriptWorldActionType::chat_whisper;
         case ScriptActionType::world_chat_shout: return ScriptWorldActionType::chat_shout;
         case ScriptActionType::world_query_object: return ScriptWorldActionType::query_object;
         case ScriptActionType::world_query_region: return ScriptWorldActionType::query_region;
         case ScriptActionType::world_query_terrain: return ScriptWorldActionType::query_terrain;
+        case ScriptActionType::world_query_water: return ScriptWorldActionType::query_water;
+        case ScriptActionType::world_query_time: return ScriptWorldActionType::query_time;
         case ScriptActionType::world_query_nearby: return ScriptWorldActionType::query_nearby;
         default: return std::nullopt;
     }
