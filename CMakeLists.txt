@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 8.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 9.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,6 +64,10 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/server.cpp
     src/scripting/script_runtime.cpp
     src/scripting/script_vm.cpp
+    src/scripting/script_engine.cpp
+    src/scripting/ogl_engine.cpp
+    src/scripting/lsl_engine.cpp
+    src/scripting/lsl_catalog.cpp
     src/scripting/script_host.cpp
     src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
