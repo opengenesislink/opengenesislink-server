@@ -32,3 +32,20 @@ The file uses explicit little-endian integer/double serialization and is therefo
 The World Node saves changed state periodically and performs a forced save during a clean shutdown. Persistence continues while the Core is temporarily unavailable, because Region Runtime ownership remains with the World Node.
 
 This is an early persistence format and may change before a stable release.
+
+
+## Scene object persistence v4 (7.5.0-dev)
+
+OpenGenesisLINK 7.5 writes Scene object records as v4.
+
+Compared with the previous v3 object record, v4 appends:
+
+- linear velocity X
+- linear velocity Y
+- linear velocity Z
+
+Velocity is restored for physical objects after the object body is recreated.
+
+The loader remains backward-readable for the historical 12-field, 13-field and 17-field Scene-object records. New v4 records use 20 fields.
+
+The current persistence format still does not carry angular velocity, constraints, linkset graphs or vehicle-specific physics state.
