@@ -92,6 +92,181 @@ bool vector3(const std::string& text, opengenesis::physics::Vec3& value) {
     return true;
 }
 
+std::string serialize_object_snapshot(
+    const world::ObjectTransferSnapshot& snapshot) {
+    std::ostringstream out;
+    out << std::setprecision(17)
+        << "source_entity=" << snapshot.source_entity_id << '\n'
+        << "name_b64=" << opengenesis::security::base64_encode(snapshot.name) << '\n'
+        << "owner_b64="
+        << opengenesis::security::base64_encode(snapshot.owner_user_id) << '\n'
+        << "group_b64=" << opengenesis::security::base64_encode(snapshot.group_id) << '\n'
+        << "owner_permissions=" << snapshot.owner_permissions << '\n'
+        << "group_permissions=" << snapshot.group_permissions << '\n'
+        << "everyone_permissions=" << snapshot.everyone_permissions << '\n'
+        << "px=" << snapshot.transform.position.x << '\n'
+        << "py=" << snapshot.transform.position.y << '\n'
+        << "pz=" << snapshot.transform.position.z << '\n'
+        << "rx=" << snapshot.transform.rotation.x << '\n'
+        << "ry=" << snapshot.transform.rotation.y << '\n'
+        << "rz=" << snapshot.transform.rotation.z << '\n'
+        << "sx=" << snapshot.transform.scale.x << '\n'
+        << "sy=" << snapshot.transform.scale.y << '\n'
+        << "sz=" << snapshot.transform.scale.z << '\n'
+        << "vx=" << snapshot.velocity.x << '\n'
+        << "vy=" << snapshot.velocity.y << '\n'
+        << "vz=" << snapshot.velocity.z << '\n'
+        << "physical=" << (snapshot.physical ? 1 : 0) << '\n';
+    return out.str();
+}
+
+std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
+    const std::string& encoded, std::string& reason) {
+    try {
+        world::ObjectTransferSnapshot snapshot;
+        snapshot.source_entity_id = std::stoull(field(encoded, "source_entity"));
+        snapshot.name = opengenesis::security::base64_decode(
+            field(encoded, "name_b64"), 256U);
+        snapshot.owner_user_id = opengenesis::security::base64_decode(
+            field(encoded, "owner_b64"), 256U);
+        snapshot.group_id = opengenesis::security::base64_decode(
+            field(encoded, "group_b64"), 256U);
+        snapshot.owner_permissions =
+            static_cast<opengenesis::core::PermissionMask>(
+                std::stoul(field(encoded, "owner_permissions")));
+        snapshot.group_permissions =
+            static_cast<opengenesis::core::PermissionMask>(
+                std::stoul(field(encoded, "group_permissions")));
+        snapshot.everyone_permissions =
+            static_cast<opengenesis::core::PermissionMask>(
+                std::stoul(field(encoded, "everyone_permissions")));
+        snapshot.transform.position = {
+            std::stod(field(encoded, "px")),
+            std::stod(field(encoded, "py")),
+            std::stod(field(encoded, "pz"))};
+        snapshot.transform.rotation = {
+            std::stod(field(encoded, "rx")),
+            std::stod(field(encoded, "ry")),
+            std::stod(field(encoded, "rz"))};
+        snapshot.transform.scale = {
+            std::stod(field(encoded, "sx")),
+            std::stod(field(encoded, "sy")),
+            std::stod(field(encoded, "sz"))};
+        snapshot.velocity = {
+            std::stod(field(encoded, "vx")),
+            std::stod(field(encoded, "vy")),
+            std::stod(field(encoded, "vz"))};
+        snapshot.physical = field(encoded, "physical") == "1";
+        if (snapshot.source_entity_id == 0 || snapshot.owner_user_id.empty()) {
+            reason = "invalid-object-transfer-snapshot";
+            return std::nullopt;
+        }
+        reason.clear();
+        return snapshot;
+    } catch (...) {
+        reason = "invalid-object-transfer-snapshot";
+        return std::nullopt;
+    }
+}
+
+struct ObjectCrossingApplyResult {
+    bool ok{false};
+    std::string snapshot;
+    std::uint64_t destination_entity_id{0};
+    std::string error;
+};
+
+ObjectCrossingApplyResult apply_object_crossing_command(
+    world::RegionRuntime& runtime, const std::string& body) {
+    const auto command = field(body, "command");
+    const auto owner = field(body, "owner");
+    if (command.empty() || owner.empty()) {
+        return {.error = "invalid-object-crossing-command"};
+    }
+
+    std::uint64_t source_entity_id = 0;
+    std::uint64_t destination_entity_id = 0;
+    try {
+        source_entity_id = std::stoull(field(body, "source_entity"));
+        destination_entity_id = std::stoull(field(body, "destination_entity"));
+    } catch (...) {
+        return {.error = "invalid-object-crossing-entity-id"};
+    }
+
+    if (command == "export") {
+        const auto snapshot = runtime.export_object(source_entity_id);
+        if (!snapshot) return {.error = "source-object-not-found"};
+        if (snapshot->owner_user_id != owner) {
+            return {.error = "source-object-owner-mismatch"};
+        }
+        return {.ok = true, .snapshot = serialize_object_snapshot(*snapshot)};
+    }
+
+    if (command == "import") {
+        std::string reason;
+        std::string decoded;
+        try {
+            decoded = opengenesis::security::base64_decode(
+                field(body, "snapshot_b64"), 64U * 1024U);
+        } catch (...) {
+            return {.error = "object-snapshot-decode-failed"};
+        }
+        const auto snapshot = deserialize_object_snapshot(decoded, reason);
+        if (!snapshot) return {.error = reason};
+        if (snapshot->owner_user_id != owner) {
+            return {.error = "destination-object-owner-mismatch"};
+        }
+
+        opengenesis::physics::Vec3 position;
+        try {
+            position = {
+                std::stod(field(body, "x")),
+                std::stod(field(body, "y")),
+                std::stod(field(body, "z"))};
+        } catch (...) {
+            return {.error = "invalid-destination-position"};
+        }
+
+        if (!runtime.import_object(
+                *snapshot, destination_entity_id, position, reason)) {
+            return {.error = reason};
+        }
+        return {.ok = true,
+                .destination_entity_id = destination_entity_id};
+    }
+
+    if (command == "remove") {
+        const auto existing = runtime.entity(source_entity_id);
+        if (existing) {
+            if (existing->kind != world::EntityKind::object ||
+                existing->owner_user_id != owner) {
+                return {.error = "source-object-owner-mismatch"};
+            }
+            if (!runtime.remove_entity(source_entity_id)) {
+                return {.error = "source-object-remove-failed"};
+            }
+        }
+        return {.ok = true};
+    }
+
+    if (command == "cleanup") {
+        const auto existing = runtime.entity(destination_entity_id);
+        if (existing) {
+            if (existing->kind != world::EntityKind::object ||
+                existing->owner_user_id != owner) {
+                return {.error = "destination-object-owner-mismatch"};
+            }
+            if (!runtime.remove_entity(destination_entity_id)) {
+                return {.error = "destination-object-cleanup-failed"};
+            }
+        }
+        return {.ok = true,
+                .destination_entity_id = destination_entity_id};
+    }
+
+    return {.error = "unsupported-object-crossing-command"};
+}
+
 struct ScriptActionApplyResult {
     bool ok{false};
     std::string result;
@@ -419,6 +594,7 @@ int main(int argc, char** argv) {
                 auto next_lease = std::chrono::steady_clock::now();
                 auto next_metrics = next_lease;
                 auto next_script_poll = next_lease;
+                auto next_object_crossing_poll = next_lease;
                 while (running) {
                     const auto now = std::chrono::steady_clock::now();
                     if (now >= next_lease) {
@@ -474,6 +650,65 @@ int main(int argc, char** argv) {
                             }
                         }
                         next_script_poll = now + std::chrono::milliseconds{100};
+                    }
+                    if (now >= next_object_crossing_poll) {
+                        for (const auto& runtime : runtimes) {
+                            socket.send_frame({
+                                protocol::MessageType::object_crossing_poll,
+                                ++request_id,
+                                protocol::payload_from_string(
+                                    "region=" + runtime->id() + "\n")});
+                            const auto command_frame = socket.receive_frame();
+                            if (command_frame.type !=
+                                protocol::MessageType::object_crossing_command) {
+                                throw std::runtime_error(
+                                    "object crossing poll rejected");
+                            }
+                            const auto command_body =
+                                protocol::payload_as_string(command_frame);
+                            if (field(command_body, "status") == "command") {
+                                const auto applied =
+                                    apply_object_crossing_command(
+                                        *runtime, command_body);
+                                std::ostringstream result_body;
+                                result_body
+                                    << "id=" << field(command_body, "id") << '\n'
+                                    << "region=" << runtime->id() << '\n'
+                                    << "command="
+                                    << field(command_body, "command") << '\n'
+                                    << "status="
+                                    << (applied.ok ? "ok" : "rejected") << '\n'
+                                    << "error=" << applied.error << '\n'
+                                    << "destination_entity="
+                                    << applied.destination_entity_id << '\n'
+                                    << "snapshot_b64="
+                                    << opengenesis::security::base64_encode(
+                                           applied.snapshot)
+                                    << '\n';
+                                socket.send_frame({
+                                    protocol::MessageType::object_crossing_result,
+                                    ++request_id,
+                                    protocol::payload_from_string(
+                                        result_body.str())});
+                                const auto result_ack = socket.receive_frame();
+                                if (result_ack.type !=
+                                    protocol::MessageType::
+                                        object_crossing_result_ack) {
+                                    throw std::runtime_error(
+                                        "object crossing result acknowledgement rejected");
+                                }
+                                if (!applied.ok) {
+                                    opengenesis::common::log(
+                                        LogLevel::warning,
+                                        "world.object_crossing",
+                                        "Rejected Object Crossing " +
+                                            field(command_body, "id") + ": " +
+                                            applied.error);
+                                }
+                            }
+                        }
+                        next_object_crossing_poll =
+                            now + std::chrono::milliseconds{100};
                     }
                     if (now >= next_metrics) {
                         for (const auto& runtime : runtimes) {
