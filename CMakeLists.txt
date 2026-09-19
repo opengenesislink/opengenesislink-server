@@ -139,4 +139,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-script-crossing-tests tests/script_crossing_tests.cpp)
     target_link_libraries(ogl-script-crossing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME script-crossing COMMAND ogl-script-crossing-tests)
+
+    add_executable(ogl-object-crossing-tests tests/object_crossing_tests.cpp)
+    target_link_libraries(ogl-object-crossing-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME object-crossing COMMAND ogl-object-crossing-tests)
 endif()
