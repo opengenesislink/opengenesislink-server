@@ -183,6 +183,62 @@ std::optional<ScriptVmResult> ScriptRuntime::execute_event(
     return result;
 }
 
+bool ScriptRuntime::apply_world_result(const std::string_view script_id,
+                                       const std::string_view prefix,
+                                       const std::string_view result,
+                                       std::string& reason) {
+    if (!safe_field(prefix, 64)) {
+        reason = "invalid-world-result-prefix";
+        return false;
+    }
+
+    std::scoped_lock lock(mutex_);
+    const auto it = scripts_.find(std::string{script_id});
+    if (it == scripts_.end()) {
+        reason = "script-not-found";
+        return false;
+    }
+
+    ScriptVmState state;
+    if (it->second.vm_state.empty()) {
+        state.state = it->second.state;
+    } else {
+        const auto decoded = deserialize_vm_state(it->second.vm_state, reason);
+        if (!decoded) return false;
+        state = *decoded;
+    }
+
+    std::istringstream input(std::string{result});
+    std::string line;
+    std::size_t count = 0;
+    while (std::getline(input, line)) {
+        if (++count > 32U) {
+            reason = "world-result-too-large";
+            return false;
+        }
+        const auto split = line.find('=');
+        if (split == std::string::npos || split == 0 || split > 64U) continue;
+        const auto key = line.substr(0, split);
+        const auto value = line.substr(split + 1U);
+        if (!safe_field(key, 64) || value.size() > 2048U) {
+            reason = "invalid-world-result-field";
+            return false;
+        }
+        state.variables[std::string{prefix} + "." + key] = value;
+    }
+    state.variables[std::string{prefix} + ".ready"] = "1";
+
+    const auto encoded = serialize_vm_state(state);
+    if (encoded.size() > 64U * 1024U) {
+        reason = "world-result-state-too-large";
+        return false;
+    }
+    it->second.vm_state = encoded;
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
 std::vector<ScriptEvent> ScriptRuntime::due_timers(const std::int64_t now_unix_ms) {
     std::scoped_lock lock(mutex_);
     std::vector<ScriptEvent> events;
