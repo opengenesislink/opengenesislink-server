@@ -124,8 +124,13 @@ def api(path,method='GET',body=None,token=None):
         headers['Authorization']='Bearer '+token
     req=urllib.request.Request(
         ADMIN+path,data=data,headers=headers,method=method)
-    with urllib.request.urlopen(req,timeout=6) as response:
-        return response.status,json.loads(response.read())
+    try:
+        with urllib.request.urlopen(req,timeout=6) as response:
+            return response.status,json.loads(response.read())
+    except urllib.error.HTTPError as error:
+        raw=error.read().decode(errors='replace')
+        raise AssertionError(
+            f'{method} {path} failed HTTP {error.code}: {raw}') from error
 
 def read_exact(sock,size):
     out=b''
