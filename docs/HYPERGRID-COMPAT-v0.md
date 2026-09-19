@@ -4,7 +4,7 @@ OpenGenesisLINK keeps OpenSimulator Hypergrid compatibility separate from native
 
 The compatibility layer follows the OpenSimulator Gatekeeper/UserAgent control-plane conventions without importing OpenSimulator code.
 
-Implemented through 5.5.0-dev:
+Implemented through 6.0.0-dev:
 
 - XML-RPC method parsing and struct responses
 - `link_region`
@@ -32,6 +32,7 @@ Implemented through 5.5.0-dev:
 - opt-in XInventory writes for folder/item add, update, move, purge and delete
 - stable persisted legacy folder/item UUID aliases across Core restarts
 - server-side owner, parent/cycle and Asset export/transfer permission validation for XInventory writes
+- shared-service-key authentication for writable XInventory with constant-time key comparison
 - `/avatar` AvatarService exchange for AvatarHeight, VisualParams, wearables and attachments
 - persistent foreign Asset/Inventory/Avatar/IM service routing URLs
 - `get_home_region` and persistent return-home travel state
@@ -44,7 +45,7 @@ The OpenSimulator reference behavior uses XML-RPC for Gatekeeper/UserAgent calls
 Still open:
 
 - final legacy simulator/viewer data-plane handoff after verified `/foreignagent`
-- stronger service-to-service authentication for writable XInventory before untrusted network exposure
+- per-grid signed XInventory requests, nonces/replay protection and remote-grid allowlists beyond the current shared-key foundation
 - broader legacy Appearance edge cases and baking compatibility
 - real OpenSimulator 0.9.3.x end-to-end interoperability validation
 
@@ -58,6 +59,7 @@ Legacy Inventory mutation is disabled by default:
 ```toml
 [hypergrid]
 inventory_write_enabled = false
+inventory_write_secret = ""
 ```
 
-Set it to `true` only for a trusted compatibility deployment. The adapter implements OpenSimulator folder/item write methods, but the legacy protocol does not provide the same modern authorization envelope as native OpenGenesisLINK APIs. OpenGenesisLINK therefore validates local ownership and permissions and still recommends restricting the HG listener at the network/reverse-proxy layer.
+When write mode is enabled, `inventory_write_secret` must contain at least 24 bytes and each legacy write request must provide the matching `SERVICEKEY` form field. Keys are compared in constant time before mutation is attempted. Use HTTPS or a private authenticated transport so the shared key is not exposed, and continue restricting the HG listener at the network/reverse-proxy layer. Native OGL-FED credentials are not reused for this compatibility mechanism.
