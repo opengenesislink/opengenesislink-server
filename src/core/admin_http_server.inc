@@ -186,6 +186,8 @@ void AdminHttpServer::run() {
                         << "opengenesis_hypergrid_home_sessions " << hypergrid_sessions_->home_sessions().size() << "\n"
                         << "opengenesis_hypergrid_foreign_sessions " << hypergrid_sessions_->foreign_sessions().size() << "\n"
                         << "opengenesis_crossings " << crossings_->list().size() << "\n"
+                        << "opengenesis_object_crossings "
+                        << object_crossings_->list().size() << "\n"
                         << "opengenesis_scripts " << scripts_->list().size() << "\n";
                     for (const auto& region : regions_->list()) {
                         out << "opengenesis_region_sim_fps{region=\"" << json_escape(region.id) << "\"} " << region.sim_fps << "\n"
@@ -197,7 +199,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-world-actions-v1","script-world-actions-v2","script-world-queries-v1","crossing-v3","crossing-reservation-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","scripts":"GET|POST /v1/scripts","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-world-actions-v1","script-world-actions-v2","script-world-queries-v1","crossing-v3","crossing-reservation-v1","object-crossing-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -249,7 +251,9 @@ void AdminHttpServer::run() {
                                     ",\"notifications\":" + std::to_string(notifications_->count()) +
                                     ",\"group_posts\":" + std::to_string(group_channels_->count()) +
                                     ",\"assets\":" + std::to_string(assets_->count()) +
-                                    ",\"inventory_items\":" + std::to_string(inventory_->item_count()) + "}";
+                                    ",\"inventory_items\":" + std::to_string(inventory_->item_count()) +
+                                    ",\"object_crossings\":" +
+                                    std::to_string(object_crossings_->list().size()) + "}";
                 } else if (method == "GET" && path == "/v1/avatar/appearance") {
                     auto [session, user] = auth();
                     if (!session || !user) {
@@ -871,6 +875,166 @@ void AdminHttpServer::run() {
                             response.body = crossing_json(*crossing);
                         }
                     }
+                } else if (method == "GET" &&
+                           path == "/v1/world/object-crossings") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401,
+                                    .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body =
+                            "{\"object_crossings\":" +
+                            object_crossings_json(
+                                object_crossings_->list(), user->id) +
+                            "}";
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/world/object-crossings") {
+                    auto [session, user] = auth();
+                    const auto source_region =
+                        json_string(request->body, "source_region");
+                    const auto destination_region =
+                        json_string(request->body, "destination_region");
+                    const auto source_entity_id =
+                        json_u64(request->body, "source_entity_id");
+                    const auto requested_z =
+                        json_number(request->body, "z").value_or(0.0);
+
+                    if (!session || !user) {
+                        response = {.status = 401,
+                                    .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!source_region || !destination_region ||
+                               !source_entity_id || *source_entity_id == 0) {
+                        response = {.status = 400,
+                                    .body = "{\"error\":\"invalid-object-crossing-fields\"}"};
+                    } else {
+                        const auto source = regions_->find(*source_region);
+                        const auto destination =
+                            regions_->find(*destination_region);
+                        bool adjacent = false;
+                        if (source && destination) {
+                            for (const auto& candidate :
+                                 regions_->neighbors(*source_region)) {
+                                if (candidate.id == *destination_region) {
+                                    adjacent = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!source || !destination || !adjacent ||
+                            source->state != "online" ||
+                            destination->state != "online") {
+                            response = {
+                                .status = 409,
+                                .body = "{\"error\":\"object-crossing-target-not-adjacent-or-offline\"}"};
+                        } else {
+                            double x = 128.0;
+                            double y = 128.0;
+                            if (destination->grid_x > source->grid_x) x = 1.0;
+                            else if (destination->grid_x < source->grid_x) x = 255.0;
+                            if (destination->grid_y > source->grid_y) y = 1.0;
+                            else if (destination->grid_y < source->grid_y) y = 255.0;
+
+                            const auto group_ids =
+                                groups_->group_ids_for_user(user->id);
+                            if (moderation_->is_banned(
+                                    user->id, destination->id)) {
+                                response = {.status = 403,
+                                            .body = "{\"error\":\"user-banned\"}"};
+                            } else if (const auto error =
+                                           estate_entry_error(
+                                               *user, *destination);
+                                       !error.empty()) {
+                                response = {
+                                    .status = 403,
+                                    .body = "{\"error\":\"" +
+                                            json_escape(error) + "\"}"};
+                            } else if (!parcels_->can_build(
+                                           destination->id, x, y,
+                                           user->id, group_ids)) {
+                                response = {
+                                    .status = 403,
+                                    .body = "{\"error\":\"parcel-build-denied\"}"};
+                            } else {
+                                const auto now =
+                                    std::chrono::duration_cast<
+                                        std::chrono::seconds>(
+                                        std::chrono::system_clock::now()
+                                            .time_since_epoch())
+                                        .count();
+                                const auto lifetime =
+                                    std::max<std::int64_t>(
+                                        15,
+                                        std::min<std::int64_t>(
+                                            scene_ticket_lifetime_.count(),
+                                            300));
+                                std::string reason;
+                                const auto crossing =
+                                    object_crossings_->prepare(
+                                        user->id, *source_region,
+                                        *destination_region,
+                                        *source_entity_id,
+                                        {.x = x,
+                                         .y = y,
+                                         .z = requested_z},
+                                        now + lifetime, reason);
+                                if (!crossing) {
+                                    response = {
+                                        .status = 409,
+                                        .body = "{\"error\":\"" +
+                                                json_escape(reason) + "\"}"};
+                                } else {
+                                    audit_->append(
+                                        user->id,
+                                        "object.crossing.prepare",
+                                        crossing->id,
+                                        crossing->source_region + "->" +
+                                            crossing->destination_region +
+                                            ":" +
+                                            std::to_string(
+                                                crossing->source_entity_id));
+                                    response.status = 202;
+                                    response.body =
+                                        object_crossing_json(*crossing);
+                                }
+                            }
+                        }
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/world/object-crossings/rollback") {
+                    auto [session, user] = auth();
+                    const auto crossing_id =
+                        json_string(request->body, "crossing_id");
+                    const auto rollback_reason =
+                        json_string(request->body, "reason")
+                            .value_or("client-rollback");
+                    if (!session || !user) {
+                        response = {.status = 401,
+                                    .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!crossing_id) {
+                        response = {.status = 400,
+                                    .body = "{\"error\":\"invalid-object-crossing-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto crossing =
+                            object_crossings_->rollback(
+                                *crossing_id, user->id,
+                                rollback_reason, reason);
+                        if (!crossing) {
+                            response = {
+                                .status = 409,
+                                .body = "{\"error\":\"" +
+                                        json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                user->id, "object.crossing.rollback",
+                                crossing->id,
+                                crossing->rollback_reason);
+                            response.body =
+                                object_crossing_json(*crossing);
+                        }
+                    }
                 } else if (method == "GET" && path == "/v1/scripts") {
                     auto [session, user] = auth();
                     if (!session || !user) {
@@ -1338,6 +1502,8 @@ void AdminHttpServer::run() {
                            path == "/v1/viewer/handoff/reserve" ||
                            path == "/v1/viewer/handoff/complete" ||
                            path == "/v1/viewer/handoff/rollback" ||
+                           path == "/v1/world/object-crossings" ||
+                           path == "/v1/world/object-crossings/rollback" ||
                            path == "/v1/groups" || path == "/v1/groups/members" ||
                            path == "/v1/groups/role" || path == "/v1/groups/remove" ||
                            path == "/v1/parcels" || path == "/v1/parcels/policy" ||
