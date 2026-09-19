@@ -229,6 +229,7 @@ std::string status_text(const int status) {
         case 403: return "403 Forbidden";
         case 404: return "404 Not Found";
         case 405: return "405 Method Not Allowed";
+        case 429: return "429 Too Many Requests";
         case 409: return "409 Conflict";
         case 502: return "502 Bad Gateway";
         case 503: return "503 Service Unavailable";
