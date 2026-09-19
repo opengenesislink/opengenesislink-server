@@ -1,4 +1,5 @@
 #include "opengenesis/scripting/script_vm.hpp"
+#include "opengenesis/scripting/lsl_builtins.hpp"
 
 #include "opengenesis/security/crypto.hpp"
 
@@ -171,6 +172,14 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             if(!atom(ins.a,64)||!radius||*radius<1||*radius>96||!extra.empty()){
                 reason="invalid-nearby-query";return std::nullopt;
             }
+        } else if(op=="builtin"){
+            ins.opcode=ScriptOpcode::builtin_set;
+            parts>>ins.a>>ins.b;
+            std::getline(parts,ins.c);
+            ins.c=trim(ins.c);
+            if(!atom(ins.a,128)||!atom(ins.b,128)||ins.c.size()>8192){
+                reason="invalid-builtin-call";return std::nullopt;
+            }
         } else if(op=="stop"){
             ins.opcode=ScriptOpcode::stop;
         } else {
@@ -294,6 +303,26 @@ ScriptVmResult execute_script_event(
         } else if(ins.opcode==ScriptOpcode::nearby_avatars){
             result.actions.push_back({.type=ScriptActionType::world_query_nearby,
                                       .value=ins.a+"|"+ins.b,.number=0});
+        } else if(ins.opcode==ScriptOpcode::builtin_set){
+            std::vector<std::string> arguments;
+            std::size_t start=0;
+            while(start<=ins.c.size()){
+                const auto end=ins.c.find('\x1f',start);
+                const auto raw=ins.c.substr(
+                    start,end==std::string::npos?std::string::npos:end-start);
+                arguments.push_back(resolve(raw,result.state));
+                if(end==std::string::npos) break;
+                start=end+1;
+            }
+            if(ins.c.empty()) arguments.clear();
+            std::string builtin_reason;
+            const auto value=evaluate_lsl_builtin(ins.b,arguments,builtin_reason);
+            if(!value){result.error=builtin_reason;return result;}
+            if(!result.state.variables.contains(ins.a) &&
+               result.state.variables.size()>=limits.max_variables){
+                result.error="variable-budget-exceeded";return result;
+            }
+            result.state.variables[ins.a]=*value;
         }
         if(state_bytes(result.state)>limits.max_state_bytes){result.error="state-budget-exceeded";return result;}
         if(result.actions.size()>limits.max_output_actions){result.error="action-budget-exceeded";return result;}
