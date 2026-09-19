@@ -288,24 +288,28 @@ assert status==200,touch
 assert touch['state']=='active',touch
 assert touch['host_applied']==1,touch
 
-time.sleep(1.2)
 status,scripts=api('/v1/scripts',token=token)
 records={item['id']:item for item in scripts['scripts']}
 assert records[ogl_script['id']]['language']=='ogl'
 assert records[lsl_script['id']]['language']=='lsl'
 assert records[lsl_script['id']]['state']=='active'
 
-send(scene,102,5,'')
-msg,_,snapshot=recv(scene)
-assert msg==103
-line=next(
-    x for x in snapshot.splitlines()
-    if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
-parts=line.split('|')
-assert parts[3]=='150.000' and parts[4]=='151.000' and parts[5]=='32.000',parts
-assert parts[20]=='LSL active',parts
+parts=None
+for attempt in range(8):
+    time.sleep(0.5)
+    send(scene,102,5+attempt,'')
+    msg,_,snapshot=recv(scene)
+    assert msg==103
+    line=next(
+        x for x in snapshot.splitlines()
+        if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
+    parts=line.split('|')
+    assert parts[3]=='150.000' and parts[4]=='151.000' and parts[5]=='32.000',parts
+    if parts[20]=='LSL active':
+        break
+assert parts is not None and parts[20]=='LSL active',parts
 
-send(scene,42,6,'')
+send(scene,42,20,'')
 scene.close()
 print('OpenGenesisLINK 9.0 OGL/LSL ScriptEngine end-to-end smoke: PASS')
 PY
