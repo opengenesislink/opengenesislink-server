@@ -94,7 +94,7 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         if(op=="event"){
             std::string event; parts>>event;
             if(!atom(event)){reason="invalid-event";return std::nullopt;}
-            result.handlers.push_back({.state="*",.event=std::move(event),.instructions={}});
+            result.handlers.push_back({.state="*",.event=std::move(event),.parameters={},.instructions={}});
             current=&result.handlers.back();
             continue;
         }
@@ -184,8 +184,12 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
     return result;
 }
 
-ScriptVmResult execute_script_event(const CompiledScript& program,std::string_view event,
-                                    const ScriptVmState& initial_state,const ScriptVmLimits& limits) {
+ScriptVmResult execute_script_event(
+    const CompiledScript& program,
+    std::string_view event,
+    const ScriptVmState& initial_state,
+    const ScriptVmLimits& limits,
+    const std::string_view event_payload) {
     ScriptVmResult result{.ok=false,.error={},.instructions_executed=0,.state=initial_state,.actions={}};
     const auto handler=std::find_if(program.handlers.begin(),program.handlers.end(),
         [&](const ScriptHandler& candidate){
@@ -193,6 +197,31 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
                    (candidate.state=="*" || candidate.state==initial_state.state);
         });
     if(handler==program.handlers.end()){result.ok=true;return result;}
+
+    if (!handler->parameters.empty()) {
+        std::vector<std::string> values;
+        std::size_t start = 0U;
+        while (start <= event_payload.size()) {
+            const auto end = event_payload.find('\n', start);
+            values.emplace_back(event_payload.substr(
+                start, end == std::string_view::npos
+                           ? std::string_view::npos
+                           : end - start));
+            if (end == std::string_view::npos) break;
+            start = end + 1U;
+        }
+        if (event_payload.empty()) values.clear();
+        for (std::size_t index = 0;
+             index < handler->parameters.size(); ++index) {
+            if (!result.state.variables.contains(handler->parameters[index]) &&
+                result.state.variables.size() >= limits.max_variables) {
+                result.error = "variable-budget-exceeded";
+                return result;
+            }
+            result.state.variables[handler->parameters[index]] =
+                index < values.size() ? values[index] : std::string{};
+        }
+    }
 
     for(const auto& ins:handler->instructions){
         if(result.instructions_executed>=limits.instruction_budget){result.error="instruction-budget-exceeded";return result;}
