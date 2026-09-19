@@ -172,12 +172,51 @@ void AdminHttpServer::run() {
                            "},\"expires_unix\":" + std::to_string(ticket.claims.expires_unix) + "}";
                 };
 
+                const auto storage_status_json = [&]() {
+                    if (!database_) {
+                        return std::string{
+                            "{\"backend\":\"file\",\"ready\":true,"
+                            "\"pool_size\":0,\"successful_operations\":0,"
+                            "\"failed_operations\":0,\"last_error\":null}"};
+                    }
+                    const auto ready = database_->ping();
+                    const auto health = database_->health();
+                    return "{\"backend\":\"" +
+                           json_escape(health.backend) +
+                           "\",\"ready\":" +
+                           std::string(ready ? "true" : "false") +
+                           ",\"pool_size\":" +
+                           std::to_string(health.pool_size) +
+                           ",\"successful_operations\":" +
+                           std::to_string(health.successful_operations) +
+                           ",\"failed_operations\":" +
+                           std::to_string(health.failed_operations) +
+                           ",\"last_error\":" +
+                           (health.last_error.empty()
+                                ? std::string{"null"}
+                                : "\"" +
+                                      json_escape(health.last_error) +
+                                      "\"") +
+                           "}";
+                };
+
                 if (method == "GET" && path == "/") {
                     response.content_type = "text/html; charset=utf-8";
                     response.body = dashboard_html();
                 } else if (method == "GET" && path == "/health") {
-                    response.body = "{\"status\":\"ok\",\"version\":\"" +
-                                    std::string(OGL_VERSION) + "\"}";
+                    const auto storage_json = storage_status_json();
+                    const auto database_ready =
+                        !database_ || database_->health().ready;
+                    response.status = database_ready ? 200 : 503;
+                    response.body =
+                        "{\"status\":\"" +
+                        std::string(database_ready ? "ok" : "degraded") +
+                        "\",\"version\":\"" +
+                        std::string(OGL_VERSION) +
+                        "\",\"storage\":" + storage_json + "}";
+                } else if (method == "GET" &&
+                           path == "/v1/storage/status") {
+                    response.body = storage_status_json();
                 } else if (method == "GET" && path == "/metrics") {
                     const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::steady_clock::now() - started_at_).count();
@@ -204,6 +243,20 @@ void AdminHttpServer::run() {
                         << "opengenesis_object_crossings "
                         << object_crossings_->list().size() << "\n"
                         << "opengenesis_scripts " << scripts_->list().size() << "\n";
+                    if (database_) {
+                        const auto database_health = database_->health();
+                        out << "opengenesis_database_ready "
+                            << (database_health.ready ? 1 : 0) << "\n"
+                            << "opengenesis_database_pool_size "
+                            << database_health.pool_size << "\n"
+                            << "opengenesis_database_operations_total{result=\"success\"} "
+                            << database_health.successful_operations << "\n"
+                            << "opengenesis_database_operations_total{result=\"failure\"} "
+                            << database_health.failed_operations << "\n";
+                    } else {
+                        out << "opengenesis_database_ready 1\n"
+                            << "opengenesis_database_pool_size 0\n";
+                    }
                     for (const auto& region : regions_->list()) {
                         out << "opengenesis_region_sim_fps{region=\"" << json_escape(region.id) << "\"} " << region.sim_fps << "\n"
                             << "opengenesis_region_entities{region=\"" << json_escape(region.id) << "\"} " << region.entities << "\n"
@@ -214,7 +267,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-language-lsl-v1","script-language-ogl-v1","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","scene-motion-v1","scene-text-v1","scene-persistence-v5"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-language-lsl-v1","script-language-ogl-v1","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","scene-motion-v1","scene-text-v1","scene-persistence-v5"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -268,7 +321,8 @@ void AdminHttpServer::run() {
                                     ",\"assets\":" + std::to_string(assets_->count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) +
                                     ",\"object_crossings\":" +
-                                    std::to_string(object_crossings_->list().size()) + "}";
+                                    std::to_string(object_crossings_->list().size()) +
+                                    ",\"storage\":" + storage_status_json() + "}";
                 } else if (method == "GET" && path == "/v1/avatar/appearance") {
                     auto [session, user] = auth();
                     if (!session || !user) {
