@@ -37,13 +37,18 @@ std::optional<ScriptWorldActionType> parse_type(const std::string_view value) {
     if (value == "move") return ScriptWorldActionType::move;
     if (value == "rotate") return ScriptWorldActionType::rotate;
     if (value == "scale") return ScriptWorldActionType::scale;
+    if (value == "velocity") return ScriptWorldActionType::velocity;
+    if (value == "angular_velocity") return ScriptWorldActionType::angular_velocity;
     if (value == "physics") return ScriptWorldActionType::physics;
+    if (value == "text") return ScriptWorldActionType::text;
     if (value == "say") return ScriptWorldActionType::chat_say;
     if (value == "whisper") return ScriptWorldActionType::chat_whisper;
     if (value == "shout") return ScriptWorldActionType::chat_shout;
     if (value == "query_object") return ScriptWorldActionType::query_object;
     if (value == "query_region") return ScriptWorldActionType::query_region;
     if (value == "query_terrain") return ScriptWorldActionType::query_terrain;
+    if (value == "query_water") return ScriptWorldActionType::query_water;
+    if (value == "query_time") return ScriptWorldActionType::query_time;
     if (value == "query_nearby") return ScriptWorldActionType::query_nearby;
     return std::nullopt;
 }
@@ -55,13 +60,18 @@ const char* script_world_action_name(const ScriptWorldActionType type) noexcept 
         case ScriptWorldActionType::move: return "move";
         case ScriptWorldActionType::rotate: return "rotate";
         case ScriptWorldActionType::scale: return "scale";
+        case ScriptWorldActionType::velocity: return "velocity";
+        case ScriptWorldActionType::angular_velocity: return "angular_velocity";
         case ScriptWorldActionType::physics: return "physics";
+        case ScriptWorldActionType::text: return "text";
         case ScriptWorldActionType::chat_say: return "say";
         case ScriptWorldActionType::chat_whisper: return "whisper";
         case ScriptWorldActionType::chat_shout: return "shout";
         case ScriptWorldActionType::query_object: return "query_object";
         case ScriptWorldActionType::query_region: return "query_region";
         case ScriptWorldActionType::query_terrain: return "query_terrain";
+        case ScriptWorldActionType::query_water: return "query_water";
+        case ScriptWorldActionType::query_time: return "query_time";
         case ScriptWorldActionType::query_nearby: return "query_nearby";
     }
     return "move";
@@ -71,6 +81,8 @@ bool script_world_action_is_query(const ScriptWorldActionType type) noexcept {
     return type == ScriptWorldActionType::query_object ||
            type == ScriptWorldActionType::query_region ||
            type == ScriptWorldActionType::query_terrain ||
+           type == ScriptWorldActionType::query_water ||
+           type == ScriptWorldActionType::query_time ||
            type == ScriptWorldActionType::query_nearby;
 }
 
