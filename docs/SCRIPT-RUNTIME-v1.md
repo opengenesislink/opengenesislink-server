@@ -1,6 +1,6 @@
 # Script Runtime v1
 
-OpenGenesisLINK 6.0.0-dev develops a small deterministic server-side event VM. It is intentionally not a general-purpose native-code runtime.
+OpenGenesisLINK 6.5.0-dev develops a small deterministic server-side event VM. It is intentionally not a general-purpose native-code runtime.
 
 ## Security model
 
@@ -48,6 +48,10 @@ Supported instructions:
 - `say <text>`
 - `whisper <text>`
 - `shout <text>`
+- `object_info <prefix>`
+- `region_info <prefix>`
+- `terrain_height <prefix>`
+- `nearby_avatars <prefix> <radius>`
 - `stop`
 
 A value beginning with `$` resolves a persistent variable.
@@ -87,7 +91,8 @@ Current host-controlled actions:
 
 - `notify`: create a native Notification for the Script owner
 - `message`: send a native direct message only when the recipient is an existing local user and an accepted friend of the Script owner
-- transform/physics/chat actions: route through ScriptHost and the bounded Core-to-World action path; the World Node revalidates Region and object ownership
+- transform/physics/chat actions: route through ScriptHost and the durable Core-to-World action path; the World Node revalidates Region and object ownership
+- World queries: asynchronously return bounded object/Region/terrain/nearby data into prefixed persistent VM variables through the ACKed result channel
 
 Rejected host actions are returned as policy errors without granting the Script broader service access.
 

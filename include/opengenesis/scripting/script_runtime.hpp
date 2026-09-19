@@ -57,6 +57,11 @@ public:
         std::string& reason,
         const ScriptVmLimits& limits = {});
 
+    [[nodiscard]] bool apply_world_result(std::string_view script_id,
+                                          std::string_view prefix,
+                                          std::string_view result,
+                                          std::string& reason);
+
     [[nodiscard]] std::vector<ScriptEvent> due_timers(std::int64_t now_unix_ms);
     [[nodiscard]] std::vector<ScriptEvent> dispatch_chat(std::int32_t channel,
                                                          std::string_view speaker,

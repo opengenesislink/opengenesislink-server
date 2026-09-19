@@ -39,7 +39,9 @@
 #include "opengenesis/compat/hypergrid/session_store.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
+#include "opengenesis/security/crypto.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -57,6 +59,12 @@ namespace core = opengenesis::core;
 namespace {
 std::atomic_bool running{true};
 void signal_handler(int) { running = false; }
+
+std::int64_t unix_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
 
 std::string field(const std::string& payload, const std::string& key) {
     std::istringstream input(payload);
@@ -173,10 +181,21 @@ int main(int argc, char** argv) {
             config.get_string("storage.crossings", "data/crossings.db"));
         auto scripts = std::make_shared<opengenesis::scripting::ScriptRuntime>(
             config.get_string("storage.scripts", "data/scripts.db"));
+        const auto script_world_max_pending =
+            config.get_int("scripting.max_pending_world_actions", 4096);
+        if (script_world_max_pending < 1) {
+            throw std::runtime_error("scripting.max_pending_world_actions must be positive");
+        }
         auto script_world_actions =
             std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(
-                static_cast<std::size_t>(
-                    config.get_int("scripting.max_pending_world_actions", 4096)));
+                config.get_string("storage.script_world_actions",
+                                  "data/script-world-actions.db"),
+                static_cast<std::size_t>(script_world_max_pending),
+                static_cast<std::uint32_t>(
+                    std::max<std::int64_t>(
+                        1, config.get_int("scripting.world_action_max_attempts", 5))),
+                config.get_int("scripting.world_action_lease_ms", 2000),
+                config.get_int("scripting.world_action_ttl_ms", 60000));
         auto script_host = std::make_shared<opengenesis::scripting::ScriptHost>(
             identities, friends, messages, notifications, script_world_actions);
         auto federation_identity = std::make_shared<opengenesis::federation::GridIdentityStore>(
@@ -282,7 +301,8 @@ int main(int argc, char** argv) {
                 (void)federation_runtime->maintenance(now_unix);
                 (void)hypergrid_sessions->purge_expired(now_unix);
                 (void)crossings->purge_expired(now_unix);
-                const auto now_ms = now_unix * 1000;
+                const auto now_ms = unix_ms();
+                (void)script_world_actions->purge_expired(now_ms);
                 for (const auto& event : scripts->due_timers(now_ms)) {
                     const auto script = scripts->find(event.script_id);
                     if (!script) continue;
@@ -303,7 +323,7 @@ int main(int argc, char** argv) {
             auto accepted = listener.accept_for(std::chrono::milliseconds{250});
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
-                         node_sessions, script_world_actions, lease_timeout]() mutable {
+                         node_sessions, script_world_actions, scripts, lease_timeout]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -419,7 +439,8 @@ int main(int argc, char** argv) {
                                         "reason=stale-region\n")});
                                 continue;
                             }
-                            const auto action = script_world_actions->take(region_id);
+                            const auto action =
+                                script_world_actions->lease(region_id, unix_ms());
                             if (!action) {
                                 socket.send_frame({
                                     protocol::MessageType::script_action, frame.request_id,
@@ -437,10 +458,70 @@ int main(int argc, char** argv) {
                                         << opengenesis::scripting::script_world_action_name(
                                                action->type)
                                         << '\n'
-                                        << "payload=" << action->payload << '\n';
+                                        << "payload=" << action->payload << '\n'
+                                        << "attempt=" << action->attempts << '\n'
+                                        << "expires_unix_ms=" << action->expires_unix_ms << '\n';
                             socket.send_frame({
                                 protocol::MessageType::script_action, frame.request_id,
                                 protocol::payload_from_string(action_body.str())});
+                        } else if (frame.type ==
+                                   protocol::MessageType::script_action_result) {
+                            const auto action_id = field(body, "id");
+                            const auto region_id = field(body, "region");
+                            const auto status = field(body, "status");
+                            const auto action = script_world_actions->find(action_id);
+                            const auto region = regions->find(region_id);
+                            const bool owns_region =
+                                region && region->node_id == node_id &&
+                                region->node_generation == generation;
+                            if (!action || action->region_id != region_id || !owns_region) {
+                                socket.send_frame({
+                                    protocol::MessageType::script_action_result_ack,
+                                    frame.request_id,
+                                    protocol::payload_from_string(
+                                        "status=missing-or-stale\n")});
+                                continue;
+                            }
+
+                            bool accepted = false;
+                            std::string result_error;
+                            if (status == "ok") {
+                                accepted = true;
+                                if (opengenesis::scripting::script_world_action_is_query(
+                                        action->type)) {
+                                    try {
+                                        const auto decoded =
+                                            opengenesis::security::base64_decode(
+                                                field(body, "result_b64"), 16U * 1024U);
+                                        accepted = scripts->apply_world_result(
+                                            action->script_id,
+                                            opengenesis::scripting::
+                                                script_world_action_result_prefix(*action),
+                                            decoded, result_error);
+                                    } catch (...) {
+                                        accepted = false;
+                                        result_error = "world-result-decode-failed";
+                                    }
+                                }
+                            } else {
+                                result_error = field(body, "error");
+                                if (result_error.empty()) {
+                                    result_error = "world-action-rejected";
+                                }
+                            }
+
+                            if (accepted) {
+                                (void)script_world_actions->ack(action_id);
+                            } else {
+                                (void)script_world_actions->nack(
+                                    action_id, result_error, unix_ms() + 250);
+                            }
+                            socket.send_frame({
+                                protocol::MessageType::script_action_result_ack,
+                                frame.request_id,
+                                protocol::payload_from_string(
+                                    accepted ? "status=acked\n"
+                                             : "status=retry-or-dropped\n")});
                         } else if (frame.type == protocol::MessageType::goodbye) {
                             break;
                         } else {

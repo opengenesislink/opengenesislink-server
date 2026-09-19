@@ -1,5 +1,23 @@
 # Changelog
 
+## 6.5.0-dev — 2026-09-19
+
+Script World reliability and readback milestone.
+
+- upgraded Script World delivery from destructive polling to a durable file-backed queue
+- added per-action leases, explicit World ACK/NACK, retry delay, expiry and bounded attempt count
+- pending actions now survive Core restarts
+- added Core/World `script_action_result` and `script_action_result_ack` wire messages
+- added Script opcodes `object_info`, `region_info`, `terrain_height` and `nearby_avatars`
+- World query results are returned over the existing Core/World control connection and persisted into prefixed Script VM variables
+- object queries expose transform, physics state and permission masks without granting the VM direct RegionRuntime access
+- nearby-avatar results are distance-bounded and capped
+- added durable queue restart/ACK/NACK/retry tests and VM-state query-result tests
+- added a focused two-process Script World query/ACK smoke test on Linux x86_64 and ARM64
+- added a version-aware smoke wrapper so future development version bumps do not require rewriting the large integration smoke
+- added `script-world-actions-v2` and `script-world-queries-v1` capability discovery
+
+
 ## 6.0.0-dev — 2026-09-19
 
 Script World-action routing and authenticated writable Hypergrid Inventory milestone.

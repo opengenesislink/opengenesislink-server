@@ -35,6 +35,10 @@ std::optional<ScriptWorldActionType> world_action_type(const ScriptActionType ty
         case ScriptActionType::world_chat_say: return ScriptWorldActionType::chat_say;
         case ScriptActionType::world_chat_whisper: return ScriptWorldActionType::chat_whisper;
         case ScriptActionType::world_chat_shout: return ScriptWorldActionType::chat_shout;
+        case ScriptActionType::world_query_object: return ScriptWorldActionType::query_object;
+        case ScriptActionType::world_query_region: return ScriptWorldActionType::query_region;
+        case ScriptActionType::world_query_terrain: return ScriptWorldActionType::query_terrain;
+        case ScriptActionType::world_query_nearby: return ScriptWorldActionType::query_nearby;
         default: return std::nullopt;
     }
 }
@@ -122,7 +126,12 @@ ScriptHostResult ScriptHost::apply(
                  .owner_user_id = std::string{owner_user_id},
                  .script_id = std::string{script_id},
                  .type = *world_type,
-                 .payload = action.value})) {
+                 .payload = action.value,
+                 .created_unix_ms = 0,
+                 .expires_unix_ms = 0,
+                 .lease_until_unix_ms = 0,
+                 .attempts = 0,
+                 .last_error = {}})) {
             result.errors.push_back("world-action-queue-rejected");
             continue;
         }

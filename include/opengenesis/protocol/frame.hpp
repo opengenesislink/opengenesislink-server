@@ -39,6 +39,8 @@ enum class MessageType : std::uint16_t {
     ping = 40,
     pong = 41,
     goodbye = 42,
+    script_action_result = 43,
+    script_action_result_ack = 44,
 
     scene_join = 100,
     scene_join_ack = 101,

@@ -103,8 +103,10 @@ int main() {
             (root / "messages.db").string());
         auto notifications = std::make_shared<opengenesis::core::NotificationStore>(
             (root / "notifications.db").string());
+        const auto world_actions_path = (root / "script-world-actions.db").string();
         auto world_actions =
-            std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(16);
+            std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(
+                world_actions_path, 16, 3, 500, 60000);
         opengenesis::scripting::ScriptHost host(
             identities, friends, messages, notifications, world_actions);
 
@@ -119,34 +121,71 @@ int main() {
             "say Hello region\n"
             "whisper Quiet region\n"
             "shout Loud region\n"
+            "object_info obj\n"
+            "region_info region\n"
+            "terrain_height ground\n"
+            "nearby_avatars nearby 32\n"
             "end\n";
         const auto host_compiled =
             opengenesis::scripting::compile_script(host_program, reason);
         require(host_compiled.has_value(), "Script host program compiles");
         const auto host_vm = opengenesis::scripting::execute_script_event(
             *host_compiled, "touch", {});
-        require(host_vm.ok && host_vm.actions.size() == 9,
-                "Script host and World actions emitted");
+        require(host_vm.ok && host_vm.actions.size() == 13,
+                "Script host and World query actions emitted");
         const auto host_result = host.apply(
             alice->id, "host-script", host_vm.actions, "region-a/42");
-        require(host_result.applied == 9 && host_result.errors.empty(),
+        require(host_result.applied == 13 && host_result.errors.empty(),
                 "Script host and World actions applied");
-        require(world_actions->size() == 7,
+        require(world_actions->size() == 11,
                 "Script World Actions queued");
-        const auto move_action = world_actions->take("region-a");
+
+        const auto queue_now = unix_now() * 1000;
+        const auto move_action = world_actions->lease("region-a", queue_now);
         require(move_action &&
                     move_action->entity_id == 42 &&
                     move_action->owner_user_id == alice->id &&
                     move_action->type ==
                         opengenesis::scripting::ScriptWorldActionType::move &&
-                    move_action->payload == "10 20 30",
-                "Script World Action binding and payload preserved");
-        for (int index = 0; index < 6; ++index) {
-            require(world_actions->take("region-a").has_value(),
-                    "remaining Script World Action dequeued");
+                    move_action->payload == "10 20 30" &&
+                    move_action->attempts == 1,
+                "Script World Action lease preserves binding and payload");
+
+        opengenesis::scripting::ScriptWorldActionQueue restored_actions(
+            world_actions_path, 16, 3, 500, 60000);
+        const auto restored_move = restored_actions.find(move_action->id);
+        require(restored_move && restored_move->attempts == 1 &&
+                    restored_move->lease_until_unix_ms > queue_now,
+                "leased Script World Action survives restart");
+        require(restored_actions.ack(move_action->id),
+                "Script World Action ACK removes durable entry");
+
+        const auto rotate_action = restored_actions.lease("region-a", queue_now);
+        require(rotate_action &&
+                    rotate_action->type ==
+                        opengenesis::scripting::ScriptWorldActionType::rotate,
+                "next Script World Action leased");
+        require(restored_actions.nack(
+                    rotate_action->id, "temporary-world-error", queue_now + 1000),
+                "Script World Action NACK schedules retry");
+
+        for (int index = 0; index < 9; ++index) {
+            const auto action = restored_actions.lease("region-a", queue_now);
+            require(action.has_value(), "other Script World Action leased");
+            require(restored_actions.ack(action->id),
+                    "other Script World Action ACKed");
         }
-        require(world_actions->size() == 0,
-                "Script World Action queue drained");
+        require(restored_actions.size() == 1,
+                "NACKed Script World Action remains queued");
+        require(!restored_actions.lease("region-a", queue_now + 500),
+                "NACK retry delay is enforced");
+        const auto retried = restored_actions.lease("region-a", queue_now + 1000);
+        require(retried && retried->id == rotate_action->id &&
+                    retried->attempts == 2,
+                "NACKed Script World Action is retried");
+        require(restored_actions.ack(retried->id) &&
+                    restored_actions.size() == 0,
+                "retried Script World Action can be ACKed");
         require(messages->count() == 1 && messages->unread_count(bob->id) == 1,
                 "Script friend message persisted");
         require(notifications->unread_count(alice->id) == 1 &&
@@ -182,6 +221,23 @@ int main() {
                         record->timer_interval_ms == 1500 &&
                         record->chat_enabled && record->chat_channel == 7,
                     "host actions persisted");
+            require(scripts.apply_world_result(
+                        "script-1", "obj",
+                        "position=1.000 2.000 3.000\nname=Query Cube\n",
+                        reason),
+                    "Script World query result stored");
+            const auto query_record = scripts.find("script-1");
+            require(query_record.has_value(),
+                    "Script record remains after World query result");
+            const auto query_state =
+                opengenesis::scripting::deserialize_vm_state(
+                    query_record->vm_state, reason);
+            require(query_state &&
+                        query_state->variables.at("obj.position") ==
+                            "1.000 2.000 3.000" &&
+                        query_state->variables.at("obj.name") == "Query Cube" &&
+                        query_state->variables.at("obj.ready") == "1",
+                    "Script World query result is persisted into VM state");
         }
         {
             opengenesis::scripting::ScriptRuntime scripts(scripts_path);
@@ -230,10 +286,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 6.0 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 6.5 Script/Crossing runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 6.0 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 6.5 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }
