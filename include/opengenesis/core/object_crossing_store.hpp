@@ -15,6 +15,7 @@ enum class ObjectCrossingState {
     exported,
     imported,
     cleanup_pending,
+    restore_pending,
     completed,
     rolled_back
 };
@@ -23,7 +24,8 @@ enum class ObjectCrossingCommandType {
     export_source,
     import_destination,
     remove_source,
-    cleanup_destination
+    cleanup_destination,
+    restore_source
 };
 
 struct ObjectCrossingVector {
@@ -46,6 +48,7 @@ struct ObjectCrossingRecord {
     std::uint32_t import_attempts{0};
     std::uint32_t remove_attempts{0};
     std::uint32_t cleanup_attempts{0};
+    std::uint32_t restore_attempts{0};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
     std::int64_t exported_unix{0};
@@ -97,6 +100,11 @@ public:
     [[nodiscard]] bool record_cleanup(
         std::string_view crossing_id,
         std::string_view destination_region,
+        std::string& reason);
+
+    [[nodiscard]] bool record_restore(
+        std::string_view crossing_id,
+        std::string_view source_region,
         std::string& reason);
 
     [[nodiscard]] bool reject_command(
