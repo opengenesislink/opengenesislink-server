@@ -123,6 +123,12 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             if(!value||*value<std::numeric_limits<std::int32_t>::min()||*value>std::numeric_limits<std::int32_t>::max()){
                 reason="invalid-listen";return std::nullopt;
             }
+        } else if(op=="notify"){
+            ins.opcode=ScriptOpcode::notify; std::getline(parts,ins.a); ins.a=trim(ins.a);
+            if(ins.a.empty()||ins.a.size()>1000){reason="invalid-notify";return std::nullopt;}
+        } else if(op=="message"){
+            ins.opcode=ScriptOpcode::message; parts>>ins.a; std::getline(parts,ins.b); ins.b=trim(ins.b);
+            if(!atom(ins.a,256)||ins.b.empty()||ins.b.size()>2000){reason="invalid-message";return std::nullopt;}
         } else if(op=="stop"){
             ins.opcode=ScriptOpcode::stop;
         } else {
@@ -167,6 +173,11 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
             result.actions.push_back({.type=ScriptActionType::set_timer,.value={},.number=integer(ins.a).value_or(0)});
         } else if(ins.opcode==ScriptOpcode::listen){
             result.actions.push_back({.type=ScriptActionType::listen,.value={},.number=integer(ins.a).value_or(0)});
+        } else if(ins.opcode==ScriptOpcode::notify){
+            result.actions.push_back({.type=ScriptActionType::notify_owner,.value=resolve(ins.a,result.state),.number=0});
+        } else if(ins.opcode==ScriptOpcode::message){
+            result.actions.push_back({.type=ScriptActionType::direct_message,
+                                      .value=ins.a+"\n"+resolve(ins.b,result.state),.number=0});
         }
         if(state_bytes(result.state)>limits.max_state_bytes){result.error="state-budget-exceeded";return result;}
         if(result.actions.size()>limits.max_output_actions){result.error="action-budget-exceeded";return result;}
