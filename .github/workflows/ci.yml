@@ -25,3 +25,5 @@ jobs:
         run: ctest --preset release
       - name: Integrated world/social/handoff smoke test
         run: ./scripts/smoke-test.sh
+      - name: Script World query and ACK smoke test
+        run: bash ./scripts/smoke-script-world.sh
