@@ -221,6 +221,8 @@ std::string status_text(const int status) {
     switch (status) {
         case 200: return "200 OK";
         case 201: return "201 Created";
+        case 202: return "202 Accepted";
+        case 204: return "204 No Content";
         case 400: return "400 Bad Request";
         case 401: return "401 Unauthorized";
         case 403: return "403 Forbidden";
