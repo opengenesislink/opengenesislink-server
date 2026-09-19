@@ -114,10 +114,34 @@ int main() {
         require(blocked_write.find("<RESULT>False</RESULT>") != std::string::npos,
                 "XInventory writes disabled by default");
 
+        bool rejected_short_key = false;
+        try {
+            opengenesis::compat::hypergrid::HypergridInventoryAdapter invalid_write_adapter(
+                identities, inventory, assets, true, "too-short");
+        } catch (const std::invalid_argument&) {
+            rejected_short_key = true;
+        }
+        require(rejected_short_key,
+                "XInventory write mode rejects weak service secret");
+
         const std::string write_key =
             "test-xinventory-service-secret-123456";
         opengenesis::compat::hypergrid::HypergridInventoryAdapter hg_inventory_write(
             identities, inventory, assets, true, write_key);
+        const auto unauthenticated_write = hg_inventory_write.handle_form(
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Unauthorized&Owner=" + legacy_user +
+            "&ID=12121212-1212-4212-8212-121212121212");
+        require(unauthenticated_write.find("<RESULT>False</RESULT>") !=
+                    std::string::npos,
+                "XInventory write rejects missing service key");
+        const auto bad_key_write = hg_inventory_write.handle_form(
+            "SERVICEKEY=wrong-service-secret-xxxxxxxx&"
+            "METHOD=ADDFOLDER&ParentID=" + legacy_root +
+            "&Type=-1&Version=1&Name=Unauthorized&Owner=" + legacy_user +
+            "&ID=13131313-1313-4313-8313-131313131313");
+        require(bad_key_write.find("<RESULT>False</RESULT>") != std::string::npos,
+                "XInventory write rejects incorrect service key");
         const std::string legacy_folder_a =
             "22222222-2222-4222-8222-222222222222";
         const std::string legacy_folder_b =
