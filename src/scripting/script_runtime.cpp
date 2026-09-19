@@ -154,7 +154,8 @@ std::optional<ScriptVmResult> ScriptRuntime::execute_event(
     const std::string_view event,
     const std::int64_t now_unix_ms,
     std::string& reason,
-    const ScriptVmLimits& limits) {
+    const ScriptVmLimits& limits,
+    const std::string_view payload) {
     std::scoped_lock lock(mutex_);
     const auto it = scripts_.find(std::string{script_id});
     if (it == scripts_.end()) {
@@ -184,7 +185,8 @@ std::optional<ScriptVmResult> ScriptRuntime::execute_event(
         state = *decoded;
     }
 
-    auto result = execute_script_event(*program, event, state, limits);
+    auto result = execute_script_event(
+        *program, event, state, limits, payload);
     if (!result.ok) {
         reason = result.error;
         return result;
@@ -374,10 +376,14 @@ std::vector<ScriptEvent> ScriptRuntime::dispatch_chat(const std::int32_t channel
                                                        const std::string_view text) {
     std::scoped_lock lock(mutex_);
     std::vector<ScriptEvent> events;
-    const auto payload = std::string{speaker} + "\n" + std::string{text};
-
     for (auto& [_, script] : scripts_) {
         if (!script.enabled || !script.chat_enabled || script.chat_channel != channel) continue;
+        const auto payload =
+            script.language == ScriptLanguage::lsl
+                ? std::to_string(channel) + "\n" +
+                      std::string{speaker} + "\n\n" +
+                      std::string{text}
+                : std::string{speaker} + "\n" + std::string{text};
         events.push_back({
             .script_id = script.id,
             .type = script.language == ScriptLanguage::lsl ? "listen" : "chat",
