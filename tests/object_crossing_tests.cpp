@@ -1,5 +1,6 @@
 #include "opengenesis/core/object_crossing_store.hpp"
 #include "opengenesis/world/region_runtime.hpp"
+#include "opengenesis/world/region_persistence.hpp"
 
 #include <chrono>
 #include <filesystem>
@@ -152,6 +153,29 @@ int main() {
                         completed->state ==
                             opengenesis::core::ObjectCrossingState::completed,
                     "completed object crossing survives restart");
+        }
+
+        {
+            const auto persistence_path = root / "destination-persistence";
+            opengenesis::world::RegionPersistence persistence(
+                persistence_path);
+            persistence.save(destination, true);
+
+            opengenesis::world::RegionRuntime restored_destination(
+                "region-b", 30.0, 21.0);
+            opengenesis::world::RegionPersistence restored_persistence(
+                persistence_path);
+            restored_persistence.load(restored_destination);
+            const auto restored =
+                restored_destination.export_object(destination_id);
+            require(restored &&
+                        restored->owner_user_id == "user-1" &&
+                        restored->group_id == "group-1" &&
+                        restored->transform.rotation.z == 45.0 &&
+                        restored->velocity.x == 3.5 &&
+                        restored->velocity.y == 0.5 &&
+                        restored->velocity.z == 1.25,
+                    "scene persistence v4 preserves crossed object velocity");
         }
 
         const auto rollback_source_id = source.spawn_object(
