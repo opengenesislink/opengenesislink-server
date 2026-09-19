@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **6.5.0-dev**.
+Current development version: **7.0.0-dev**.
 
-`6.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`7.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -36,8 +36,9 @@ Current development version: **6.5.0-dev**.
 - persistent foreign visitor sessions with logout/expiry lifecycle
 - incoming OGL-FED visitors receive destination-bound Scene Tickets after Region/Parcel/Estate policy checks
 - persistent Federation trust/revocation store with Core admin API
-- transactional one-time Region Crossing records with position, velocity, Avatar Appearance/attachment context and persistent Script state
-- crossing IDs are signed into destination Scene Tickets and consumed exactly once through the Handoff completion flow
+- Region Crossing v3 transactions with prepare, destination reservation, token-bound commit, rollback, expiry and replay rejection
+- Crossing state carries position/velocity plus rotation, angular velocity, physical-state metadata, Avatar Appearance/attachment context and persistent Script state
+- native RegionRuntime Object Transfer v1 for root objects, preserving transform, linear velocity, physical state, ownership and permission masks with commit-after-destination-import semantics
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions
 - durable Core-to-World Script action routing for object move/rotate/scale, physics and local say/whisper/shout with leases, ACK/NACK, retry, expiry and World-side owner validation
@@ -88,7 +89,9 @@ GET  /v1/auth/me
 POST /v1/viewer/session
 POST /v1/viewer/teleport
 POST /v1/viewer/handoff
+POST /v1/viewer/handoff/reserve
 POST /v1/viewer/handoff/complete
+POST /v1/viewer/handoff/rollback
 GET  /v1/presence
 
 GET  /v1/scripts
@@ -228,6 +231,8 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/SCRIPT-WORLD-API-v2.md`
 - `docs/HYPERGRID-XINVENTORY-v1.md`
 - `docs/REGION-CROSSING-v1.md`
+- `docs/REGION-CROSSING-v3.md`
+- `docs/OBJECT-TRANSFER-v1.md`
 
 ## License
 
