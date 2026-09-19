@@ -46,6 +46,9 @@ hypergrid_sessions = "data/hypergrid-sessions.db"
 [assets]
 max_bytes = 1048576
 
+[scripting]
+max_pending_world_actions = 4096
+
 [federation]
 grid_id = "local.opengenesislink"
 base_url = "http://127.0.0.1:18080"
