@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
         const auto login_attempts_per_minute =
             config.get_int("security.login_attempts_per_minute", 12);
         const auto registration_attempts_per_minute =
-            config.get_int("security.registration_attempts_per_minute", 6);
+            config.get_int("security.registration_attempts_per_minute", 30);
         if (login_attempts_per_minute < 1 ||
             login_attempts_per_minute > 1000 ||
             registration_attempts_per_minute < 1 ||
