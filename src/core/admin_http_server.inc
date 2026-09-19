@@ -703,16 +703,18 @@ void AdminHttpServer::run() {
                     const auto username = json_string(request->body, "username");
                     const auto display = json_string(request->body, "display_name");
                     const auto password = json_string(request->body, "password");
+                    auth_rate_limiter_.purge();
                     const auto register_global_allowed =
                         auth_rate_limiter_.allow(
                             "register:global",
                             registration_attempts_per_minute_,
                             std::chrono::minutes{1});
                     const auto register_user_allowed =
-                        !username ||
-                        auth_rate_limiter_.allow(
-                            "register:" + lower(*username),
-                            3U, std::chrono::minutes{1});
+                        register_global_allowed &&
+                        (!username ||
+                         auth_rate_limiter_.allow(
+                             "register:" + lower(*username),
+                             3U, std::chrono::minutes{1}));
                     if (!register_global_allowed ||
                         !register_user_allowed) {
                         response = {
@@ -741,10 +743,17 @@ void AdminHttpServer::run() {
                 } else if (method == "POST" && path == "/v1/auth/login") {
                     const auto username = json_string(request->body, "username");
                     const auto password = json_string(request->body, "password");
+                    auth_rate_limiter_.purge();
                     const auto login_key =
                         username ? "login:" + lower(*username)
                                  : std::string{"login:invalid"};
-                    if (!auth_rate_limiter_.allow(
+                    const auto login_global_allowed =
+                        auth_rate_limiter_.allow(
+                            "login:global",
+                            login_attempts_per_minute_ * 50U,
+                            std::chrono::minutes{1});
+                    if (!login_global_allowed ||
+                        !auth_rate_limiter_.allow(
                             login_key,
                             login_attempts_per_minute_,
                             std::chrono::minutes{1})) {
