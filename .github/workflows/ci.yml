@@ -27,6 +27,8 @@ jobs:
         run: bash ./scripts/run-smoke.sh
       - name: Script World query and ACK smoke test
         run: bash ./scripts/smoke-script-world.sh
+      - name: OGL and LSL ScriptEngine smoke test
+        run: bash ./scripts/smoke-script-engine.sh
       - name: Crossing v3 reserve and rollback smoke test
         run: bash ./scripts/smoke-crossing-v3.sh
       - name: Object Crossing end-to-end smoke test

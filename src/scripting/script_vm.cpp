@@ -1,4 +1,5 @@
 #include "opengenesis/scripting/script_vm.hpp"
+#include "opengenesis/scripting/lsl_builtins.hpp"
 
 #include "opengenesis/security/crypto.hpp"
 
@@ -94,7 +95,7 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         if(op=="event"){
             std::string event; parts>>event;
             if(!atom(event)){reason="invalid-event";return std::nullopt;}
-            result.handlers.push_back({.event=std::move(event),.instructions={}});
+            result.handlers.push_back({.state="*",.event=std::move(event),.parameters={},.instructions={}});
             current=&result.handlers.back();
             continue;
         }
@@ -171,6 +172,14 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             if(!atom(ins.a,64)||!radius||*radius<1||*radius>96||!extra.empty()){
                 reason="invalid-nearby-query";return std::nullopt;
             }
+        } else if(op=="builtin"){
+            ins.opcode=ScriptOpcode::builtin_set;
+            parts>>ins.a>>ins.b;
+            std::getline(parts,ins.c);
+            ins.c=trim(ins.c);
+            if(!atom(ins.a,128)||!atom(ins.b,128)||ins.c.size()>8192){
+                reason="invalid-builtin-call";return std::nullopt;
+            }
         } else if(op=="stop"){
             ins.opcode=ScriptOpcode::stop;
         } else {
@@ -184,12 +193,44 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
     return result;
 }
 
-ScriptVmResult execute_script_event(const CompiledScript& program,std::string_view event,
-                                    const ScriptVmState& initial_state,const ScriptVmLimits& limits) {
+ScriptVmResult execute_script_event(
+    const CompiledScript& program,
+    std::string_view event,
+    const ScriptVmState& initial_state,
+    const ScriptVmLimits& limits,
+    const std::string_view event_payload) {
     ScriptVmResult result{.ok=false,.error={},.instructions_executed=0,.state=initial_state,.actions={}};
     const auto handler=std::find_if(program.handlers.begin(),program.handlers.end(),
-        [&](const ScriptHandler& candidate){return candidate.event==event;});
+        [&](const ScriptHandler& candidate){
+            return candidate.event==event &&
+                   (candidate.state=="*" || candidate.state==initial_state.state);
+        });
     if(handler==program.handlers.end()){result.ok=true;return result;}
+
+    if (!handler->parameters.empty()) {
+        std::vector<std::string> values;
+        std::size_t start = 0U;
+        while (start <= event_payload.size()) {
+            const auto end = event_payload.find('\n', start);
+            values.emplace_back(event_payload.substr(
+                start, end == std::string_view::npos
+                           ? std::string_view::npos
+                           : end - start));
+            if (end == std::string_view::npos) break;
+            start = end + 1U;
+        }
+        if (event_payload.empty()) values.clear();
+        for (std::size_t index = 0;
+             index < handler->parameters.size(); ++index) {
+            if (!result.state.variables.contains(handler->parameters[index]) &&
+                result.state.variables.size() >= limits.max_variables) {
+                result.error = "variable-budget-exceeded";
+                return result;
+            }
+            result.state.variables[handler->parameters[index]] =
+                index < values.size() ? values[index] : std::string{};
+        }
+    }
 
     for(const auto& ins:handler->instructions){
         if(result.instructions_executed>=limits.instruction_budget){result.error="instruction-budget-exceeded";return result;}
@@ -262,6 +303,26 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
         } else if(ins.opcode==ScriptOpcode::nearby_avatars){
             result.actions.push_back({.type=ScriptActionType::world_query_nearby,
                                       .value=ins.a+"|"+ins.b,.number=0});
+        } else if(ins.opcode==ScriptOpcode::builtin_set){
+            std::vector<std::string> arguments;
+            std::size_t start=0;
+            while(start<=ins.c.size()){
+                const auto end=ins.c.find('\x1f',start);
+                const auto raw=ins.c.substr(
+                    start,end==std::string::npos?std::string::npos:end-start);
+                arguments.push_back(resolve(raw,result.state));
+                if(end==std::string::npos) break;
+                start=end+1;
+            }
+            if(ins.c.empty()) arguments.clear();
+            std::string builtin_reason;
+            const auto value=evaluate_lsl_builtin(ins.b,arguments,builtin_reason);
+            if(!value){result.error=builtin_reason;return result;}
+            if(!result.state.variables.contains(ins.a) &&
+               result.state.variables.size()>=limits.max_variables){
+                result.error="variable-budget-exceeded";return result;
+            }
+            result.state.variables[ins.a]=*value;
         }
         if(state_bytes(result.state)>limits.max_state_bytes){result.error="state-budget-exceeded";return result;}
         if(result.actions.size()>limits.max_output_actions){result.error="action-budget-exceeded";return result;}

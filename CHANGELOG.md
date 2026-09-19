@@ -1,5 +1,25 @@
 # Changelog
 
+## 9.0.0-dev — 2026-09-19
+
+Multi-language ScriptEngine, native OGL language and LSL compatibility milestone.
+
+- introduced a shared `OGL ScriptEngine` architecture so legacy IR, LSL compatibility source and native OGL source execute through one sandbox/security/runtime model
+- Script records now persist their language as `legacy`, `lsl` or `ogl`; older Script Runtime v1/v2 records remain readable as legacy scripts
+- Script handlers are now bound to logical states while legacy handlers remain wildcard-state compatible
+- event handlers can declare parameters; bounded newline-delimited event payloads are mapped into VM variables
+- added native OGL language v1 with `state`, `on`, `let`, `inc`, `goto`, timer/listen/social actions, World mutations and World queries
+- added an LSL compatibility frontend for `default` and named states, event declarations, state transitions, typed event parameter names, function calls and initialized local declarations
+- added executable LSL mappings for public say/whisper/shout, owner notification, direct messages, timers, listen registration, position/scale/velocity/angular velocity, floating text, physics status and reset-to-default behavior
+- added deterministic LSL built-ins for core math, strings, Base64, vectors, SHA-256 and time/date operations
+- added a machine-readable catalog containing 523 canonical LSL function identifiers and the 44 LSL event-category entries used by the compatibility status API
+- added `GET /v1/scripts/capabilities` with per-command status and implementation/executable percentages
+- authenticated Script creation now accepts `language: "legacy"|"lsl"|"ogl"`
+- Script API records expose the persisted language; authenticated event injection accepts an optional bounded payload
+- added a dedicated Core+World OGL/LSL ScriptEngine process smoke to both Linux CI architectures
+- status metrics deliberately distinguish catalog coverage from executable semantics; 9.0 does not claim full Second Life LSL semantic compatibility
+
+
 ## 8.0.0-dev — 2026-09-19
 
 Object Runtime v1, Linkset Crossing v2 and Script World API v3 milestone.

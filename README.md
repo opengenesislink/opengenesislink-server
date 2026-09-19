@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **8.0.0-dev**.
+Current development version: **9.0.0-dev**.
 
-`8.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`9.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -45,6 +45,10 @@ Current development version: **8.0.0-dev**.
 - expired/exported transactions reconcile destination cleanup before rollback, covering lost destination-import acknowledgements
 - Scene object persistence v5 preserves linkset topology, linear/angular motion and floating text while remaining readable from v1-v4 scene records
 - native Object Runtime v1 adds link/unlink topology, root-driven linked movement, floating text, configurable water height and angular PhysicsWorld state
+- multi-language OGL ScriptEngine with a shared sandboxed IR/runtime for legacy scripts, LSL compatibility scripts and native OGL scripts
+- persistent Script language selection (`legacy`, `lsl`, `ogl`) with state-specific handlers, event parameter binding and restart-safe VM state
+- native OGL language v1 with state/event declarations, variables, increments, World/Social actions and durable World queries
+- LSL compatibility frontend with real `default`/named-state syntax, typed event parameter names, state changes, executable deterministic built-ins and a machine-readable canonical function/event status catalog
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions
 - durable Core-to-World Script action routing for object move/rotate/scale, velocity/angular velocity, physics, floating text and local say/whisper/shout with leases, ACK/NACK, retry, expiry and World-side owner validation
@@ -105,6 +109,7 @@ POST     /v1/world/object-crossings/rollback
 
 GET  /v1/scripts
 POST /v1/scripts
+GET  /v1/scripts/capabilities
 POST /v1/scripts/event
 GET  /v1/regions/<region-id>/neighbors
 
@@ -245,6 +250,10 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/OBJECT-CROSSING-v2.md`
 - `docs/OBJECT-RUNTIME-v1.md`
 - `docs/SCRIPT-WORLD-API-v3.md`
+- `docs/SCRIPT-ENGINE-v2.md`
+- `docs/OGL-SCRIPT-v1.md`
+- `docs/LSL-COMPAT-v1.md`
+- `docs/SCRIPT-COMMAND-STATUS-9.0.md`
 
 ## License
 

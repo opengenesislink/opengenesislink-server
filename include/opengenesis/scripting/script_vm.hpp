@@ -15,7 +15,7 @@ enum class ScriptOpcode {
     move, rotate, scale, velocity, angular_velocity, physics, text,
     say, whisper, shout,
     object_info, region_info, terrain_height, water_level, world_time,
-    nearby_avatars, stop
+    nearby_avatars, builtin_set, stop
 };
 
 struct ScriptInstruction {
@@ -26,7 +26,9 @@ struct ScriptInstruction {
 };
 
 struct ScriptHandler {
+    std::string state{"*"};
     std::string event;
+    std::vector<std::string> parameters;
     std::vector<ScriptInstruction> instructions;
 };
 
@@ -87,10 +89,12 @@ struct ScriptVmResult {
 
 [[nodiscard]] std::optional<CompiledScript> compile_script(std::string_view source,
                                                            std::string& reason);
-[[nodiscard]] ScriptVmResult execute_script_event(const CompiledScript& program,
-                                                  std::string_view event,
-                                                  const ScriptVmState& initial_state,
-                                                  const ScriptVmLimits& limits = {});
+[[nodiscard]] ScriptVmResult execute_script_event(
+    const CompiledScript& program,
+    std::string_view event,
+    const ScriptVmState& initial_state,
+    const ScriptVmLimits& limits = {},
+    std::string_view event_payload = {});
 [[nodiscard]] std::string serialize_vm_state(const ScriptVmState& state);
 [[nodiscard]] std::optional<ScriptVmState> deserialize_vm_state(std::string_view encoded,
                                                                std::string& reason);
