@@ -129,6 +129,21 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         } else if(op=="message"){
             ins.opcode=ScriptOpcode::message; parts>>ins.a; std::getline(parts,ins.b); ins.b=trim(ins.b);
             if(!atom(ins.a,256)||ins.b.empty()||ins.b.size()>2000){reason="invalid-message";return std::nullopt;}
+        } else if(op=="move"||op=="rotate"||op=="scale"){
+            ins.opcode=op=="move"?ScriptOpcode::move:(op=="rotate"?ScriptOpcode::rotate:ScriptOpcode::scale);
+            parts>>ins.a>>ins.b>>ins.c;
+            std::string extra; parts>>extra;
+            if(ins.a.empty()||ins.b.empty()||ins.c.empty()||!extra.empty()||
+               ins.a.size()>128||ins.b.size()>128||ins.c.size()>128){
+                reason="invalid-world-vector";return std::nullopt;
+            }
+        } else if(op=="physics"){
+            ins.opcode=ScriptOpcode::physics; parts>>ins.a;
+            if(ins.a!="0"&&ins.a!="1"){reason="invalid-physics";return std::nullopt;}
+        } else if(op=="say"||op=="whisper"||op=="shout"){
+            ins.opcode=op=="say"?ScriptOpcode::say:(op=="whisper"?ScriptOpcode::whisper:ScriptOpcode::shout);
+            std::getline(parts,ins.a); ins.a=trim(ins.a);
+            if(ins.a.empty()||ins.a.size()>512){reason="invalid-chat";return std::nullopt;}
         } else if(op=="stop"){
             ins.opcode=ScriptOpcode::stop;
         } else {
@@ -178,6 +193,27 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
         } else if(ins.opcode==ScriptOpcode::message){
             result.actions.push_back({.type=ScriptActionType::direct_message,
                                       .value=ins.a+"\n"+resolve(ins.b,result.state),.number=0});
+        } else if(ins.opcode==ScriptOpcode::move||
+                  ins.opcode==ScriptOpcode::rotate||
+                  ins.opcode==ScriptOpcode::scale){
+            const auto type=ins.opcode==ScriptOpcode::move?ScriptActionType::world_move:
+                            (ins.opcode==ScriptOpcode::rotate?ScriptActionType::world_rotate:
+                                                             ScriptActionType::world_scale);
+            result.actions.push_back({.type=type,
+                                      .value=resolve(ins.a,result.state)+" "+
+                                             resolve(ins.b,result.state)+" "+
+                                             resolve(ins.c,result.state),
+                                      .number=0});
+        } else if(ins.opcode==ScriptOpcode::physics){
+            result.actions.push_back({.type=ScriptActionType::world_physics,
+                                      .value=ins.a,.number=0});
+        } else if(ins.opcode==ScriptOpcode::say||
+                  ins.opcode==ScriptOpcode::whisper||
+                  ins.opcode==ScriptOpcode::shout){
+            const auto type=ins.opcode==ScriptOpcode::say?ScriptActionType::world_chat_say:
+                            (ins.opcode==ScriptOpcode::whisper?ScriptActionType::world_chat_whisper:
+                                                               ScriptActionType::world_chat_shout);
+            result.actions.push_back({.type=type,.value=resolve(ins.a,result.state),.number=0});
         }
         if(state_bytes(result.state)>limits.max_state_bytes){result.error="state-budget-exceeded";return result;}
         if(result.actions.size()>limits.max_output_actions){result.error="action-budget-exceeded";return result;}
