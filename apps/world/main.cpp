@@ -1,5 +1,7 @@
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/config/toml_config.hpp"
+#include "opengenesis/core/parcel_store.hpp"
+#include "opengenesis/core/permissions.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/world/region_persistence.hpp"
@@ -9,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <csignal>
 #include <cstdint>
 #include <filesystem>
@@ -90,6 +93,7 @@ bool vector3(const std::string& text, opengenesis::physics::Vec3& value) {
 
 bool apply_script_action(
     const std::vector<std::shared_ptr<world::RegionRuntime>>& runtimes,
+    opengenesis::core::ParcelStore& parcels,
     const std::string& body) {
     const auto region_id = field(body, "region");
     const auto owner = field(body, "owner");
@@ -118,6 +122,14 @@ bool apply_script_action(
         return false;
     }
 
+    const bool modifies_object =
+        type == "move" || type == "rotate" || type == "scale" || type == "physics";
+    if (modifies_object &&
+        !opengenesis::core::has_permission(
+            entity->owner_permissions, opengenesis::core::perm_modify)) {
+        return false;
+    }
+
     if (type == "physics") {
         return (*runtime)->set_physical(entity_id, payload == "1");
     }
@@ -129,12 +141,32 @@ bool apply_script_action(
     }
 
     opengenesis::physics::Vec3 vector;
-    if (!vector3(payload, vector)) return false;
+    if (!vector3(payload, vector) ||
+        !std::isfinite(vector.x) || !std::isfinite(vector.y) ||
+        !std::isfinite(vector.z)) {
+        return false;
+    }
     auto transform = entity->transform;
-    if (type == "move") transform.position = vector;
-    else if (type == "rotate") transform.rotation = vector;
-    else if (type == "scale") transform.scale = vector;
-    else return false;
+    if (type == "move") {
+        transform.position = vector;
+    } else if (type == "rotate") {
+        transform.rotation = vector;
+    } else if (type == "scale") {
+        if (vector.x < 0.01 || vector.y < 0.01 || vector.z < 0.01 ||
+            vector.x > 256.0 || vector.y > 256.0 || vector.z > 256.0) {
+            return false;
+        }
+        transform.scale = vector;
+    } else {
+        return false;
+    }
+
+    parcels.reload();
+    if (!parcels.can_build(
+            (*runtime)->id(), transform.position.x, transform.position.y,
+            owner, {})) {
+        return false;
+    }
     return (*runtime)->update_transform(entity_id, transform);
 }
 } // namespace
@@ -192,8 +224,12 @@ int main(int argc, char** argv) {
             persistence.push_back(std::move(store));
         }
 
+        const auto parcel_path =
+            config.get_string("storage.parcels", "data/parcels.db");
+        auto script_parcels =
+            std::make_shared<opengenesis::core::ParcelStore>(parcel_path);
         world::SceneServer scene_server(scene_address, scene_port, runtimes, scene_ticket_secret,
-                                       config.get_string("storage.parcels", "data/parcels.db"),
+                                       parcel_path,
                                        config.get_string("storage.moderation", "data/moderation.db"));
         if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "world.security",
@@ -292,7 +328,7 @@ int main(int argc, char** argv) {
                             }
                             const auto action_body = protocol::payload_as_string(action);
                             if (field(action_body, "status") == "action" &&
-                                !apply_script_action(runtimes, action_body)) {
+                                !apply_script_action(runtimes, *script_parcels, action_body)) {
                                 opengenesis::common::log(
                                     LogLevel::warning, "world.script",
                                     "Rejected Script World Action " +
