@@ -883,7 +883,8 @@ void AdminHttpServer::run() {
                                             .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                             } else {
                                 const auto host =
-                                    script_host_->apply(user->id, *script_id, result->actions);
+                                    script_host_->apply(user->id, *script_id, result->actions,
+                                                        script->object_id);
                                 response.body = "{\"status\":\"executed\",\"instructions\":" +
                                                 std::to_string(result->instructions_executed) +
                                                 ",\"state\":\"" +
