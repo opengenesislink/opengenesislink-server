@@ -31,13 +31,62 @@ std::string script_features_json(
     return out.str();
 }
 
+std::string script_feature_summary_json(
+    const std::vector<scripting::ScriptFeature>& features) {
+    std::size_t implemented = 0;
+    std::size_t partial = 0;
+    std::size_t recognized = 0;
+    std::size_t unsupported = 0;
+    for (const auto& feature : features) {
+        switch (feature.status) {
+            case scripting::ScriptFeatureStatus::implemented:
+                ++implemented;
+                break;
+            case scripting::ScriptFeatureStatus::partial:
+                ++partial;
+                break;
+            case scripting::ScriptFeatureStatus::recognized:
+                ++recognized;
+                break;
+            case scripting::ScriptFeatureStatus::unsupported:
+                ++unsupported;
+                break;
+        }
+    }
+    const auto total = features.size();
+    const auto percent = [&](const std::size_t value) {
+        return total == 0U
+                   ? 0.0
+                   : (100.0 * static_cast<double>(value) /
+                      static_cast<double>(total));
+    };
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(2)
+        << "{\"total\":" << total
+        << ",\"implemented\":" << implemented
+        << ",\"partial\":" << partial
+        << ",\"recognized\":" << recognized
+        << ",\"unsupported\":" << unsupported
+        << ",\"implemented_percent\":" << percent(implemented)
+        << ",\"executable_percent\":" << percent(implemented + partial)
+        << ",\"cataloged_percent\":100.0"
+        << "}";
+    return out.str();
+}
+
 std::string script_engine_capabilities_json() {
     const auto& ogl = scripting::ogl_feature_catalog();
     const auto& lsl_functions = scripting::lsl_function_catalog();
     const auto& lsl_events = scripting::lsl_event_catalog();
     return "{\"engine\":\"OGL ScriptEngine\","
            "\"languages\":[\"legacy\",\"lsl\",\"ogl\"],"
-           "\"ogl\":" + script_features_json(ogl) +
+           "\"summary\":{\"ogl\":" +
+           script_feature_summary_json(ogl) +
+           ",\"lsl_functions\":" +
+           script_feature_summary_json(lsl_functions) +
+           ",\"lsl_events\":" +
+           script_feature_summary_json(lsl_events) +
+           "},\"ogl\":" + script_features_json(ogl) +
            ",\"lsl_functions\":" + script_features_json(lsl_functions) +
            ",\"lsl_events\":" + script_features_json(lsl_events) + "}";
 }
