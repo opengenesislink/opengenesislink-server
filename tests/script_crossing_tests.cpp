@@ -286,10 +286,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 6.0 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 6.5 Script/Crossing runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 6.0 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 6.5 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }
