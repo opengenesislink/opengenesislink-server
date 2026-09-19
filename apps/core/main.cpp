@@ -43,6 +43,7 @@
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/security/crypto.hpp"
 #include "opengenesis/storage/database.hpp"
+#include "opengenesis/storage/database_config.hpp"
 #include "opengenesis/storage/migrations.hpp"
 
 #include <algorithm>
@@ -237,88 +238,14 @@ int main(int argc, char** argv) {
         }
 
         std::shared_ptr<opengenesis::storage::DatabasePool> database;
-        const auto database_backend =
-            config.get_string("database.backend", "file");
-        if (database_backend != "file") {
-            const auto parsed_backend =
-                opengenesis::storage::parse_database_backend(
-                    database_backend);
-            if (!parsed_backend) {
-                throw std::runtime_error(
-                    "database.backend must be file, sqlite, postgresql or mariadb");
-            }
-            const auto pool_size =
-                config.get_int("database.pool_size", 4);
-            const auto connect_timeout =
-                config.get_int(
-                    "database.connect_timeout_seconds", 5);
-            if (pool_size < 1 || pool_size > 64 ||
-                connect_timeout < 1 || connect_timeout > 120) {
-                throw std::runtime_error(
-                    "invalid database pool or timeout configuration");
-            }
-
-            std::string database_password =
-                config.get_string("database.password", "");
-            const auto password_env =
-                config.get_string(
-                    "database.password_env",
-                    "OGL_DATABASE_PASSWORD");
-            if (!password_env.empty()) {
-                if (const auto* value =
-                        std::getenv(password_env.c_str());
-                    value && *value != '\0') {
-                    database_password = value;
-                }
-            }
-
-            opengenesis::storage::DatabaseConfig database_config{
-                .backend = *parsed_backend,
-                .sqlite_path =
-                    config.get_string(
-                        "database.sqlite_path",
-                        "data/opengenesis.db"),
-                .host =
-                    config.get_string(
-                        "database.host", "127.0.0.1"),
-                .port = static_cast<std::uint16_t>(
-                    std::max<std::int64_t>(
-                        0, config.get_int("database.port", 0))),
-                .database =
-                    config.get_string(
-                        "database.name", "opengenesislink"),
-                .user =
-                    config.get_string("database.user", ""),
-                .password = std::move(database_password),
-                .ssl_mode =
-                    config.get_string(
-                        "database.ssl_mode", "preferred"),
-                .pool_size =
-                    static_cast<std::size_t>(pool_size),
-                .connect_timeout_seconds =
-                    static_cast<std::uint32_t>(
-                        connect_timeout)};
-
-            if (database_config.backend !=
-                    opengenesis::storage::DatabaseBackend::sqlite &&
-                production_mode &&
-                database_config.password.empty()) {
-                throw std::runtime_error(
-                    "production SQL backend requires a database password");
-            }
-            if (production_mode &&
-                database_config.backend !=
-                    opengenesis::storage::DatabaseBackend::sqlite &&
-                database_config.ssl_mode == "disable") {
-                throw std::runtime_error(
-                    "production SQL backend refuses database.ssl_mode=disable");
-            }
-
+        const auto database_selection =
+            opengenesis::storage::database_selection_from_config(
+                config, production_mode);
+        if (!database_selection.file_mode) {
             database =
                 opengenesis::storage::DatabasePool::connect(
-                    std::move(database_config));
-            opengenesis::storage::MigrationRunner migrations(
-                database);
+                    database_selection.config);
+            opengenesis::storage::MigrationRunner migrations(database);
             migrations.migrate();
             if (!database->ping()) {
                 throw std::runtime_error(
