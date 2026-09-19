@@ -9,6 +9,7 @@ Writes remain disabled by default:
 ```toml
 [hypergrid]
 inventory_write_enabled = false
+inventory_write_secret = ""
 ```
 
 Read operations continue to work when Hypergrid compatibility is enabled.
@@ -72,9 +73,13 @@ OpenSimulator's legacy XInventory form protocol does not provide the same author
 For that reason:
 
 - write mode is explicit opt-in
+- write mode additionally requires a service key of at least 24 bytes
+- every legacy write request must carry the matching `SERVICEKEY` form field
+- the service key is compared in constant time
 - default is read-only
 - use the compatibility listener only on a trusted network or behind a restrictive reverse proxy/firewall when writes are enabled
-- stronger service-to-service authentication remains required before treating this surface as production-ready on an untrusted network
+- use HTTPS or an authenticated private transport so the shared service key is not exposed in clear text
+- per-grid signatures, replay-resistant nonces and remote-grid allowlists remain future hardening beyond this shared-key foundation
 
 ## Persistence
 
