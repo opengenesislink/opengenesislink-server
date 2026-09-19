@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **6.0.0-dev**.
+Current development version: **6.5.0-dev**.
 
-`6.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`6.5.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -40,7 +40,8 @@ Current development version: **6.0.0-dev**.
 - crossing IDs are signed into destination Scene Tickets and consumed exactly once through the Handoff completion flow
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions
-- bounded Core-to-World Script action routing for object move/rotate/scale, physics and local say/whisper/shout with World-side owner validation
+- durable Core-to-World Script action routing for object move/rotate/scale, physics and local say/whisper/shout with leases, ACK/NACK, retry, expiry and World-side owner validation
+- asynchronous Script World queries for object state, Region runtime information, terrain height and nearby Avatars with results persisted back into VM variables
 - persistent Script Runtime with source hashing, restart-safe VM state and automatic timer execution through the same ScriptHost policy layer
 - reusable runtime Rate Limiter and storage Schema Version guard
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
@@ -224,6 +225,7 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/SCRIPT-RUNTIME-v1.md`
 - `docs/SCRIPT-HOST-v1.md`
 - `docs/SCRIPT-WORLD-API-v1.md`
+- `docs/SCRIPT-WORLD-API-v2.md`
 - `docs/HYPERGRID-XINVENTORY-v1.md`
 - `docs/REGION-CROSSING-v1.md`
 
