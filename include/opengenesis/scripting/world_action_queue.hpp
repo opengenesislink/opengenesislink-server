@@ -14,13 +14,18 @@ enum class ScriptWorldActionType {
     move,
     rotate,
     scale,
+    velocity,
+    angular_velocity,
     physics,
+    text,
     chat_say,
     chat_whisper,
     chat_shout,
     query_object,
     query_region,
     query_terrain,
+    query_water,
+    query_time,
     query_nearby
 };
 
