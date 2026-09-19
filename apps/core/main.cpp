@@ -4,6 +4,7 @@
 #include "opengenesis/core/admin_http.hpp"
 #include "opengenesis/core/asset_store.hpp"
 #include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/admin_role_store.hpp"
 #include "opengenesis/core/group_store.hpp"
 #include "opengenesis/core/group_channel_store.hpp"
 #include "opengenesis/core/notification_store.hpp"
@@ -184,6 +185,16 @@ int main(int argc, char** argv) {
             config.get_int("identity.session_lifetime_seconds", 86400)};
         const auto scene_ticket_lifetime = std::chrono::seconds{
             config.get_int("identity.scene_ticket_lifetime_seconds", 60)};
+        const auto login_attempts_per_minute =
+            config.get_int("security.login_attempts_per_minute", 12);
+        const auto registration_attempts_per_minute =
+            config.get_int("security.registration_attempts_per_minute", 6);
+        if (login_attempts_per_minute < 1 ||
+            login_attempts_per_minute > 1000 ||
+            registration_attempts_per_minute < 1 ||
+            registration_attempts_per_minute > 1000) {
+            throw std::runtime_error("invalid authentication rate-limit configuration");
+        }
         const auto production_mode =
             config.get_bool("security.production_mode", false);
         const auto secret_from_env =
@@ -371,6 +382,11 @@ int main(int argc, char** argv) {
             : std::make_shared<core::AuditStore>(
                   config.get_string(
                       "storage.audit", "data/audit.log"));
+        auto admin_roles = database
+            ? std::make_shared<core::AdminRoleStore>(database)
+            : std::make_shared<core::AdminRoleStore>(
+                  config.get_string(
+                      "storage.admin_roles", "data/admin-roles.db"));
         auto estates = std::make_shared<core::EstateStore>(
             config.get_string("storage.estates", "data/estates.db"));
         auto landmarks = std::make_shared<core::LandmarkStore>(
@@ -486,7 +502,10 @@ int main(int argc, char** argv) {
             moderation, audit, estates, landmarks, notifications, group_channels, crossings,
             object_crossings, scripts, script_host, federation_runtime,
             hypergrid_service, hypergrid_sessions, hypergrid_im, database,
-            admin_api_key, scene_ticket_secret, scene_ticket_lifetime);
+            admin_roles, admin_api_key, scene_ticket_secret,
+            scene_ticket_lifetime,
+            static_cast<std::size_t>(login_attempts_per_minute),
+            static_cast<std::size_t>(registration_attempts_per_minute));
         admin.start();
         if (hypergrid_service->enabled()) hypergrid_server->start();
 
