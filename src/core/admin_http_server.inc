@@ -983,8 +983,9 @@ void AdminHttpServer::run() {
                                             scene_ticket_lifetime_.count(),
                                             300));
                                 std::string reason;
-                                const auto crossing =
-                                    object_crossings_->prepare(
+                                std::optional<ObjectCrossingRecord> crossing;
+                                try {
+                                    crossing = object_crossings_->prepare(
                                         user->id, *source_region,
                                         *destination_region,
                                         *source_entity_id,
@@ -992,24 +993,41 @@ void AdminHttpServer::run() {
                                          .y = y,
                                          .z = requested_z},
                                         now + lifetime, reason);
-                                if (!crossing) {
+                                } catch (const std::exception& error) {
+                                    common::log(
+                                        common::LogLevel::error,
+                                        "core.object_crossing",
+                                        std::string{"prepare persistence failed: "} +
+                                            error.what());
+                                    response = {
+                                        .status = 503,
+                                        .body = "{\"error\":\"object-crossing-store-unavailable\"}"};
+                                }
+                                if (response.status == 200 && !crossing) {
                                     response = {
                                         .status = 409,
                                         .body = "{\"error\":\"" +
                                                 json_escape(reason) + "\"}"};
-                                } else {
-                                    audit_->append(
-                                        user->id,
-                                        "object.crossing.prepare",
-                                        crossing->id,
-                                        crossing->source_region + "->" +
-                                            crossing->destination_region +
-                                            ":" +
-                                            std::to_string(
-                                                crossing->source_entity_id));
+                                } else if (response.status == 200 && crossing) {
                                     response.status = 202;
                                     response.body =
                                         object_crossing_json(*crossing);
+                                    try {
+                                        audit_->append(
+                                            user->id,
+                                            "object.crossing.prepare",
+                                            crossing->id,
+                                            crossing->source_region + "->" +
+                                                crossing->destination_region +
+                                                ":" +
+                                                std::to_string(
+                                                    crossing->source_entity_id));
+                                    } catch (const std::exception& error) {
+                                        common::log(
+                                            common::LogLevel::warning,
+                                            "core.object_crossing.audit",
+                                            error.what());
+                                    }
                                 }
                             }
                         }
