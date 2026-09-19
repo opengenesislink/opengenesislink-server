@@ -485,8 +485,8 @@ int main(int argc, char** argv) {
             identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, crossings,
             object_crossings, scripts, script_host, federation_runtime,
-            hypergrid_service, hypergrid_sessions, hypergrid_im, admin_api_key,
-            scene_ticket_secret, scene_ticket_lifetime);
+            hypergrid_service, hypergrid_sessions, hypergrid_im, database,
+            admin_api_key, scene_ticket_secret, scene_ticket_lifetime);
         admin.start();
         if (hypergrid_service->enabled()) hypergrid_server->start();
 
