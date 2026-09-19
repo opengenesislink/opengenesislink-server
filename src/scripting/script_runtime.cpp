@@ -108,8 +108,6 @@ bool ScriptRuntime::set_program(const std::string_view script_id,
         reason = "invalid-script-size";
         return false;
     }
-    const auto compiled = compile_script(source, reason);
-    if (!compiled) return false;
 
     std::scoped_lock lock(mutex_);
     const auto it = scripts_.find(std::string{script_id});
@@ -117,11 +115,35 @@ bool ScriptRuntime::set_program(const std::string_view script_id,
         reason = "script-not-found";
         return false;
     }
+    const auto compiled =
+        compile_script_source(it->second.language, source, reason);
+    if (!compiled) return false;
     it->second.source_hash = security::sha256_hex(source);
     it->second.source = std::move(source);
     ScriptVmState initial;
     initial.state = it->second.state;
     it->second.vm_state = serialize_vm_state(initial);
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool ScriptRuntime::set_language(
+    const std::string_view script_id,
+    const ScriptLanguage language,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = scripts_.find(std::string{script_id});
+    if (it == scripts_.end()) {
+        reason = "script-not-found";
+        return false;
+    }
+    if (!it->second.source.empty()) {
+        const auto compiled =
+            compile_script_source(language, it->second.source, reason);
+        if (!compiled) return false;
+    }
+    it->second.language = language;
     persist_locked();
     reason.clear();
     return true;
@@ -149,7 +171,8 @@ std::optional<ScriptVmResult> ScriptRuntime::execute_event(
         return std::nullopt;
     }
 
-    const auto program = compile_script(script.source, reason);
+    const auto program =
+        compile_script_source(script.language, script.source, reason);
     if (!program) return std::nullopt;
 
     ScriptVmState state;
@@ -390,15 +413,28 @@ void ScriptRuntime::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 11 && fields.size() != 13) continue;
+        if (fields.size() != 11 && fields.size() != 13 &&
+            fields.size() != 14) continue;
         try {
             ScriptRecord script{
                 .id = fields[0],
                 .object_id = fields[1],
                 .owner_user_id = fields[2],
                 .source_hash = fields[3],
-                .source = fields.size() == 13 ? security::base64_decode(fields[11], 64U * 1024U) : std::string{},
-                .vm_state = fields.size() == 13 ? security::base64_decode(fields[12], 64U * 1024U) : std::string{},
+                .language = fields.size() == 14
+                                ? parse_script_language(fields[11]).value_or(
+                                      ScriptLanguage::legacy)
+                                : ScriptLanguage::legacy,
+                .source = fields.size() == 14
+                              ? security::base64_decode(fields[12], 64U * 1024U)
+                              : (fields.size() == 13
+                                     ? security::base64_decode(fields[11], 64U * 1024U)
+                                     : std::string{}),
+                .vm_state = fields.size() == 14
+                                ? security::base64_decode(fields[13], 64U * 1024U)
+                                : (fields.size() == 13
+                                       ? security::base64_decode(fields[12], 64U * 1024U)
+                                       : std::string{}),
                 .state = fields[4],
                 .enabled = fields[5] == "1",
                 .timer_interval_ms = std::stoll(fields[6]),
@@ -423,7 +459,7 @@ void ScriptRuntime::persist_locked() const {
 
     std::ofstream output(temp, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write script runtime store");
-    output << "# OpenGenesisLINK script runtime v2\n";
+    output << "# OpenGenesisLINK script runtime v3\n";
 
     std::vector<ScriptRecord> rows;
     rows.reserve(scripts_.size());
@@ -439,6 +475,7 @@ void ScriptRuntime::persist_locked() const {
                << script.timer_interval_ms << '\t' << script.next_timer_unix_ms << '\t'
                << script.chat_channel << '\t' << (script.chat_enabled ? '1' : '0') << '\t'
                << script.event_count << '\t'
+               << script_language_name(script.language) << '\t'
                << security::base64_encode(script.source) << '\t'
                << security::base64_encode(script.vm_state) << '\n';
     }
