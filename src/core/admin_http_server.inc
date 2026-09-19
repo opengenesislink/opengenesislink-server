@@ -1133,6 +1133,8 @@ void AdminHttpServer::run() {
                     auto [session, user] = auth();
                     const auto script_id = json_string(request->body, "script_id");
                     const auto event = json_string(request->body, "event");
+                    const auto event_payload =
+                        json_string(request->body, "payload").value_or("");
                     if (!session || !user) {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!script_id || !event) {
@@ -1146,7 +1148,8 @@ void AdminHttpServer::run() {
                                 std::chrono::system_clock::now().time_since_epoch()).count();
                             std::string reason;
                             const auto result = scripts_->execute_event(
-                                *script_id, *event, now_ms, reason);
+                                *script_id, *event, now_ms, reason, {},
+                                event_payload);
                             if (!result) {
                                 response = {.status = 400,
                                             .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
