@@ -1,5 +1,26 @@
 # Changelog
 
+## 8.0.0-dev — 2026-09-19
+
+Object Runtime v1, Linkset Crossing v2 and Script World API v3 milestone.
+
+- added native root/child linkset topology to RegionRuntime with bounded 64-member transfer graphs
+- added link/unlink operations, link numbers, floating object text and root-driven linked translation
+- PhysicsWorld bodies now carry rotation and angular velocity and integrate angular motion during the native simulation tick
+- added configurable Region water height and exposed it through Scene/runtime queries
+- upgraded Scene protocol with entity link, text and motion messages under explicit capabilities
+- upgraded Scene persistence to v5 with parent entity IDs, link numbers, floating text and angular velocity while retaining v1-v4 read compatibility
+- upgraded Object Crossing to v2 linkset snapshots with deterministic per-member destination IDs and restart-safe source-to-destination entity maps
+- destination import remains idempotent; source linksets are removed only after destination import acknowledgement
+- Script object bindings are migrated atomically after successful source removal, so attached Script execution follows the committed destination entity IDs
+- exported transactions now enter destination cleanup on rollback/expiry instead of blindly declaring rollback, covering the lost destination-import-ACK race
+- linkset snapshots are bounded to 256 KiB and entity maps to 16 KiB
+- Script World API v3 adds linear velocity, angular velocity and floating-text mutations plus water-level and world-time queries
+- object queries now expose velocity, angular velocity, parent entity, link number, linkset size and floating text
+- upgraded the Linux Object Crossing process smoke to create and migrate a real root/child linkset
+- added Windows vcpkg binary caching to reduce repeated OpenSSL dependency installation work
+
+
 ## 7.5.0-dev — 2026-09-19
 
 Object Crossing v1 orchestration milestone.
