@@ -139,7 +139,12 @@ std::optional<ObjectCrossingRecord> ObjectCrossingStore::prepare(
 
     std::scoped_lock lock(mutex_);
     crossings_[record.id] = record;
-    persist_locked();
+    try {
+        persist_locked();
+    } catch (...) {
+        crossings_.erase(record.id);
+        throw;
+    }
     reason.clear();
     return record;
 }
