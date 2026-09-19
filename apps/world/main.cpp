@@ -442,12 +442,35 @@ int main(int argc, char** argv) {
                                 throw std::runtime_error("script action poll rejected");
                             }
                             const auto action_body = protocol::payload_as_string(action);
-                            if (field(action_body, "status") == "action" &&
-                                !apply_script_action(runtimes, *script_parcels, action_body)) {
-                                opengenesis::common::log(
-                                    LogLevel::warning, "world.script",
-                                    "Rejected Script World Action " +
-                                        field(action_body, "id"));
+                            if (field(action_body, "status") == "action") {
+                                const auto applied =
+                                    apply_script_action(runtimes, *script_parcels, action_body);
+                                std::ostringstream result_body;
+                                result_body << "id=" << field(action_body, "id") << '\n'
+                                            << "region=" << runtime->id() << '\n'
+                                            << "status=" << (applied.ok ? "ok" : "rejected") << '\n'
+                                            << "error=" << applied.error << '\n'
+                                            << "result_b64="
+                                            << opengenesis::security::base64_encode(
+                                                   applied.result)
+                                            << '\n';
+                                socket.send_frame({
+                                    protocol::MessageType::script_action_result,
+                                    ++request_id,
+                                    protocol::payload_from_string(result_body.str())});
+                                const auto result_ack = socket.receive_frame();
+                                if (result_ack.type !=
+                                    protocol::MessageType::script_action_result_ack) {
+                                    throw std::runtime_error(
+                                        "script action result acknowledgement rejected");
+                                }
+                                if (!applied.ok) {
+                                    opengenesis::common::log(
+                                        LogLevel::warning, "world.script",
+                                        "Rejected Script World Action " +
+                                            field(action_body, "id") + ": " +
+                                            applied.error);
+                                }
                             }
                         }
                         next_script_poll = now + std::chrono::milliseconds{100};
