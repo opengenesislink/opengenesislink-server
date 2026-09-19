@@ -9,6 +9,7 @@
 #include "opengenesis/scripting/world_action_queue.hpp"
 #include "opengenesis/security/scene_ticket.hpp"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <iostream>
@@ -206,6 +207,59 @@ int main() {
                 "LSL event category catalog mirrors official event pages");
         require(opengenesis::scripting::ogl_feature_catalog().size() >= 30,
                 "OGL native command catalog is populated");
+        const auto count_status = [](const auto& catalog,
+                                     const auto status) {
+            return static_cast<std::size_t>(std::count_if(
+                catalog.begin(), catalog.end(),
+                [&](const auto& feature) {
+                    return feature.status == status;
+                }));
+        };
+        const auto& lsl_functions =
+            opengenesis::scripting::lsl_function_catalog();
+        const auto& lsl_events =
+            opengenesis::scripting::lsl_event_catalog();
+        const auto& ogl_features =
+            opengenesis::scripting::ogl_feature_catalog();
+        require(lsl_functions.size() == 523 &&
+                    count_status(
+                        lsl_functions,
+                        opengenesis::scripting::ScriptFeatureStatus::implemented) ==
+                        27 &&
+                    count_status(
+                        lsl_functions,
+                        opengenesis::scripting::ScriptFeatureStatus::partial) ==
+                        24 &&
+                    count_status(
+                        lsl_functions,
+                        opengenesis::scripting::ScriptFeatureStatus::recognized) ==
+                        447 &&
+                    count_status(
+                        lsl_functions,
+                        opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
+                        25,
+                "LSL function status matrix matches 9.0 contract");
+        require(lsl_events.size() == 44 &&
+                    count_status(
+                        lsl_events,
+                        opengenesis::scripting::ScriptFeatureStatus::implemented) ==
+                        1 &&
+                    count_status(
+                        lsl_events,
+                        opengenesis::scripting::ScriptFeatureStatus::partial) ==
+                        3,
+                "LSL event status matrix matches 9.0 contract");
+        require(ogl_features.size() == 31 &&
+                    count_status(
+                        ogl_features,
+                        opengenesis::scripting::ScriptFeatureStatus::implemented) ==
+                        27 &&
+                    count_status(
+                        ogl_features,
+                        opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
+                        4,
+                "OGL feature status matrix matches 9.0 contract");
+
 
         auto identities = std::make_shared<opengenesis::core::IdentityStore>(
             (root / "users.db").string());
