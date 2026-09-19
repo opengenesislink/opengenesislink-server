@@ -128,7 +128,11 @@ int main() {
             "    llSetTimerEvent(1.5);\n"
             "  }\n"
             "  listen(integer channel, string name, key id, string message) {\n"
-            "    llSay(0, message);\n"
+            "    integer length = llStringLength(message);\n"
+            "    string upper = llToUpper(message);\n"
+            "    float magnitude = llVecMag(<3,4,0>);\n"
+            "    integer absolute = llAbs(-3);\n"
+            "    llSay(0, upper);\n"
             "  }\n"
             "  touch_start(integer total_number) {\n"
             "    llSetPos(<10,20,30>);\n"
@@ -165,11 +169,17 @@ int main() {
         require(lsl_listen.ok && lsl_listen.actions.size() == 1 &&
                     lsl_listen.actions.front().type ==
                         opengenesis::scripting::ScriptActionType::world_chat_say &&
-                    lsl_listen.actions.front().value == "Hello from listen" &&
+                    lsl_listen.actions.front().value == "HELLO FROM LISTEN" &&
                     lsl_listen.state.variables.at("channel") == "7" &&
                     lsl_listen.state.variables.at("message") ==
-                        "Hello from listen",
-                "LSL event parameters bind into VM variables");
+                        "Hello from listen" &&
+                    lsl_listen.state.variables.at("length") == "17" &&
+                    lsl_listen.state.variables.at("upper") ==
+                        "HELLO FROM LISTEN" &&
+                    lsl_listen.state.variables.at("magnitude") ==
+                        "5.000000" &&
+                    lsl_listen.state.variables.at("absolute") == "3",
+                "LSL event parameters and deterministic builtins execute");
 
         const auto lsl_touch =
             opengenesis::scripting::execute_script_event(
