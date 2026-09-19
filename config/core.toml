@@ -14,8 +14,30 @@ session_lifetime_seconds = 86400
 scene_ticket_lifetime_seconds = 60
 
 [security]
+production_mode = false
 scene_ticket_secret = "development-only-change-this-scene-ticket-secret"
+scene_ticket_secret_env = "OGL_SCENE_TICKET_SECRET"
 admin_api_key = "development-only-change-this-admin-api-key"
+admin_api_key_env = "OGL_ADMIN_API_KEY"
+world_node_secret = ""
+world_node_secret_env = "OGL_WORLD_NODE_SECRET"
+login_attempts_per_minute = 12
+registration_attempts_per_minute = 30
+
+[database]
+# file keeps the legacy per-store persistence. Production SQL choices:
+# sqlite, postgresql, mariadb
+backend = "file"
+sqlite_path = "data/opengenesis.db"
+host = "127.0.0.1"
+port = 0
+name = "opengenesislink"
+user = ""
+password = ""
+password_env = "OGL_DATABASE_PASSWORD"
+ssl_mode = "preferred"
+pool_size = 4
+connect_timeout_seconds = 5
 
 [storage]
 worlds = "data/worlds.db"
@@ -32,6 +54,7 @@ groups = "data/groups.db"
 parcels = "data/parcels.db"
 moderation = "data/moderation.db"
 audit = "data/audit.log"
+admin_roles = "data/admin-roles.db"
 estates = "data/estates.db"
 landmarks = "data/landmarks.db"
 notifications = "data/notifications.db"

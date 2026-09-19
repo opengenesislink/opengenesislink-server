@@ -25,9 +25,13 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service,
                                  std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
                                  std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im,
+                                 std::shared_ptr<storage::DatabasePool> database,
+                                 std::shared_ptr<AdminRoleStore> admin_roles,
                                  std::string admin_api_key,
                                  std::string scene_ticket_secret,
-                                 std::chrono::seconds scene_ticket_lifetime)
+                                 std::chrono::seconds scene_ticket_lifetime,
+                                 const std::size_t login_attempts_per_minute,
+                                 const std::size_t registration_attempts_per_minute)
     : address_(std::move(address)), port_(port), worlds_(std::move(worlds)), regions_(std::move(regions)),
       identities_(std::move(identities)), sessions_(std::move(sessions)), assets_(std::move(assets)),
       appearance_(std::move(appearance)), inventory_(std::move(inventory)), presences_(std::move(presences)), friends_(std::move(friends)),
@@ -38,9 +42,17 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       object_crossings_(std::move(object_crossings)), scripts_(std::move(scripts)), script_host_(std::move(script_host)),
       federation_runtime_(std::move(federation_runtime)),
       hypergrid_service_(std::move(hypergrid_service)), hypergrid_sessions_(std::move(hypergrid_sessions)),
-      hypergrid_im_(std::move(hypergrid_im)), admin_api_key_(std::move(admin_api_key)),
+      hypergrid_im_(std::move(hypergrid_im)), database_(std::move(database)),
+      admin_roles_(std::move(admin_roles)),
+      login_attempts_per_minute_(login_attempts_per_minute),
+      registration_attempts_per_minute_(registration_attempts_per_minute),
+      admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
-      scene_ticket_lifetime_(scene_ticket_lifetime) {}
+      scene_ticket_lifetime_(scene_ticket_lifetime) {
+    if (!admin_roles_) {
+        throw std::invalid_argument("admin role store is required");
+    }
+}
 
 AdminHttpServer::~AdminHttpServer() { stop(); }
 
@@ -111,6 +123,25 @@ void AdminHttpServer::run() {
                     const auto user = session ? identities_->find_by_id(session->user_id) : std::nullopt;
                     return {session, user};
                 };
+                const auto admin_allowed =
+                    [&](const std::string_view minimum_role) {
+                        if (admin_authorized(*request, admin_api_key_)) {
+                            return true;
+                        }
+                        const auto [session, user] = auth();
+                        return session && user &&
+                               admin_roles_->has_role(
+                                   user->id, minimum_role);
+                    };
+                const auto admin_actor = [&]() {
+                    if (admin_authorized(*request, admin_api_key_)) {
+                        return std::string{"admin-api-key"};
+                    }
+                    const auto [session, user] = auth();
+                    return session && user
+                               ? user->id
+                               : std::string{"unknown-admin"};
+                };
                 const auto estate_entry_error = [&](const UserInfo& user, const RegionInfo& region) -> std::string {
                     const auto policy = estates_->policy_for_region(region.id);
                     if (!policy) return {};
@@ -170,12 +201,51 @@ void AdminHttpServer::run() {
                            "},\"expires_unix\":" + std::to_string(ticket.claims.expires_unix) + "}";
                 };
 
+                const auto storage_status_json = [&]() {
+                    if (!database_) {
+                        return std::string{
+                            "{\"backend\":\"file\",\"ready\":true,"
+                            "\"pool_size\":0,\"successful_operations\":0,"
+                            "\"failed_operations\":0,\"last_error\":null}"};
+                    }
+                    const auto ready = database_->ping();
+                    const auto health = database_->health();
+                    return "{\"backend\":\"" +
+                           json_escape(health.backend) +
+                           "\",\"ready\":" +
+                           std::string(ready ? "true" : "false") +
+                           ",\"pool_size\":" +
+                           std::to_string(health.pool_size) +
+                           ",\"successful_operations\":" +
+                           std::to_string(health.successful_operations) +
+                           ",\"failed_operations\":" +
+                           std::to_string(health.failed_operations) +
+                           ",\"last_error\":" +
+                           (health.last_error.empty()
+                                ? std::string{"null"}
+                                : "\"" +
+                                      json_escape(health.last_error) +
+                                      "\"") +
+                           "}";
+                };
+
                 if (method == "GET" && path == "/") {
                     response.content_type = "text/html; charset=utf-8";
                     response.body = dashboard_html();
                 } else if (method == "GET" && path == "/health") {
-                    response.body = "{\"status\":\"ok\",\"version\":\"" +
-                                    std::string(OGL_VERSION) + "\"}";
+                    const auto storage_json = storage_status_json();
+                    const auto database_ready =
+                        !database_ || database_->health().ready;
+                    response.status = database_ready ? 200 : 503;
+                    response.body =
+                        "{\"status\":\"" +
+                        std::string(database_ready ? "ok" : "degraded") +
+                        "\",\"version\":\"" +
+                        std::string(OGL_VERSION) +
+                        "\",\"storage\":" + storage_json + "}";
+                } else if (method == "GET" &&
+                           path == "/v1/storage/status") {
+                    response.body = storage_status_json();
                 } else if (method == "GET" && path == "/metrics") {
                     const auto uptime = std::chrono::duration_cast<std::chrono::seconds>(
                         std::chrono::steady_clock::now() - started_at_).count();
@@ -202,6 +272,20 @@ void AdminHttpServer::run() {
                         << "opengenesis_object_crossings "
                         << object_crossings_->list().size() << "\n"
                         << "opengenesis_scripts " << scripts_->list().size() << "\n";
+                    if (database_) {
+                        const auto database_health = database_->health();
+                        out << "opengenesis_database_ready "
+                            << (database_health.ready ? 1 : 0) << "\n"
+                            << "opengenesis_database_pool_size "
+                            << database_health.pool_size << "\n"
+                            << "opengenesis_database_operations_total{result=\"success\"} "
+                            << database_health.successful_operations << "\n"
+                            << "opengenesis_database_operations_total{result=\"failure\"} "
+                            << database_health.failed_operations << "\n";
+                    } else {
+                        out << "opengenesis_database_ready 1\n"
+                            << "opengenesis_database_pool_size 0\n";
+                    }
                     for (const auto& region : regions_->list()) {
                         out << "opengenesis_region_sim_fps{region=\"" << json_escape(region.id) << "\"} " << region.sim_fps << "\n"
                             << "opengenesis_region_entities{region=\"" << json_escape(region.id) << "\"} " << region.entities << "\n"
@@ -212,7 +296,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-language-lsl-v1","script-language-ogl-v1","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","scene-motion-v1","scene-text-v1","scene-persistence-v5"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-language-lsl-v1","script-language-ogl-v1","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","scene-motion-v1","scene-text-v1","scene-persistence-v5"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -266,7 +350,8 @@ void AdminHttpServer::run() {
                                     ",\"assets\":" + std::to_string(assets_->count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) +
                                     ",\"object_crossings\":" +
-                                    std::to_string(object_crossings_->list().size()) + "}";
+                                    std::to_string(object_crossings_->list().size()) +
+                                    ",\"storage\":" + storage_status_json() + "}";
                 } else if (method == "GET" && path == "/v1/avatar/appearance") {
                     auto [session, user] = auth();
                     if (!session || !user) {
@@ -444,11 +529,11 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "GET" && path == "/v1/hypergrid/sessions") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
-                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("operator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         response.body =
-                            "{\"home_sessions\":" +
+                            "{\"home_sessions\": +
                             std::to_string(hypergrid_sessions_->home_sessions().size()) +
                             ",\"foreign_sessions\":" +
                             std::to_string(hypergrid_sessions_->foreign_sessions().size()) + "}";
@@ -460,15 +545,15 @@ void AdminHttpServer::run() {
                                     "\",\"base_url\":\"" + json_escape(info.base_url) +
                                     "\",\"public_key\":\"" + json_escape(info.public_key_hex) + "\"}";
                 } else if (method == "GET" && path == "/v1/federation/peers") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
-                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("operator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         response.body = "{\"peers\":" +
                                         federation_peers_json(federation_runtime_->peers()) + "}";
                     }
                 } else if (method == "POST" && path == "/v1/federation/trust") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
-                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("administrator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         const auto grid_id = json_string(request->body, "grid_id");
                         const auto base_url = json_string(request->body, "base_url");
@@ -496,8 +581,8 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "POST" && path == "/v1/federation/revoke") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
-                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("administrator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         const auto grid_id = json_string(request->body, "grid_id");
                         if (!grid_id || !federation_runtime_->revoke_peer(*grid_id)) {
@@ -597,15 +682,15 @@ void AdminHttpServer::run() {
                         }
                     }
                 } else if (method == "GET" && path == "/v1/federation/sessions") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
-                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("operator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         response.body = "{\"sessions\":" +
                                         federation_sessions_json(federation_runtime_->sessions()) + "}";
                     }
                 } else if (method == "POST" && path == "/v1/federation/sessions/logout") {
-                    if (!admin_authorized(*request, admin_api_key_)) {
-                        response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("operator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         const auto session_id = json_string(request->body, "session_id");
                         if (!session_id || !federation_runtime_->logout_session(*session_id)) {
@@ -618,7 +703,24 @@ void AdminHttpServer::run() {
                     const auto username = json_string(request->body, "username");
                     const auto display = json_string(request->body, "display_name");
                     const auto password = json_string(request->body, "password");
-                    if (!username || !display || !password) {
+                    auth_rate_limiter_.purge();
+                    const auto register_global_allowed =
+                        auth_rate_limiter_.allow(
+                            "register:global",
+                            registration_attempts_per_minute_,
+                            std::chrono::minutes{1});
+                    const auto register_user_allowed =
+                        register_global_allowed &&
+                        (!username ||
+                         auth_rate_limiter_.allow(
+                             "register:" + lower(*username),
+                             3U, std::chrono::minutes{1}));
+                    if (!register_global_allowed ||
+                        !register_user_allowed) {
+                        response = {
+                            .status = 429,
+                            .body = "{\"error\":\"registration-rate-limited\"}"};
+                    } else if (!username || !display || !password) {
                         response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
                     } else {
                         std::string reason;
@@ -641,9 +743,27 @@ void AdminHttpServer::run() {
                 } else if (method == "POST" && path == "/v1/auth/login") {
                     const auto username = json_string(request->body, "username");
                     const auto password = json_string(request->body, "password");
-                    if (!username || !password) {
+                    auth_rate_limiter_.purge();
+                    const auto login_key =
+                        username ? "login:" + lower(*username)
+                                 : std::string{"login:invalid"};
+                    const auto login_global_allowed =
+                        auth_rate_limiter_.allow(
+                            "login:global",
+                            login_attempts_per_minute_ * 50U,
+                            std::chrono::minutes{1});
+                    if (!login_global_allowed ||
+                        !auth_rate_limiter_.allow(
+                            login_key,
+                            login_attempts_per_minute_,
+                            std::chrono::minutes{1})) {
+                        response = {
+                            .status = 429,
+                            .body = "{\"error\":\"login-rate-limited\"}"};
+                    } else if (!username || !password) {
                         response = {.status = 400, .body = "{\"error\":\"invalid-json-fields\"}"};
                     } else if (const auto user = identities_->authenticate(*username, *password)) {
+                        auth_rate_limiter_.clear(login_key);
                         (void)inventory_->ensure_root(user->id);
                         const auto created = sessions_->create(user->id);
                         response.body = "{\"user\":{\"id\":\"" + json_escape(user->id) +
@@ -1510,11 +1630,86 @@ void AdminHttpServer::run() {
                             }
                         }
                     }
+                } else if (method == "GET" &&
+                           path == "/v1/admin/roles") {
+                    if (!admin_allowed("administrator")) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"admin-authorization-required\"}"};
+                    } else {
+                        const auto roles = admin_roles_->list();
+                        std::ostringstream out;
+                        out << "{\"roles\":[";
+                        for (std::size_t index = 0; index < roles.size(); ++index) {
+                            if (index != 0U) out << ',';
+                            const auto& role = roles[index];
+                            out << "{\"user_id\":\"" << json_escape(role.user_id)
+                                << "\",\"role\":\"" << json_escape(role.role_name)
+                                << "\",\"granted_by\":\"" << json_escape(role.granted_by)
+                                << "\",\"granted_unix\":" << role.granted_unix << "}";
+                        }
+                        out << "]}";
+                        response.body = out.str();
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/admin/roles/grant") {
+                    if (!admin_allowed("administrator")) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"admin-authorization-required\"}"};
+                    } else {
+                        const auto user_id =
+                            json_string(request->body, "user_id");
+                        const auto role =
+                            json_string(request->body, "role");
+                        if (!user_id || !role ||
+                            !identities_->find_by_id(*user_id)) {
+                            response = {
+                                .status = 400,
+                                .body = "{\"error\":\"invalid-admin-role-fields\"}"};
+                        } else {
+                            std::string reason;
+                            if (!admin_roles_->grant(
+                                    *user_id, *role, admin_actor(), reason)) {
+                                response = {
+                                    .status = 400,
+                                    .body = "{\"error\":\"" +
+                                            json_escape(reason) + "\"}"};
+                            } else {
+                                audit_->append(
+                                    admin_actor(), "admin.role.grant",
+                                    *user_id, *role);
+                                response.body =
+                                    "{\"status\":\"granted\"}";
+                            }
+                        }
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/admin/roles/revoke") {
+                    if (!admin_allowed("administrator")) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"admin-authorization-required\"}"};
+                    } else {
+                        const auto user_id =
+                            json_string(request->body, "user_id");
+                        if (!user_id || !admin_roles_->revoke(*user_id)) {
+                            response = {
+                                .status = 404,
+                                .body = "{\"error\":\"admin-role-not-found\"}"};
+                        } else {
+                            audit_->append(
+                                admin_actor(), "admin.role.revoke",
+                                *user_id);
+                            response.body =
+                                "{\"status\":\"revoked\"}";
+                        }
+                    }
                 } else if (method == "GET" && path == "/v1/admin/moderation") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("moderator")) response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     else response.body = "{\"bans\":" + bans_json(moderation_->list()) + "}";
                 } else if (method == "POST" && path == "/v1/admin/moderation/ban") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("moderator")) response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     else {
                         const auto user_id = json_string(request->body, "user_id");
                         const auto scope = json_string(request->body, "scope");
@@ -1524,20 +1719,20 @@ void AdminHttpServer::run() {
                         std::string error;
                         if (!user_id || !scope || !identities_->find_by_id(*user_id)) response = {.status = 400, .body = "{\"error\":\"invalid-ban\"}"};
                         else {
-                            const auto ban = moderation_->ban("admin-api", *user_id, *scope, scope_id.value_or(""), reason.value_or(""), expires, error);
+                            const auto ban = moderation_->ban(admin_actor(), *user_id, *scope, scope_id.value_or(""), reason.value_or(""), expires, error);
                             if (!ban) response = {.status = 400, .body = "{\"error\":\"" + json_escape(error) + "\"}"};
-                            else { audit_->append("admin-api", "moderation.ban", *user_id, *scope + ":" + scope_id.value_or("")); response.status = 201; response.body = "{\"ban_id\":\"" + ban->id + "\"}"; }
+                            else { audit_->append(admin_actor(), "moderation.ban", *user_id, *scope + ":" + scope_id.value_or("")); response.status = 201; response.body = "{\"ban_id\":\"" + ban->id + "\"}"; }
                         }
                     }
                 } else if (method == "POST" && path == "/v1/admin/moderation/unban") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("moderator")) response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     else {
                         const auto ban_id = json_string(request->body, "ban_id");
                         if (!ban_id || !moderation_->unban(*ban_id)) response = {.status = 404, .body = "{\"error\":\"ban-not-found\"}"};
-                        else { audit_->append("admin-api", "moderation.unban", *ban_id); response.body = "{\"status\":\"removed\"}"; }
+                        else { audit_->append(admin_actor(), "moderation.unban", *ban_id); response.body = "{\"status\":\"removed\"}"; }
                     }
                 } else if (method == "GET" && path == "/v1/admin/audit") {
-                    if (!admin_authorized(*request, admin_api_key_)) response = {.status = 403, .body = "{\"error\":\"admin-key-required\"}"};
+                    if (!admin_allowed("moderator")) response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     else response.body = "{\"events\":" + audit_json(audit_->recent()) + "}";
                 } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
                            path == "/v1/auth/logout" || path == "/v1/viewer/session" ||
@@ -1554,7 +1749,8 @@ void AdminHttpServer::run() {
                            path == "/v1/estates/regions" || path == "/v1/estates/regions/policy" ||
                            path == "/v1/landmarks" || path == "/v1/landmarks/remove" ||
                            path == "/v1/notifications/read" || path == "/v1/groups/channel" ||
-                           path == "/v1/assets/transfer" || path == "/v1/admin/moderation/ban" ||
+                           path == "/v1/assets/transfer" || path == "/v1/admin/roles/grant" ||
+                           path == "/v1/admin/roles/revoke" || path == "/v1/admin/moderation/ban" ||
                            path == "/v1/admin/moderation/unban" || path == "/v1/social/friends/request" ||
                            path == "/v1/social/friends/accept" || path == "/v1/social/friends/remove" ||
                            path == "/v1/social/messages" || path == "/v1/social/messages/read" ||

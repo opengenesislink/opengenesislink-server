@@ -4,6 +4,7 @@
 #include "opengenesis/core/admin_http.hpp"
 #include "opengenesis/core/asset_store.hpp"
 #include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/admin_role_store.hpp"
 #include "opengenesis/core/group_store.hpp"
 #include "opengenesis/core/group_channel_store.hpp"
 #include "opengenesis/core/notification_store.hpp"
@@ -41,11 +42,15 @@
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/security/crypto.hpp"
+#include "opengenesis/storage/database.hpp"
+#include "opengenesis/storage/database_config.hpp"
+#include "opengenesis/storage/migrations.hpp"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -181,21 +186,115 @@ int main(int argc, char** argv) {
             config.get_int("identity.session_lifetime_seconds", 86400)};
         const auto scene_ticket_lifetime = std::chrono::seconds{
             config.get_int("identity.scene_ticket_lifetime_seconds", 60)};
-        const auto scene_ticket_secret = config.get_string(
-            "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
-        const auto admin_api_key = config.get_string(
-            "security.admin_api_key", "development-only-change-this-admin-api-key");
-        if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
-        if (admin_api_key.size() < 24) throw std::runtime_error("security.admin_api_key must contain at least 24 bytes");
+        const auto login_attempts_per_minute =
+            config.get_int("security.login_attempts_per_minute", 12);
+        const auto registration_attempts_per_minute =
+            config.get_int("security.registration_attempts_per_minute", 30);
+        if (login_attempts_per_minute < 1 ||
+            login_attempts_per_minute > 1000 ||
+            registration_attempts_per_minute < 1 ||
+            registration_attempts_per_minute > 1000) {
+            throw std::runtime_error("invalid authentication rate-limit configuration");
+        }
+        const auto production_mode =
+            config.get_bool("security.production_mode", false);
+        const auto secret_from_env =
+            [&](const std::string& value_key,
+                const std::string& env_key,
+                const std::string& fallback) {
+                const auto env_name =
+                    config.get_string(env_key, "");
+                if (!env_name.empty()) {
+                    if (const auto* value = std::getenv(env_name.c_str());
+                        value && *value != '\0') {
+                        return std::string{value};
+                    }
+                }
+                return config.get_string(value_key, fallback);
+            };
+        const auto scene_ticket_secret = secret_from_env(
+            "security.scene_ticket_secret",
+            "security.scene_ticket_secret_env",
+            "development-only-change-this-scene-ticket-secret");
+        const auto admin_api_key = secret_from_env(
+            "security.admin_api_key",
+            "security.admin_api_key_env",
+            "development-only-change-this-admin-api-key");
+        const auto world_node_secret = secret_from_env(
+            "security.world_node_secret",
+            "security.world_node_secret_env",
+            "");
+        if (scene_ticket_secret.size() < 32) {
+            throw std::runtime_error(
+                "security.scene_ticket_secret must contain at least 32 bytes");
+        }
+        if (admin_api_key.size() < 24) {
+            throw std::runtime_error(
+                "security.admin_api_key must contain at least 24 bytes");
+        }
+        if (!world_node_secret.empty() &&
+            world_node_secret.size() < 32U) {
+            throw std::runtime_error(
+                "security.world_node_secret must be empty or contain at least 32 bytes");
+        }
+        if (production_mode && world_node_secret.size() < 32U) {
+            throw std::runtime_error(
+                "production_mode requires security.world_node_secret");
+        }
+        if (production_mode &&
+            (scene_ticket_secret ==
+                 "development-only-change-this-scene-ticket-secret" ||
+             admin_api_key ==
+                 "development-only-change-this-admin-api-key")) {
+            throw std::runtime_error(
+                "production_mode refuses development security secrets");
+        }
 
-        auto worlds = std::make_shared<core::WorldRegistry>(
-            config.get_string("storage.worlds", "data/worlds.db"));
-        auto regions = std::make_shared<core::RegionRegistry>(
-            config.get_string("storage.regions", "data/regions.db"));
-        auto identities = std::make_shared<core::IdentityStore>(
-            config.get_string("storage.users", "data/users.db"));
-        auto auth_sessions = std::make_shared<core::SessionStore>(
-            config.get_string("storage.sessions", "data/sessions.db"), session_lifetime);
+        std::shared_ptr<opengenesis::storage::DatabasePool> database;
+        const auto database_selection =
+            opengenesis::storage::database_selection_from_config(
+                config, production_mode);
+        if (!database_selection.file_mode) {
+            database =
+                opengenesis::storage::DatabasePool::connect(
+                    database_selection.config);
+            opengenesis::storage::MigrationRunner migrations(database);
+            migrations.migrate();
+            if (!database->ping()) {
+                throw std::runtime_error(
+                    "database health check failed after migration");
+            }
+            opengenesis::common::log(
+                LogLevel::info,
+                "core.storage",
+                "SQL storage ready: " +
+                    database->backend_name() +
+                    " schema=" +
+                    std::to_string(migrations.current_version()));
+        }
+
+        auto worlds = database
+            ? std::make_shared<core::WorldRegistry>(database)
+            : std::make_shared<core::WorldRegistry>(
+                  config.get_string(
+                      "storage.worlds", "data/worlds.db"));
+        auto regions = database
+            ? std::make_shared<core::RegionRegistry>(database)
+            : std::make_shared<core::RegionRegistry>(
+                  config.get_string(
+                      "storage.regions", "data/regions.db"));
+        auto identities = database
+            ? std::make_shared<core::IdentityStore>(database)
+            : std::make_shared<core::IdentityStore>(
+                  config.get_string(
+                      "storage.users", "data/users.db"));
+        auto auth_sessions = database
+            ? std::make_shared<core::SessionStore>(
+                  database, session_lifetime)
+            : std::make_shared<core::SessionStore>(
+                  config.get_string(
+                      "storage.sessions", "data/sessions.db"),
+                  session_lifetime);
         auto appearance = std::make_shared<opengenesis::avatar::AppearanceStore>(
             config.get_string("storage.appearance", "data/appearance.db"));
         auto assets = std::make_shared<core::AssetStore>(
@@ -213,10 +312,21 @@ int main(int argc, char** argv) {
             config.get_string("storage.groups", "data/groups.db"));
         auto parcels = std::make_shared<core::ParcelStore>(
             config.get_string("storage.parcels", "data/parcels.db"));
-        auto moderation = std::make_shared<core::ModerationStore>(
-            config.get_string("storage.moderation", "data/moderation.db"));
-        auto audit = std::make_shared<core::AuditStore>(
-            config.get_string("storage.audit", "data/audit.log"));
+        auto moderation = database
+            ? std::make_shared<core::ModerationStore>(database)
+            : std::make_shared<core::ModerationStore>(
+                  config.get_string(
+                      "storage.moderation", "data/moderation.db"));
+        auto audit = database
+            ? std::make_shared<core::AuditStore>(database)
+            : std::make_shared<core::AuditStore>(
+                  config.get_string(
+                      "storage.audit", "data/audit.log"));
+        auto admin_roles = database
+            ? std::make_shared<core::AdminRoleStore>(database)
+            : std::make_shared<core::AdminRoleStore>(
+                  config.get_string(
+                      "storage.admin_roles", "data/admin-roles.db"));
         auto estates = std::make_shared<core::EstateStore>(
             config.get_string("storage.estates", "data/estates.db"));
         auto landmarks = std::make_shared<core::LandmarkStore>(
@@ -312,11 +422,15 @@ int main(int argc, char** argv) {
             hypergrid_assets, hypergrid_im, hypergrid_inventory, hypergrid_appearance);
         auto node_sessions = std::make_shared<core::NodeSessions>();
 
-        if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
+        if (!production_mode &&
+            scene_ticket_secret ==
+                "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "core.security",
                                      "Using development scene-ticket secret; replace it before network exposure");
         }
-        if (admin_api_key == "development-only-change-this-admin-api-key") {
+        if (!production_mode &&
+            admin_api_key ==
+                "development-only-change-this-admin-api-key") {
             opengenesis::common::log(LogLevel::warning, "core.security",
                                      "Using development admin API key; replace it before network exposure");
         }
@@ -327,8 +441,11 @@ int main(int argc, char** argv) {
             identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, crossings,
             object_crossings, scripts, script_host, federation_runtime,
-            hypergrid_service, hypergrid_sessions, hypergrid_im, admin_api_key,
-            scene_ticket_secret, scene_ticket_lifetime);
+            hypergrid_service, hypergrid_sessions, hypergrid_im, database,
+            admin_roles, admin_api_key, scene_ticket_secret,
+            scene_ticket_lifetime,
+            static_cast<std::size_t>(login_attempts_per_minute),
+            static_cast<std::size_t>(registration_attempts_per_minute));
         admin.start();
         if (hypergrid_service->enabled()) hypergrid_server->start();
 
@@ -379,7 +496,7 @@ int main(int argc, char** argv) {
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
                          node_sessions, script_world_actions, object_crossings, scripts,
-                         lease_timeout]() mutable {
+                         lease_timeout, world_node_secret]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -387,18 +504,54 @@ int main(int argc, char** argv) {
                     if (hello.type != protocol::MessageType::hello) {
                         throw std::runtime_error("HELLO required");
                     }
-                    socket.send_frame({protocol::MessageType::hello_ack, hello.request_id,
-                                       protocol::payload_from_string(
-                                           "protocol=1\nserver=opengenesis-core\n")});
+                    const auto auth_challenge =
+                        world_node_secret.empty()
+                            ? std::string{}
+                            : opengenesis::security::random_hex(16);
+                    socket.send_frame({
+                        protocol::MessageType::hello_ack,
+                        hello.request_id,
+                        protocol::payload_from_string(
+                            "protocol=1\nserver=opengenesis-core\n"
+                            "auth=" +
+                            std::string(
+                                world_node_secret.empty()
+                                    ? "none"
+                                    : "hmac-sha256") +
+                            "\nchallenge=" + auth_challenge + "\n")});
 
                     const auto registration = socket.receive_frame();
                     if (registration.type != protocol::MessageType::world_register) {
                         throw std::runtime_error("WORLD_REGISTER required");
                     }
-                    const auto registration_body = protocol::payload_as_string(registration);
+                    const auto registration_body =
+                        protocol::payload_as_string(registration);
+                    const auto registration_id =
+                        field(registration_body, "id");
+                    const auto registration_endpoint =
+                        field(registration_body, "endpoint");
+                    if (!world_node_secret.empty()) {
+                        const auto expected =
+                            opengenesis::security::hmac_sha256_hex(
+                                world_node_secret,
+                                auth_challenge + "\n" +
+                                    registration_id + "\n" +
+                                    registration_endpoint);
+                        if (!opengenesis::security::secure_equals(
+                                expected,
+                                field(registration_body, "auth"))) {
+                            socket.send_frame({
+                                protocol::MessageType::error,
+                                registration.request_id,
+                                protocol::payload_from_string(
+                                    "reason=world-node-authentication-failed\n")});
+                            throw std::runtime_error(
+                                "world node authentication failed");
+                        }
+                    }
                     const auto info = worlds->register_or_reconnect(
-                        field(registration_body, "id"), field(registration_body, "name"),
-                        field(registration_body, "endpoint"));
+                        registration_id, field(registration_body, "name"),
+                        registration_endpoint);
                     node_id = info.id;
                     generation = info.generation;
                     node_sessions->open(node_id, generation);

@@ -17,6 +17,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install production database client libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libpq-dev libmariadb-dev
       - name: Configure release (warnings as errors)
         run: cmake --preset release -DOGL_ENABLE_WERROR=ON
       - name: Build

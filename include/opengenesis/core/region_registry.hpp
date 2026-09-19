@@ -6,6 +6,9 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <memory>
+
+namespace opengenesis::storage { class DatabasePool; }
 
 namespace opengenesis::core {
 
@@ -25,6 +28,7 @@ struct RegionInfo {
 class RegionRegistry final {
 public:
     explicit RegionRegistry(std::string storage_path = {});
+    explicit RegionRegistry(std::shared_ptr<storage::DatabasePool> database);
     bool register_region(RegionInfo region, std::string& reason);
     bool update_state(const std::string& id, const std::string& node_id, std::uint64_t generation,
                       const std::string& state, std::string& reason);
@@ -40,6 +44,7 @@ private:
     void persist_locked() const;
 
     std::string storage_path_;
+    std::shared_ptr<storage::DatabasePool> database_;
     mutable std::mutex mutex_;
     std::unordered_map<std::string, RegionInfo> regions_;
 };
