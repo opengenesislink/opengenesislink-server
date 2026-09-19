@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "opengenesis/scripting/script_vm.hpp"
@@ -61,6 +62,13 @@ public:
                                           std::string_view prefix,
                                           std::string_view result,
                                           std::string& reason);
+
+    [[nodiscard]] bool rebind_objects(
+        std::string_view source_region,
+        std::string_view destination_region,
+        const std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map,
+        std::string_view owner_user_id,
+        std::string& reason);
 
     [[nodiscard]] std::vector<ScriptEvent> due_timers(std::int64_t now_unix_ms);
     [[nodiscard]] std::vector<ScriptEvent> dispatch_chat(std::int32_t channel,
