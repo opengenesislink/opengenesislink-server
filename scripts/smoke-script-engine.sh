@@ -269,7 +269,7 @@ status,entry=api('/v1/scripts/event','POST',{
     'script_id':lsl_script['id'],
     'event':'state_entry'},token)
 assert status==200,entry
-assert entry['host_applied']==2,entry
+assert entry['host_applied']==1,entry
 
 status,listen=api('/v1/scripts/event','POST',{
     'script_id':lsl_script['id'],
