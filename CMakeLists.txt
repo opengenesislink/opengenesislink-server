@@ -166,4 +166,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-object-crossing-tests tests/object_crossing_tests.cpp)
     target_link_libraries(ogl-object-crossing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME object-crossing COMMAND ogl-object-crossing-tests)
+
+    add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
+    target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME database-foundation-sqlite COMMAND ogl-database-foundation-tests sqlite)
 endif()
