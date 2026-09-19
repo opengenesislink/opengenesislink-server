@@ -189,6 +189,104 @@ bool RegionRuntime::set_terrain_height(const std::size_t x, const std::size_t y,
     return true;
 }
 
+std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
+    const std::uint64_t id) const {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.kind != EntityKind::object) {
+        return std::nullopt;
+    }
+
+    ObjectTransferSnapshot snapshot{
+        .source_entity_id = it->second.id,
+        .name = it->second.name,
+        .owner_user_id = it->second.owner_user_id,
+        .group_id = it->second.group_id,
+        .owner_permissions = it->second.owner_permissions,
+        .group_permissions = it->second.group_permissions,
+        .everyone_permissions = it->second.everyone_permissions,
+        .transform = it->second.transform,
+        .velocity = {},
+        .physical = it->second.physics_body != 0};
+
+    if (it->second.physics_body != 0) {
+        snapshot.velocity = physics_.body(it->second.physics_body).velocity;
+    }
+    return snapshot;
+}
+
+bool RegionRuntime::import_object(
+    const ObjectTransferSnapshot& snapshot,
+    const std::uint64_t destination_entity_id,
+    physics::Vec3 destination_position,
+    std::string& reason) {
+    if (destination_entity_id == 0 || snapshot.source_entity_id == 0 ||
+        snapshot.name.size() > 256U || snapshot.owner_user_id.empty() ||
+        snapshot.owner_user_id.size() > 256U || snapshot.group_id.size() > 256U ||
+        !std::isfinite(destination_position.x) ||
+        !std::isfinite(destination_position.y) ||
+        !std::isfinite(destination_position.z) ||
+        !std::isfinite(snapshot.velocity.x) ||
+        !std::isfinite(snapshot.velocity.y) ||
+        !std::isfinite(snapshot.velocity.z)) {
+        reason = "invalid-object-transfer-snapshot";
+        return false;
+    }
+
+    const double max_x =
+        static_cast<double>(terrain_.width()) * terrain_.cell_size();
+    const double max_y =
+        static_cast<double>(terrain_.height()) * terrain_.cell_size();
+    destination_position.x =
+        std::clamp(destination_position.x, 0.25, max_x - 0.25);
+    destination_position.y =
+        std::clamp(destination_position.y, 0.25, max_y - 0.25);
+    if (destination_position.z <= 0.0) {
+        destination_position.z = snapshot.transform.position.z;
+    }
+    const auto floor = terrain_.sample(
+        destination_position.x, destination_position.y);
+    destination_position.z =
+        std::max(destination_position.z,
+                 floor + std::max(0.1, snapshot.transform.scale.z * 0.5));
+
+    {
+        std::scoped_lock lock(mutex_);
+        const auto existing = entities_.find(destination_entity_id);
+        if (existing != entities_.end()) {
+            const auto& entity = existing->second;
+            if (entity.kind == EntityKind::object &&
+                entity.owner_user_id == snapshot.owner_user_id &&
+                entity.name == snapshot.name &&
+                entity.group_id == snapshot.group_id) {
+                reason.clear();
+                return true;
+            }
+            reason = "destination-entity-id-collision";
+            return false;
+        }
+    }
+
+    auto transform = snapshot.transform;
+    transform.position = destination_position;
+    if (!restore_object(destination_entity_id, snapshot.name, transform,
+                        snapshot.physical, snapshot.owner_user_id,
+                        snapshot.group_id, snapshot.owner_permissions,
+                        snapshot.group_permissions,
+                        snapshot.everyone_permissions)) {
+        reason = "destination-object-restore-failed";
+        return false;
+    }
+    if (snapshot.physical &&
+        !set_velocity(destination_entity_id, snapshot.velocity)) {
+        (void)remove_entity(destination_entity_id);
+        reason = "destination-object-velocity-restore-failed";
+        return false;
+    }
+    reason.clear();
+    return true;
+}
+
 std::optional<Entity> RegionRuntime::entity(const std::uint64_t id) const {
     std::scoped_lock lock(mutex_);
     const auto it = entities_.find(id);
