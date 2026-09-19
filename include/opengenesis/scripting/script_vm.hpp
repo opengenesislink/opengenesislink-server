@@ -12,7 +12,8 @@ namespace opengenesis::scripting {
 
 enum class ScriptOpcode {
     set, add, emit, state, timer, listen, notify, message,
-    move, rotate, scale, physics, say, whisper, shout, stop
+    move, rotate, scale, physics, say, whisper, shout,
+    object_info, region_info, terrain_height, nearby_avatars, stop
 };
 
 struct ScriptInstruction {
@@ -49,7 +50,11 @@ enum class ScriptActionType {
     world_physics,
     world_chat_say,
     world_chat_whisper,
-    world_chat_shout
+    world_chat_shout,
+    world_query_object,
+    world_query_region,
+    world_query_terrain,
+    world_query_nearby
 };
 
 struct ScriptAction {
