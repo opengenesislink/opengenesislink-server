@@ -409,7 +409,9 @@ bool ObjectCrossingStore::reject_command(
             break;
     }
 
-    ++(*attempts);
+    if (*attempts < max_attempts_) {
+        ++(*attempts);
+    }
     if (*attempts >= max_attempts_) {
         const auto now = unix_now();
         if (command == ObjectCrossingCommandType::remove_source) {
@@ -458,6 +460,11 @@ std::optional<ObjectCrossingRecord> ObjectCrossingStore::rollback(
     if (record.state == ObjectCrossingState::completed) {
         reason = "object-crossing-already-completed";
         return std::nullopt;
+    }
+
+    if (record.state == ObjectCrossingState::restore_pending) {
+        reason.clear();
+        return record;
     }
 
     record.rollback_reason = std::move(rollback_reason);
