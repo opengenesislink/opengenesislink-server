@@ -180,10 +180,21 @@ int main(int argc, char** argv) {
             config.get_string("storage.crossings", "data/crossings.db"));
         auto scripts = std::make_shared<opengenesis::scripting::ScriptRuntime>(
             config.get_string("storage.scripts", "data/scripts.db"));
+        const auto script_world_max_pending =
+            config.get_int("scripting.max_pending_world_actions", 4096);
+        if (script_world_max_pending < 1) {
+            throw std::runtime_error("scripting.max_pending_world_actions must be positive");
+        }
         auto script_world_actions =
             std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(
-                static_cast<std::size_t>(
-                    config.get_int("scripting.max_pending_world_actions", 4096)));
+                config.get_string("storage.script_world_actions",
+                                  "data/script-world-actions.db"),
+                static_cast<std::size_t>(script_world_max_pending),
+                static_cast<std::uint32_t>(
+                    std::max<std::int64_t>(
+                        1, config.get_int("scripting.world_action_max_attempts", 5))),
+                config.get_int("scripting.world_action_lease_ms", 2000),
+                config.get_int("scripting.world_action_ttl_ms", 60000));
         auto script_host = std::make_shared<opengenesis::scripting::ScriptHost>(
             identities, friends, messages, notifications, script_world_actions);
         auto federation_identity = std::make_shared<opengenesis::federation::GridIdentityStore>(
@@ -289,7 +300,8 @@ int main(int argc, char** argv) {
                 (void)federation_runtime->maintenance(now_unix);
                 (void)hypergrid_sessions->purge_expired(now_unix);
                 (void)crossings->purge_expired(now_unix);
-                const auto now_ms = now_unix * 1000;
+                const auto now_ms = unix_ms();
+                (void)script_world_actions->purge_expired(now_ms);
                 for (const auto& event : scripts->due_timers(now_ms)) {
                     const auto script = scripts->find(event.script_id);
                     if (!script) continue;
@@ -310,7 +322,7 @@ int main(int argc, char** argv) {
             auto accepted = listener.accept_for(std::chrono::milliseconds{250});
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
-                         node_sessions, script_world_actions, lease_timeout]() mutable {
+                         node_sessions, script_world_actions, scripts, lease_timeout]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
