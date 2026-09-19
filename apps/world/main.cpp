@@ -265,6 +265,29 @@ ObjectCrossingApplyResult apply_object_crossing_command(
                 .destination_entity_id = destination_entity_id};
     }
 
+    if (command == "restore") {
+        std::string reason;
+        std::string decoded;
+        try {
+            decoded = opengenesis::security::base64_decode(
+                field(body, "snapshot_b64"), 64U * 1024U);
+        } catch (...) {
+            return {.error = "object-snapshot-decode-failed"};
+        }
+        const auto snapshot = deserialize_object_snapshot(decoded, reason);
+        if (!snapshot) return {.error = reason};
+        if (snapshot->owner_user_id != owner ||
+            snapshot->source_entity_id != source_entity_id) {
+            return {.error = "source-object-restore-binding-mismatch"};
+        }
+        if (!runtime.import_object(
+                *snapshot, source_entity_id,
+                snapshot->transform.position, reason)) {
+            return {.error = reason};
+        }
+        return {.ok = true};
+    }
+
     return {.error = "unsupported-object-crossing-command"};
 }
 
