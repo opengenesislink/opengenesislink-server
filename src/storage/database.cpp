@@ -16,6 +16,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -74,6 +75,12 @@ std::string pg_placeholders(std::string_view sql) {
 class SqliteConnection final : public Connection {
 public:
     explicit SqliteConnection(const DatabaseConfig& config) {
+        if (config.sqlite_path != ":memory:") {
+            const std::filesystem::path path(config.sqlite_path);
+            if (path.has_parent_path()) {
+                std::filesystem::create_directories(path.parent_path());
+            }
+        }
         const auto flags =
             SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
         if (sqlite3_open_v2(
@@ -592,6 +599,12 @@ struct DatabasePool::Impl {
                     last_error.resize(1024U);
                 }
             }
+            try {
+                slot.connection = open_connection(config);
+                ready.store(true);
+            } catch (...) {
+                ready.store(false);
+            }
             throw;
         }
     }
@@ -679,11 +692,32 @@ void DatabasePool::transaction(
 }
 
 bool DatabasePool::ping() {
+    const auto index =
+        impl_->cursor.fetch_add(1U) % impl_->slots.size();
+    auto& slot = *impl_->slots[index];
+    std::scoped_lock lock(slot.mutex);
     try {
-        return impl_->with_slot([](Connection& connection) {
-            return connection.ping();
-        });
-    } catch (...) {
+        if (!slot.connection->ping()) {
+            slot.connection = open_connection(impl_->config);
+        }
+        const auto ready = slot.connection->ping();
+        impl_->ready.store(ready);
+        if (ready) {
+            impl_->successful.fetch_add(1U);
+            return true;
+        }
+        impl_->failed.fetch_add(1U);
+        return false;
+    } catch (const std::exception& error) {
+        impl_->failed.fetch_add(1U);
+        impl_->ready.store(false);
+        {
+            std::scoped_lock error_lock(impl_->error_mutex);
+            impl_->last_error = error.what();
+            if (impl_->last_error.size() > 1024U) {
+                impl_->last_error.resize(1024U);
+            }
+        }
         return false;
     }
 }
