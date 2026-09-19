@@ -3,6 +3,8 @@ std::string script_record_json(const scripting::ScriptRecord& script) {
            "\",\"object_id\":\"" + json_escape(script.object_id) +
            "\",\"owner_user_id\":\"" + json_escape(script.owner_user_id) +
            "\",\"source_hash\":\"" + json_escape(script.source_hash) +
+           "\",\"language\":\"" +
+           std::string(scripting::script_language_name(script.language)) +
            "\",\"state\":\"" + json_escape(script.state) +
            "\",\"enabled\":" + (script.enabled ? "true" : "false") +
            ",\"timer_interval_ms\":" + std::to_string(script.timer_interval_ms) +
@@ -10,6 +12,34 @@ std::string script_record_json(const scripting::ScriptRecord& script) {
            ",\"chat_channel\":" + std::to_string(script.chat_channel) +
            ",\"chat_enabled\":" + (script.chat_enabled ? "true" : "false") +
            ",\"event_count\":" + std::to_string(script.event_count) + "}";
+}
+
+std::string script_features_json(
+    const std::vector<scripting::ScriptFeature>& features) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t index = 0; index < features.size(); ++index) {
+        if (index != 0) out << ',';
+        const auto& feature = features[index];
+        out << "{\"name\":\"" << json_escape(feature.name)
+            << "\",\"category\":\"" << json_escape(feature.category)
+            << "\",\"status\":\""
+            << scripting::script_feature_status_name(feature.status)
+            << "\"}";
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string script_engine_capabilities_json() {
+    const auto& ogl = scripting::ogl_feature_catalog();
+    const auto& lsl_functions = scripting::lsl_function_catalog();
+    const auto& lsl_events = scripting::lsl_event_catalog();
+    return "{\"engine\":\"OGL ScriptEngine\","
+           "\"languages\":[\"legacy\",\"lsl\",\"ogl\"],"
+           "\"ogl\":" + script_features_json(ogl) +
+           ",\"lsl_functions\":" + script_features_json(lsl_functions) +
+           ",\"lsl_events\":" + script_features_json(lsl_events) + "}";
 }
 
 std::string script_actions_json(const std::vector<scripting::ScriptAction>& actions) {
@@ -27,13 +57,18 @@ std::string script_actions_json(const std::vector<scripting::ScriptAction>& acti
         else if (action.type == scripting::ScriptActionType::world_move) type = "move";
         else if (action.type == scripting::ScriptActionType::world_rotate) type = "rotate";
         else if (action.type == scripting::ScriptActionType::world_scale) type = "scale";
+        else if (action.type == scripting::ScriptActionType::world_velocity) type = "velocity";
+        else if (action.type == scripting::ScriptActionType::world_angular_velocity) type = "angular_velocity";
         else if (action.type == scripting::ScriptActionType::world_physics) type = "physics";
+        else if (action.type == scripting::ScriptActionType::world_text) type = "text";
         else if (action.type == scripting::ScriptActionType::world_chat_say) type = "say";
         else if (action.type == scripting::ScriptActionType::world_chat_whisper) type = "whisper";
         else if (action.type == scripting::ScriptActionType::world_chat_shout) type = "shout";
         else if (action.type == scripting::ScriptActionType::world_query_object) type = "object_info";
         else if (action.type == scripting::ScriptActionType::world_query_region) type = "region_info";
         else if (action.type == scripting::ScriptActionType::world_query_terrain) type = "terrain_height";
+        else if (action.type == scripting::ScriptActionType::world_query_water) type = "water_level";
+        else if (action.type == scripting::ScriptActionType::world_query_time) type = "world_time";
         else if (action.type == scripting::ScriptActionType::world_query_nearby) type = "nearby_avatars";
         out << "{\"type\":\"" << type << "\",\"value\":\"" << json_escape(action.value)
             << "\",\"number\":" << action.number << "}";
