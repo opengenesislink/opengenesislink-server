@@ -244,6 +244,88 @@ bool ScriptRuntime::apply_world_result(const std::string_view script_id,
     return true;
 }
 
+
+bool ScriptRuntime::rebind_objects(
+    const std::string_view source_region,
+    const std::string_view destination_region,
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map,
+    const std::string_view owner_user_id,
+    std::string& reason) {
+    if (!safe_field(source_region, 256) ||
+        !safe_field(destination_region, 256) ||
+        source_region == destination_region ||
+        owner_user_id.empty() || owner_user_id.size() > 256U ||
+        entity_map.empty() || entity_map.size() > 64U) {
+        reason = "invalid-script-rebind";
+        return false;
+    }
+
+    std::vector<std::pair<std::string, std::string>> bindings;
+    bindings.reserve(entity_map.size());
+    for (const auto& [source_entity, destination_entity] : entity_map) {
+        if (source_entity == 0 || destination_entity == 0) {
+            reason = "invalid-script-rebind-entity";
+            return false;
+        }
+        const auto source =
+            std::string{source_region} + "/" + std::to_string(source_entity);
+        const auto destination =
+            std::string{destination_region} + "/" +
+            std::to_string(destination_entity);
+        if (std::find_if(
+                bindings.begin(), bindings.end(),
+                [&](const auto& item) {
+                    return item.first == source ||
+                           item.second == destination;
+                }) != bindings.end()) {
+            reason = "duplicate-script-rebind-entity";
+            return false;
+        }
+        bindings.emplace_back(source, destination);
+    }
+
+    std::scoped_lock lock(mutex_);
+    for (const auto& [_, script] : scripts_) {
+        if (script.owner_user_id != owner_user_id) continue;
+        const auto source_match = std::find_if(
+            bindings.begin(), bindings.end(),
+            [&](const auto& item) {
+                return script.object_id == item.first;
+            });
+        const auto destination_match = std::find_if(
+            bindings.begin(), bindings.end(),
+            [&](const auto& item) {
+                return script.object_id == item.second;
+            });
+        if (source_match == bindings.end() &&
+            destination_match == bindings.end()) {
+            continue;
+        }
+        if (source_match != bindings.end() &&
+            destination_match != bindings.end() &&
+            source_match != destination_match) {
+            reason = "ambiguous-script-rebind";
+            return false;
+        }
+    }
+
+    bool changed = false;
+    for (auto& [_, script] : scripts_) {
+        if (script.owner_user_id != owner_user_id) continue;
+        const auto binding = std::find_if(
+            bindings.begin(), bindings.end(),
+            [&](const auto& item) {
+                return script.object_id == item.first;
+            });
+        if (binding == bindings.end()) continue;
+        script.object_id = binding->second;
+        changed = true;
+    }
+    if (changed) persist_locked();
+    reason.clear();
+    return true;
+}
+
 std::vector<ScriptEvent> ScriptRuntime::due_timers(const std::int64_t now_unix_ms) {
     std::scoped_lock lock(mutex_);
     std::vector<ScriptEvent> events;
