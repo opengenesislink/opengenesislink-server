@@ -144,6 +144,20 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             ins.opcode=op=="say"?ScriptOpcode::say:(op=="whisper"?ScriptOpcode::whisper:ScriptOpcode::shout);
             std::getline(parts,ins.a); ins.a=trim(ins.a);
             if(ins.a.empty()||ins.a.size()>512){reason="invalid-chat";return std::nullopt;}
+        } else if(op=="object_info"||op=="region_info"||op=="terrain_height"){
+            ins.opcode=op=="object_info"?ScriptOpcode::object_info:
+                       (op=="region_info"?ScriptOpcode::region_info:ScriptOpcode::terrain_height);
+            parts>>ins.a;
+            std::string extra; parts>>extra;
+            if(!atom(ins.a,64)||!extra.empty()){reason="invalid-world-query";return std::nullopt;}
+        } else if(op=="nearby_avatars"){
+            ins.opcode=ScriptOpcode::nearby_avatars;
+            parts>>ins.a>>ins.b;
+            std::string extra; parts>>extra;
+            const auto radius=integer(ins.b);
+            if(!atom(ins.a,64)||!radius||*radius<1||*radius>96||!extra.empty()){
+                reason="invalid-nearby-query";return std::nullopt;
+            }
         } else if(op=="stop"){
             ins.opcode=ScriptOpcode::stop;
         } else {
@@ -214,6 +228,16 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
                             (ins.opcode==ScriptOpcode::whisper?ScriptActionType::world_chat_whisper:
                                                                ScriptActionType::world_chat_shout);
             result.actions.push_back({.type=type,.value=resolve(ins.a,result.state),.number=0});
+        } else if(ins.opcode==ScriptOpcode::object_info||
+                  ins.opcode==ScriptOpcode::region_info||
+                  ins.opcode==ScriptOpcode::terrain_height){
+            const auto type=ins.opcode==ScriptOpcode::object_info?ScriptActionType::world_query_object:
+                            (ins.opcode==ScriptOpcode::region_info?ScriptActionType::world_query_region:
+                                                                  ScriptActionType::world_query_terrain);
+            result.actions.push_back({.type=type,.value=ins.a,.number=0});
+        } else if(ins.opcode==ScriptOpcode::nearby_avatars){
+            result.actions.push_back({.type=ScriptActionType::world_query_nearby,
+                                      .value=ins.a+"|"+ins.b,.number=0});
         }
         if(state_bytes(result.state)>limits.max_state_bytes){result.error="state-budget-exceeded";return result;}
         if(result.actions.size()>limits.max_output_actions){result.error="action-budget-exceeded";return result;}
