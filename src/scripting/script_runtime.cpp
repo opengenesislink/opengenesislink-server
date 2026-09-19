@@ -321,7 +321,9 @@ bool ScriptRuntime::rebind_objects(
         script.object_id = binding->second;
         changed = true;
     }
-    if (changed) persist_locked();
+    // Persist even on an idempotent retry. A previous persist attempt may
+    // have failed after the in-memory bindings were already updated.
+    persist_locked();
     reason.clear();
     return true;
 }
