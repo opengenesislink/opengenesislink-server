@@ -19,6 +19,8 @@ scene_ticket_secret = "development-only-change-this-scene-ticket-secret"
 scene_ticket_secret_env = "OGL_SCENE_TICKET_SECRET"
 admin_api_key = "development-only-change-this-admin-api-key"
 admin_api_key_env = "OGL_ADMIN_API_KEY"
+world_node_secret = ""
+world_node_secret_env = "OGL_WORLD_NODE_SECRET"
 login_attempts_per_minute = 12
 registration_attempts_per_minute = 30
 
