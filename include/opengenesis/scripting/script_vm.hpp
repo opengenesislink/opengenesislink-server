@@ -15,7 +15,7 @@ enum class ScriptOpcode {
     move, rotate, scale, velocity, angular_velocity, physics, text,
     say, whisper, shout,
     object_info, region_info, terrain_height, water_level, world_time,
-    nearby_avatars, stop
+    nearby_avatars, builtin_set, stop
 };
 
 struct ScriptInstruction {
