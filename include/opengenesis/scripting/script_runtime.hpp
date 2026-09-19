@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "opengenesis/scripting/script_vm.hpp"
+#include "opengenesis/scripting/script_engine.hpp"
 
 namespace opengenesis::scripting {
 
@@ -18,6 +18,7 @@ struct ScriptRecord {
     std::string object_id;
     std::string owner_user_id;
     std::string source_hash;
+    ScriptLanguage language{ScriptLanguage::legacy};
     std::string source;
     std::string vm_state;
     std::string state{"default"};
@@ -51,6 +52,9 @@ public:
     [[nodiscard]] bool set_program(std::string_view script_id,
                                    std::string source,
                                    std::string& reason);
+    [[nodiscard]] bool set_language(std::string_view script_id,
+                                    ScriptLanguage language,
+                                    std::string& reason);
     [[nodiscard]] std::optional<ScriptVmResult> execute_event(
         std::string_view script_id,
         std::string_view event,
