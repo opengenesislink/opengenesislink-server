@@ -11,9 +11,13 @@ scene_port = 19100
 endpoint = "127.0.0.1:19000"
 reconnect_seconds = 2
 lease_seconds = 5
+auth_secret = ""
+auth_secret_env = "OGL_WORLD_NODE_SECRET"
 
 [security]
+production_mode = false
 scene_ticket_secret = "development-only-change-this-scene-ticket-secret"
+scene_ticket_secret_env = "OGL_SCENE_TICKET_SECRET"
 
 [runtime]
 tick_hz = 45.0
