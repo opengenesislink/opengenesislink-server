@@ -1,4 +1,5 @@
 #include "opengenesis/scripting/script_engine.hpp"
+#include "opengenesis/scripting/lsl_builtins.hpp"
 
 #include <sstream>
 #include <string>
@@ -133,7 +134,11 @@ ScriptFeatureStatus status_for(std::string_view name) {
         "llSay", "llWhisper", "llShout", "llOwnerSay", "llInstantMessage",
         "llSetTimerEvent", "llListen", "llSetPos", "llSetRegionPos",
         "llSetScale", "llSetVelocity", "llSetAngularVelocity", "llSetText",
-        "llSetStatus", "llResetScript"
+        "llSetStatus", "llResetScript",
+        // Executable pure builtins with deliberately conservative fidelity
+        // status because edge behavior/Unicode still differs from SL LSL.
+        "llChar", "llOrd", "llDeleteSubString", "llGetSubString",
+        "llInsertString", "llStringTrim", "llSqrt", "llLog", "llLog10"
     };
     static const std::unordered_set<std::string> unsupported = {
         "llCloseRemoteDataChannel", "llCloud", "llGodLikeRezObject",
@@ -145,8 +150,15 @@ ScriptFeatureStatus status_for(std::string_view name) {
         "llSound", "llSoundPreload", "llStopPointAt", "llTakeCamera",
         "llXorBase64Strings", "llXorBase64StringsCorrect"
     };
-    if (partial.contains(std::string{name})) return ScriptFeatureStatus::partial;
-    if (unsupported.contains(std::string{name})) return ScriptFeatureStatus::unsupported;
+    if (partial.contains(std::string{name})) {
+        return ScriptFeatureStatus::partial;
+    }
+    if (lsl_builtin_implemented(name)) {
+        return ScriptFeatureStatus::implemented;
+    }
+    if (unsupported.contains(std::string{name})) {
+        return ScriptFeatureStatus::unsupported;
+    }
     return ScriptFeatureStatus::recognized;
 }
 
