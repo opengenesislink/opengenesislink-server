@@ -138,6 +138,17 @@ bool RegionRuntime::set_physical(const std::uint64_t id, const bool enabled) {
 }
 
 
+bool RegionRuntime::set_object_owner_permissions(
+    const std::uint64_t id,
+    const core::PermissionMask owner_permissions) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.kind != EntityKind::object) return false;
+    it->second.owner_permissions = owner_permissions & core::perm_all;
+    append_event_locked("owner_permissions_updated", id, it->second.transform);
+    return true;
+}
+
 bool RegionRuntime::set_object_permissions(const std::uint64_t id, std::string group_id,
                                            const core::PermissionMask group_permissions,
                                            const core::PermissionMask everyone_permissions) {
@@ -194,6 +205,14 @@ std::optional<Entity> RegionRuntime::entity(const std::uint64_t id) const {
     const auto it = entities_.find(id);
     if (it == entities_.end()) return std::nullopt;
     return it->second;
+}
+
+std::optional<physics::Vec3> RegionRuntime::velocity(const std::uint64_t id) const {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end()) return std::nullopt;
+    if (it->second.physics_body == 0) return physics::Vec3{};
+    return physics_.body(it->second.physics_body).velocity;
 }
 
 std::vector<Entity> RegionRuntime::snapshot_entities() const {
