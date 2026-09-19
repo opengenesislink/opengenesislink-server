@@ -1,4 +1,5 @@
 #include "opengenesis/scripting/lsl_engine.hpp"
+#include "opengenesis/scripting/lsl_builtins.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -335,6 +336,72 @@ bool compile_event_body(
             }
             legacy << "state " << target << '\n';
             continue;
+        }
+
+        static constexpr std::string_view declaration_types[] = {
+            "integer ", "float ", "string ", "key ",
+            "vector ", "rotation ", "list "
+        };
+        std::string assignment = statement;
+        bool declaration = false;
+        for (const auto type : declaration_types) {
+            if (assignment.starts_with(type)) {
+                assignment = trim(assignment.substr(type.size()));
+                declaration = true;
+                break;
+            }
+        }
+
+        const auto equal = assignment.find('=');
+        if (equal != std::string::npos) {
+            const auto target = trim(assignment.substr(0U, equal));
+            const auto expression = trim(assignment.substr(equal + 1U));
+            if (!identifier(target) || expression.empty()) {
+                reason = "lsl-invalid-assignment";
+                return false;
+            }
+
+            const auto call_open = expression.find('(');
+            const auto call_close = expression.rfind(')');
+            if (call_open != std::string::npos &&
+                call_close == expression.size() - 1U &&
+                call_close > call_open) {
+                const auto function =
+                    trim(expression.substr(0U, call_open));
+                if (!identifier(function) ||
+                    !lsl_builtin_implemented(function)) {
+                    reason = "lsl-builtin-not-implemented";
+                    return false;
+                }
+                const auto args = split_args(
+                    std::string_view{expression}.substr(
+                        call_open + 1U,
+                        call_close - call_open - 1U));
+                std::string encoded_args;
+                for (std::size_t index = 0; index < args.size(); ++index) {
+                    if (index != 0U) encoded_args.push_back('\x1f');
+                    encoded_args += value_expression(args[index]);
+                }
+                legacy << "builtin " << target << ' ' << function;
+                if (!encoded_args.empty()) {
+                    legacy << ' ' << encoded_args;
+                }
+                legacy << '\n';
+                continue;
+            }
+
+            if (expression.find('(') != std::string::npos) {
+                reason = "lsl-expression-not-supported";
+                return false;
+            }
+            legacy << "set " << target << ' '
+                   << value_expression(expression) << '\n';
+            continue;
+        }
+
+        if (declaration) {
+            reason = "lsl-declaration-requires-initializer";
+            return false;
         }
 
         const auto open = statement.find('(');
