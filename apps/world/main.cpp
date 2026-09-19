@@ -80,6 +80,63 @@ std::string presence_snapshot_payload(const world::RegionRuntime& runtime) {
     body << "count=" << count << '\n';
     return body.str();
 }
+
+bool vector3(const std::string& text, opengenesis::physics::Vec3& value) {
+    std::istringstream input(text);
+    std::string extra;
+    if (!(input >> value.x >> value.y >> value.z) || (input >> extra)) return false;
+    return true;
+}
+
+bool apply_script_action(
+    const std::vector<std::shared_ptr<world::RegionRuntime>>& runtimes,
+    const std::string& body) {
+    const auto region_id = field(body, "region");
+    const auto owner = field(body, "owner");
+    const auto type = field(body, "type");
+    const auto payload = field(body, "payload");
+    const auto entity_text = field(body, "entity");
+    if (region_id.empty() || owner.empty() || type.empty() || entity_text.empty()) {
+        return false;
+    }
+
+    const auto runtime = std::find_if(
+        runtimes.begin(), runtimes.end(),
+        [&](const auto& candidate) { return candidate->id() == region_id; });
+    if (runtime == runtimes.end()) return false;
+
+    std::uint64_t entity_id = 0;
+    try {
+        entity_id = std::stoull(entity_text);
+    } catch (...) {
+        return false;
+    }
+
+    const auto entity = (*runtime)->entity(entity_id);
+    if (!entity || entity->kind != world::EntityKind::object ||
+        entity->owner_user_id != owner) {
+        return false;
+    }
+
+    if (type == "physics") {
+        return (*runtime)->set_physical(entity_id, payload == "1");
+    }
+    if (type == "say" || type == "whisper" || type == "shout") {
+        const auto event_type = type == "whisper" ? "chat_whisper"
+                              : type == "shout" ? "chat_shout"
+                                                : "chat";
+        return (*runtime)->chat(entity_id, payload, event_type) != 0;
+    }
+
+    opengenesis::physics::Vec3 vector;
+    if (!vector3(payload, vector)) return false;
+    auto transform = entity->transform;
+    if (type == "move") transform.position = vector;
+    else if (type == "rotate") transform.rotation = vector;
+    else if (type == "scale") transform.scale = vector;
+    else return false;
+    return (*runtime)->update_transform(entity_id, transform);
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -210,6 +267,7 @@ int main(int argc, char** argv) {
 
                 auto next_lease = std::chrono::steady_clock::now();
                 auto next_metrics = next_lease;
+                auto next_script_poll = next_lease;
                 while (running) {
                     const auto now = std::chrono::steady_clock::now();
                     if (now >= next_lease) {
@@ -221,6 +279,27 @@ int main(int argc, char** argv) {
                             throw std::runtime_error("lease rejected");
                         }
                         next_lease = now + lease;
+                    }
+                    if (now >= next_script_poll) {
+                        for (const auto& runtime : runtimes) {
+                            socket.send_frame({
+                                protocol::MessageType::script_action_poll, ++request_id,
+                                protocol::payload_from_string(
+                                    "region=" + runtime->id() + "\n")});
+                            const auto action = socket.receive_frame();
+                            if (action.type != protocol::MessageType::script_action) {
+                                throw std::runtime_error("script action poll rejected");
+                            }
+                            const auto action_body = protocol::payload_as_string(action);
+                            if (field(action_body, "status") == "action" &&
+                                !apply_script_action(runtimes, action_body)) {
+                                opengenesis::common::log(
+                                    LogLevel::warning, "world.script",
+                                    "Rejected Script World Action " +
+                                        field(action_body, "id"));
+                            }
+                        }
+                        next_script_poll = now + std::chrono::milliseconds{100};
                     }
                     if (now >= next_metrics) {
                         for (const auto& runtime : runtimes) {
