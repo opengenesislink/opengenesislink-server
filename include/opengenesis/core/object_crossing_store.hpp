@@ -43,6 +43,7 @@ struct ObjectCrossingRecord {
     std::uint64_t destination_entity_id{0};
     ObjectCrossingVector destination_position;
     std::string snapshot;
+    std::string entity_map;
     ObjectCrossingState state{ObjectCrossingState::prepared};
     std::uint32_t export_attempts{0};
     std::uint32_t import_attempts{0};
@@ -90,6 +91,7 @@ public:
         std::string_view crossing_id,
         std::string_view destination_region,
         std::uint64_t destination_entity_id,
+        std::string entity_map,
         std::string& reason);
 
     [[nodiscard]] bool record_remove(
