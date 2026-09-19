@@ -361,7 +361,9 @@ int main(int argc, char** argv) {
                     if (!script) continue;
                     std::string reason;
                     const auto result =
-                        scripts->execute_event(event.script_id, event.type, now_ms, reason);
+                        scripts->execute_event(
+                            event.script_id, event.type, now_ms, reason, {},
+                            event.payload);
                     if (result) {
                         (void)script_host->apply(
                             script->owner_user_id, script->id, result->actions,
