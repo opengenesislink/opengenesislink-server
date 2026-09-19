@@ -4,6 +4,7 @@
 #include "opengenesis/core/permissions.hpp"
 #include "opengenesis/network/tcp.hpp"
 #include "opengenesis/protocol/frame.hpp"
+#include "opengenesis/security/crypto.hpp"
 #include "opengenesis/world/region_persistence.hpp"
 #include "opengenesis/world/region_runtime.hpp"
 #include "opengenesis/world/scene_server.hpp"
@@ -91,7 +92,13 @@ bool vector3(const std::string& text, opengenesis::physics::Vec3& value) {
     return true;
 }
 
-bool apply_script_action(
+struct ScriptActionApplyResult {
+    bool ok{false};
+    std::string result;
+    std::string error;
+};
+
+ScriptActionApplyResult apply_script_action(
     const std::vector<std::shared_ptr<world::RegionRuntime>>& runtimes,
     opengenesis::core::ParcelStore& parcels,
     const std::string& body) {
@@ -101,25 +108,120 @@ bool apply_script_action(
     const auto payload = field(body, "payload");
     const auto entity_text = field(body, "entity");
     if (region_id.empty() || owner.empty() || type.empty() || entity_text.empty()) {
-        return false;
+        return {.error = "invalid-action-envelope"};
     }
 
     const auto runtime = std::find_if(
         runtimes.begin(), runtimes.end(),
         [&](const auto& candidate) { return candidate->id() == region_id; });
-    if (runtime == runtimes.end()) return false;
+    if (runtime == runtimes.end()) return {.error = "region-not-local"};
 
     std::uint64_t entity_id = 0;
     try {
         entity_id = std::stoull(entity_text);
     } catch (...) {
-        return false;
+        return {.error = "invalid-entity-id"};
     }
 
     const auto entity = (*runtime)->entity(entity_id);
-    if (!entity || entity->kind != world::EntityKind::object ||
-        entity->owner_user_id != owner) {
-        return false;
+    if (!entity || entity->kind != world::EntityKind::object) {
+        return {.error = "object-not-found"};
+    }
+    if (entity->owner_user_id != owner) {
+        return {.error = "object-owner-mismatch"};
+    }
+
+    if (type == "query_object") {
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(3)
+            << "name=" << clean_wire_field(entity->name) << '\n'
+            << "position=" << entity->transform.position.x << ' '
+            << entity->transform.position.y << ' ' << entity->transform.position.z << '\n'
+            << "rotation=" << entity->transform.rotation.x << ' '
+            << entity->transform.rotation.y << ' ' << entity->transform.rotation.z << '\n'
+            << "scale=" << entity->transform.scale.x << ' '
+            << entity->transform.scale.y << ' ' << entity->transform.scale.z << '\n'
+            << "physical=" << (entity->physics_body != 0 ? 1 : 0) << '\n'
+            << "group=" << clean_wire_field(entity->group_id) << '\n'
+            << "owner_permissions=" << entity->owner_permissions << '\n'
+            << "group_permissions=" << entity->group_permissions << '\n'
+            << "everyone_permissions=" << entity->everyone_permissions << '\n';
+        return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_region") {
+        const auto metrics = (*runtime)->metrics();
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(2)
+            << "id=" << clean_wire_field((*runtime)->id()) << '\n'
+            << "terrain_width=" << (*runtime)->terrain().width() << '\n'
+            << "terrain_height=" << (*runtime)->terrain().height() << '\n'
+            << "terrain_revision=" << (*runtime)->terrain().revision() << '\n'
+            << "entity_count=" << metrics.entities << '\n'
+            << "avatar_count=" << metrics.avatars << '\n'
+            << "sim_fps=" << metrics.sim_fps << '\n';
+        return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_terrain") {
+        const auto height = (*runtime)->terrain().sample(
+            entity->transform.position.x, entity->transform.position.y);
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(3)
+            << "height=" << height << '\n'
+            << "x=" << entity->transform.position.x << '\n'
+            << "y=" << entity->transform.position.y << '\n';
+        return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_nearby") {
+        const auto split = payload.find('|');
+        if (split == std::string::npos || split + 1U >= payload.size()) {
+            return {.error = "invalid-nearby-query"};
+        }
+        double radius = 0.0;
+        try {
+            radius = std::stod(payload.substr(split + 1U));
+        } catch (...) {
+            return {.error = "invalid-nearby-radius"};
+        }
+        if (!std::isfinite(radius) || radius < 1.0 || radius > 96.0) {
+            return {.error = "invalid-nearby-radius"};
+        }
+
+        struct Nearby {
+            std::uint64_t id;
+            std::string name;
+            double distance;
+        };
+        std::vector<Nearby> nearby;
+        const auto radius_sq = radius * radius;
+        for (const auto& candidate : (*runtime)->snapshot_entities()) {
+            if (candidate.kind != world::EntityKind::avatar) continue;
+            const auto dx = candidate.transform.position.x - entity->transform.position.x;
+            const auto dy = candidate.transform.position.y - entity->transform.position.y;
+            const auto dz = candidate.transform.position.z - entity->transform.position.z;
+            const auto distance_sq = dx * dx + dy * dy + dz * dz;
+            if (distance_sq > radius_sq) continue;
+            nearby.push_back({
+                .id = candidate.id,
+                .name = clean_wire_field(candidate.name),
+                .distance = std::sqrt(distance_sq)});
+        }
+        std::sort(nearby.begin(), nearby.end(),
+                  [](const Nearby& left, const Nearby& right) {
+                      return left.distance < right.distance;
+                  });
+        if (nearby.size() > 16U) nearby.resize(16U);
+
+        std::ostringstream out;
+        out << "count=" << nearby.size() << '\n';
+        for (std::size_t index = 0; index < nearby.size(); ++index) {
+            out << "avatar" << index << '=' << nearby[index].id << '|'
+                << nearby[index].name << '|'
+                << std::fixed << std::setprecision(3) << nearby[index].distance << '\n';
+        }
+        return {.ok = true, .result = out.str()};
     }
 
     const bool modifies_object =
@@ -127,31 +229,35 @@ bool apply_script_action(
     if (modifies_object &&
         !opengenesis::core::has_permission(
             entity->owner_permissions, opengenesis::core::perm_modify)) {
-        return false;
+        return {.error = "object-modify-permission-denied"};
     }
 
     if (type == "physics") {
-        if (payload != "0" && payload != "1") return false;
+        if (payload != "0" && payload != "1") return {.error = "invalid-physics"};
         parcels.reload();
         if (!parcels.can_build(
                 (*runtime)->id(), entity->transform.position.x,
                 entity->transform.position.y, owner, {})) {
-            return false;
+            return {.error = "parcel-build-denied"};
         }
-        return (*runtime)->set_physical(entity_id, payload == "1");
+        return (*runtime)->set_physical(entity_id, payload == "1")
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{.error = "physics-update-failed"};
     }
     if (type == "say" || type == "whisper" || type == "shout") {
         const auto event_type = type == "whisper" ? "chat_whisper"
                               : type == "shout" ? "chat_shout"
                                                 : "chat";
-        return (*runtime)->chat(entity_id, payload, event_type) != 0;
+        return (*runtime)->chat(entity_id, payload, event_type) != 0
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{.error = "chat-failed"};
     }
 
     opengenesis::physics::Vec3 vector;
     if (!vector3(payload, vector) ||
         !std::isfinite(vector.x) || !std::isfinite(vector.y) ||
         !std::isfinite(vector.z)) {
-        return false;
+        return {.error = "invalid-world-vector"};
     }
     auto transform = entity->transform;
     if (type == "move") {
@@ -161,20 +267,22 @@ bool apply_script_action(
     } else if (type == "scale") {
         if (vector.x < 0.01 || vector.y < 0.01 || vector.z < 0.01 ||
             vector.x > 256.0 || vector.y > 256.0 || vector.z > 256.0) {
-            return false;
+            return {.error = "invalid-scale"};
         }
         transform.scale = vector;
     } else {
-        return false;
+        return {.error = "unsupported-world-action"};
     }
 
     parcels.reload();
     if (!parcels.can_build(
             (*runtime)->id(), transform.position.x, transform.position.y,
             owner, {})) {
-        return false;
+        return {.error = "parcel-build-denied"};
     }
-    return (*runtime)->update_transform(entity_id, transform);
+    return (*runtime)->update_transform(entity_id, transform)
+               ? ScriptActionApplyResult{.ok = true}
+               : ScriptActionApplyResult{.error = "transform-update-failed"};
 }
 } // namespace
 
