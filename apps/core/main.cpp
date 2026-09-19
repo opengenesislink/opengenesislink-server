@@ -41,6 +41,7 @@
 #include "opengenesis/protocol/frame.hpp"
 #include "opengenesis/security/crypto.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <csignal>
