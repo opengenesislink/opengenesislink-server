@@ -80,6 +80,8 @@ public:
     bool update_transform(std::uint64_t id, Transform transform);
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
     bool set_physical(std::uint64_t id, bool enabled);
+    bool set_object_owner_permissions(std::uint64_t id,
+                                      core::PermissionMask owner_permissions);
     bool set_object_permissions(std::uint64_t id, std::string group_id,
                                 core::PermissionMask group_permissions,
                                 core::PermissionMask everyone_permissions);
@@ -88,6 +90,7 @@ public:
     bool set_terrain_height(std::size_t x, std::size_t y, double value);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
+    [[nodiscard]] std::optional<physics::Vec3> velocity(std::uint64_t id) const;
     [[nodiscard]] std::vector<Entity> snapshot_entities() const;
     [[nodiscard]] std::vector<SceneEvent> events_since(std::uint64_t sequence,
                                                         std::size_t max_events = 256) const;
