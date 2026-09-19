@@ -173,28 +173,66 @@ user_id=user['user']['id']
 
 status,info=api('/v1')
 assert status==200
-assert 'object-crossing-v1' in info['capabilities'],info['capabilities']
+assert 'object-crossing-v2' in info['capabilities'],info['capabilities']
+assert 'linkset-runtime-v1' in info['capabilities'],info['capabilities']
 
 status,viewer=api('/v1/viewer/session','POST',{'region':'object-west'},token)
 assert status==200
 west=join('object-west',viewer['scene_ticket'],1)
 
 send(west,110,3,
-     'name=Migrating Crate\n'
-     'x=250\ny=128\nz=30\n'
+     'name=Migrating Root\n'
+     'x=250\ny=128\nz=35\n'
      'rx=0\nry=0\nrz=45\n'
      'sx=2\nsy=2\nsz=2\n'
-     'physical=false\n'
+     'physical=true\n'
      'everyone_permissions=1\n')
 msg,_,payload=recv(west)
 assert msg==111,payload
 source_id=int(dict(
     line.split('=',1) for line in payload.splitlines() if '=' in line)['id'])
 
-send(west,102,4,'')
+send(west,110,4,
+     'name=Migrating Child\n'
+     'x=253\ny=128\nz=35\n'
+     'rx=0\nry=0\nrz=45\n'
+     'sx=1\nsy=1\nsz=1\n'
+     'physical=false\n'
+     'everyone_permissions=1\n')
+msg,_,payload=recv(west)
+assert msg==111,payload
+source_child_id=int(dict(
+    line.split('=',1) for line in payload.splitlines() if '=' in line)['id'])
+
+send(west,118,5,
+     f'action=link\nroot_id={source_id}\nchild_id={source_child_id}\n')
+msg,_,payload=recv(west)
+assert msg==119,payload
+
+send(west,122,6,f'id={source_id}\ntext=Root Label\n')
+msg,_,payload=recv(west)
+assert msg==123,payload
+send(west,122,7,f'id={source_child_id}\ntext=Child Label\n')
+msg,_,payload=recv(west)
+assert msg==123,payload
+
+send(west,124,8,
+     f'id={source_id}\nvx=0\nvy=0\nvz=0\navx=0\navy=0\navz=15\n')
+msg,_,payload=recv(west)
+assert msg==125,payload
+
+send(west,102,9,'')
 msg,_,snapshot=recv(west)
 assert msg==103
-assert f'entity={source_id}|object|Migrating Crate|' in snapshot
+assert f'entity={source_id}|object|Migrating Root|' in snapshot
+child_line=next(
+    line for line in snapshot.splitlines()
+    if line.startswith(f'entity={source_child_id}|object|Migrating Child|'))
+child_parts=child_line.split('|')
+assert child_parts[17]==str(source_id),child_parts
+assert int(child_parts[18])>=2,child_parts
+assert child_parts[19]=='0',child_parts
+assert child_parts[20]=='Child Label',child_parts
 
 status,crossing=api('/v1/world/object-crossings','POST',{
     'source_region':'object-west',
@@ -221,33 +259,51 @@ assert terminal['exported_unix']>0
 assert terminal['imported_unix']>0
 assert terminal['completed_unix']>0
 
-send(west,102,5,'')
+send(west,102,10,'')
 msg,_,west_snapshot=recv(west)
 assert msg==103
-assert f'entity={source_id}|object|Migrating Crate|' not in west_snapshot
-send(west,42,6,'')
+assert f'entity={source_id}|object|Migrating Root|' not in west_snapshot
+assert f'entity={source_child_id}|object|Migrating Child|' not in west_snapshot
+assert terminal['entity_map'] is not None,terminal
+assert f'{source_id}:' in terminal['entity_map'],terminal
+assert f'{source_child_id}:' in terminal['entity_map'],terminal
+send(west,42,11,'')
 west.close()
 
 status,east_viewer=api('/v1/viewer/session','POST',{'region':'object-east'},token)
 assert status==200
-east=join('object-east',east_viewer['scene_ticket'],10)
-send(east,102,12,'')
+east=join('object-east',east_viewer['scene_ticket'],20)
+send(east,102,22,'')
 msg,_,east_snapshot=recv(east)
 assert msg==103
-needle=f'entity={destination_id}|object|Migrating Crate|'
+needle=f'entity={destination_id}|object|Migrating Root|'
 assert needle in east_snapshot,east_snapshot
 line=next(line for line in east_snapshot.splitlines() if line.startswith(needle))
 parts=line.split('|')
 assert parts[3]=='1.000',parts
 assert parts[4]=='128.000',parts
-assert parts[5]=='30.000',parts
-assert parts[8]=='45.000',parts
 assert parts[9]=='2.000' and parts[10]=='2.000' and parts[11]=='2.000',parts
 assert parts[12]==user_id,parts
 assert parts[16]=='1',parts
+assert parts[17]=='0',parts
+assert parts[18]=='1',parts
+assert parts[19]=='1',parts
+assert parts[20]=='Root Label',parts
+assert abs(float(parts[26])) > 0.01,parts
 
-send(east,42,13,'')
+child_line=next(
+    line for line in east_snapshot.splitlines()
+    if '|object|Migrating Child|' in line)
+child_parts=child_line.split('|')
+destination_child_id=int(child_parts[0].split('=',1)[1])
+assert destination_child_id!=source_child_id,child_parts
+assert child_parts[17]==str(destination_id),child_parts
+assert int(child_parts[18])>=2,child_parts
+assert child_parts[19]=='0',child_parts
+assert child_parts[20]=='Child Label',child_parts
+
+send(east,42,23,'')
 east.close()
 
-print('OpenGenesisLINK Object Crossing end-to-end smoke: PASS')
+print('OpenGenesisLINK Linkset Crossing v2 end-to-end smoke: PASS')
 PY
