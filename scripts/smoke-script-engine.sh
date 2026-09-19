@@ -151,9 +151,18 @@ status,caps=api('/v1/scripts/capabilities')
 assert status==200
 assert caps['engine']=='OGL ScriptEngine',caps
 assert set(caps['languages'])=={'legacy','lsl','ogl'},caps
-assert len(caps['lsl_functions'])>=500,caps
+assert len(caps['lsl_functions'])==523,caps
 assert len(caps['lsl_events'])==44,caps
-assert len(caps['ogl'])>=30,caps
+assert len(caps['ogl'])==31,caps
+summary=caps['summary']
+assert summary['lsl_functions']['implemented']==27,summary
+assert summary['lsl_functions']['partial']==24,summary
+assert summary['lsl_functions']['implemented_percent']==5.16,summary
+assert summary['lsl_functions']['executable_percent']==9.75,summary
+assert summary['lsl_events']['implemented']==1,summary
+assert summary['lsl_events']['partial']==3,summary
+assert summary['ogl']['implemented']==27,summary
+assert summary['ogl']['implemented_percent']==87.10,summary
 
 status,user=api('/v1/auth/register','POST',{
     'username':'script.engine.smoke',
