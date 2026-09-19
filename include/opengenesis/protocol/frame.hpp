@@ -33,6 +33,8 @@ enum class MessageType : std::uint16_t {
     region_metrics_ack = 35,
     presence_snapshot = 36,
     presence_snapshot_ack = 37,
+    script_action_poll = 38,
+    script_action = 39,
 
     ping = 40,
     pong = 41,
