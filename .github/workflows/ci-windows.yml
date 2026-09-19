@@ -24,12 +24,12 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: .vcpkg-cache
-          key: vcpkg-windows-x64-openssl-${{ hashFiles('.github/workflows/ci-windows.yml') }}
+          key: vcpkg-windows-x64-foundation-db-${{ hashFiles('.github/workflows/ci-windows.yml') }}
           restore-keys: |
-            vcpkg-windows-x64-openssl-
-      - name: Install OpenSSL
+            vcpkg-windows-x64-foundation-db-
+      - name: Install production dependencies
         shell: pwsh
-        run: vcpkg install openssl:x64-windows
+        run: vcpkg install openssl sqlite3 libpq libmariadb:x64-windows
       - name: Configure release (MSVC warnings as errors)
         shell: pwsh
         run: >
