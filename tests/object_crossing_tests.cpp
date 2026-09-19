@@ -204,6 +204,9 @@ int main() {
                         prepared->destination_entity_id, reason),
                     "rollback import ACK recorded");
 
+            require(source.remove_entity(rollback_source_id),
+                    "simulate source removal with lost ACK");
+
             const auto rolled = crossings.rollback(
                 prepared->id, "user-1",
                 "operator-cancelled", reason);
@@ -212,8 +215,8 @@ int main() {
                             opengenesis::core::ObjectCrossingState::
                                 cleanup_pending,
                     "rollback after import requires destination cleanup");
-            require(source.entity(rollback_source_id).has_value(),
-                    "rollback leaves source object intact");
+            require(!source.entity(rollback_source_id).has_value(),
+                    "lost remove ACK simulation leaves source absent");
 
             const auto cleanup =
                 crossings.command_for_region("region-b");
@@ -227,15 +230,49 @@ int main() {
                     "destination imported object cleaned");
             require(crossings.record_cleanup(
                         prepared->id, "region-b", reason),
-                    "cleanup ACK records rollback");
+                    "cleanup ACK advances rollback to source restore");
+
+            const auto restore =
+                crossings.command_for_region("region-a");
+            require(restore &&
+                        restore->type ==
+                            opengenesis::core::ObjectCrossingCommandType::
+                                restore_source,
+                    "source receives restore command after destination cleanup");
+            const auto repeated = crossings.rollback(
+                prepared->id, "user-1",
+                "ignored-retry", reason);
+            require(repeated &&
+                        repeated->state ==
+                            opengenesis::core::ObjectCrossingState::
+                                restore_pending,
+                    "repeated rollback cannot skip source restoration");
+
+            require(source.import_object(
+                        *rollback_snapshot, rollback_source_id,
+                        rollback_snapshot->transform.position, reason),
+                    "source restored from preserved transfer snapshot");
+            require(crossings.record_restore(
+                        prepared->id, "region-a", reason),
+                    "source restoration ACK records rollback");
+
+            const auto restored_source =
+                source.export_object(rollback_source_id);
+            require(restored_source &&
+                        restored_source->owner_user_id == "user-1" &&
+                        restored_source->transform.position.x ==
+                            rollback_snapshot->transform.position.x,
+                    "source object reconstructed after lost remove ACK");
+
             const auto terminal = crossings.find(prepared->id);
             require(terminal &&
                         terminal->state ==
                             opengenesis::core::ObjectCrossingState::
                                 rolled_back &&
                         terminal->rollback_reason ==
-                            "operator-cancelled",
-                    "rollback terminal state persisted");
+                            "operator-cancelled" &&
+                        terminal->rolled_back_unix > 0,
+                    "rollback terminal state follows source restoration");
         }
 
         {
