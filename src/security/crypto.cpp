@@ -97,6 +97,12 @@ std::string hmac_sha256_hex(const std::string_view key, const std::string_view v
     return hex_encode(digest.data(), length);
 }
 
+bool secure_equals(const std::string_view left, const std::string_view right) noexcept {
+    if (left.size() != right.size()) return false;
+    if (left.empty()) return true;
+    return CRYPTO_memcmp(left.data(), right.data(), left.size()) == 0;
+}
+
 std::string base64_encode(const std::string_view value) {
     if (value.empty()) return {};
     std::string output(4 * ((value.size() + 2) / 3), '\0');
