@@ -228,6 +228,10 @@ bool ScriptRuntime::apply_world_result(const std::string_view script_id,
         state.variables[std::string{prefix} + "." + key] = value;
     }
     state.variables[std::string{prefix} + ".ready"] = "1";
+    if (state.variables.size() > 64U) {
+        reason = "world-result-variable-budget-exceeded";
+        return false;
+    }
 
     const auto encoded = serialize_vm_state(state);
     if (encoded.size() > 64U * 1024U) {
