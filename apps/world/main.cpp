@@ -131,6 +131,13 @@ bool apply_script_action(
     }
 
     if (type == "physics") {
+        if (payload != "0" && payload != "1") return false;
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(), entity->transform.position.x,
+                entity->transform.position.y, owner, {})) {
+            return false;
+        }
         return (*runtime)->set_physical(entity_id, payload == "1");
     }
     if (type == "say" || type == "whisper" || type == "shout") {
