@@ -60,7 +60,8 @@ public:
         std::string_view event,
         std::int64_t now_unix_ms,
         std::string& reason,
-        const ScriptVmLimits& limits = {});
+        const ScriptVmLimits& limits = {},
+        std::string_view payload = {});
 
     [[nodiscard]] bool apply_world_result(std::string_view script_id,
                                           std::string_view prefix,
