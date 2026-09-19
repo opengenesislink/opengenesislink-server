@@ -191,10 +191,10 @@ int main() {
                 {.x = 255.5, .y = 128.0, .z = 25.0},
                 {.x = -2.0, .y = 0.0, .z = 0.0},
                 unix_now() + 60, reason);
-            require(crossing, "rollback Crossing prepared");
+            require(crossing.has_value(), "rollback Crossing prepared");
             const auto reserved = crossings.reserve(
                 crossing->id, "user-2", "destination-region", reason);
-            require(reserved, "rollback Crossing reserved");
+            require(reserved.has_value(), "rollback Crossing reserved");
             const auto rolled_back = crossings.rollback(
                 crossing->id, "user-2", "destination-import-failed", reason);
             require(rolled_back &&
@@ -215,9 +215,10 @@ int main() {
                 {.x = 0.5, .y = 1.0, .z = 22.0},
                 {.x = 1.0, .y = 0.0, .z = 0.0},
                 unix_now() + 60, reason);
-            require(legacy, "legacy-compatible Crossing prepared");
+            require(legacy.has_value(), "legacy-compatible Crossing prepared");
             require(crossings.complete(
-                        legacy->id, "user-3", "destination-region", reason),
+                        legacy->id, "user-3", "destination-region", reason)
+                        .has_value(),
                     "unreserved legacy completion remains compatible");
         }
 
