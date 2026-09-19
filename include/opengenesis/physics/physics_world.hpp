@@ -20,6 +20,7 @@ struct Vec3 {
 struct Body {
     std::uint64_t id{0};
     Vec3 position{}, velocity{};
+    Vec3 rotation{}, angular_velocity{};
     double mass{1.0}, restitution{0.15}, radius{0.5};
     bool dynamic{true};
 };
@@ -30,6 +31,8 @@ public:
     bool remove_body(std::uint64_t id);
     bool set_body_position(std::uint64_t id, Vec3 position);
     bool set_body_velocity(std::uint64_t id, Vec3 velocity);
+    bool set_body_rotation(std::uint64_t id, Vec3 rotation);
+    bool set_body_angular_velocity(std::uint64_t id, Vec3 angular_velocity);
     void step(double dt);
 
     [[nodiscard]] std::size_t body_count() const;
