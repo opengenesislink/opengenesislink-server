@@ -26,9 +26,12 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
                                  std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im,
                                  std::shared_ptr<storage::DatabasePool> database,
+                                 std::shared_ptr<AdminRoleStore> admin_roles,
                                  std::string admin_api_key,
                                  std::string scene_ticket_secret,
-                                 std::chrono::seconds scene_ticket_lifetime)
+                                 std::chrono::seconds scene_ticket_lifetime,
+                                 const std::size_t login_attempts_per_minute,
+                                 const std::size_t registration_attempts_per_minute)
     : address_(std::move(address)), port_(port), worlds_(std::move(worlds)), regions_(std::move(regions)),
       identities_(std::move(identities)), sessions_(std::move(sessions)), assets_(std::move(assets)),
       appearance_(std::move(appearance)), inventory_(std::move(inventory)), presences_(std::move(presences)), friends_(std::move(friends)),
@@ -40,9 +43,16 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       federation_runtime_(std::move(federation_runtime)),
       hypergrid_service_(std::move(hypergrid_service)), hypergrid_sessions_(std::move(hypergrid_sessions)),
       hypergrid_im_(std::move(hypergrid_im)), database_(std::move(database)),
+      admin_roles_(std::move(admin_roles)),
+      login_attempts_per_minute_(login_attempts_per_minute),
+      registration_attempts_per_minute_(registration_attempts_per_minute),
       admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
-      scene_ticket_lifetime_(scene_ticket_lifetime) {}
+      scene_ticket_lifetime_(scene_ticket_lifetime) {
+    if (!admin_roles_) {
+        throw std::invalid_argument("admin role store is required");
+    }
+}
 
 AdminHttpServer::~AdminHttpServer() { stop(); }
 
