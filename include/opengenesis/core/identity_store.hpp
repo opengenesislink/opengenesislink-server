@@ -7,6 +7,9 @@
 #include <string_view>
 #include <unordered_map>
 #include <vector>
+#include <memory>
+
+namespace opengenesis::storage { class DatabasePool; }
 
 namespace opengenesis::core {
 
@@ -20,6 +23,7 @@ struct UserInfo {
 class IdentityStore final {
 public:
     explicit IdentityStore(std::string path);
+    explicit IdentityStore(std::shared_ptr<storage::DatabasePool> database);
 
     [[nodiscard]] std::optional<UserInfo> register_user(std::string username,
                                                         std::string display_name,
@@ -44,6 +48,7 @@ private:
     [[nodiscard]] static bool valid_display_name(std::string_view display_name);
 
     std::string path_;
+    std::shared_ptr<storage::DatabasePool> database_;
     mutable std::mutex mutex_;
     std::unordered_map<std::string, StoredUser> by_username_;
     std::unordered_map<std::string, std::string> username_by_id_;
