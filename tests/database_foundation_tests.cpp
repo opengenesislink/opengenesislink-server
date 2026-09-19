@@ -1,4 +1,5 @@
 #include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/admin_role_store.hpp"
 #include "opengenesis/core/identity_store.hpp"
 #include "opengenesis/core/moderation_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
@@ -122,6 +123,7 @@ void exercise_backend(const std::string& backend) {
     database->execute("DELETE FROM ogl_world_nodes");
     database->execute("DELETE FROM ogl_audit_events");
     database->execute("DELETE FROM ogl_moderation_bans");
+    database->execute("DELETE FROM ogl_admin_roles");
 
     core::IdentityStore identities(database);
     std::string reason;
@@ -212,6 +214,23 @@ void exercise_backend(const std::string& backend) {
         recent.size() == 1U &&
             recent.front().detail == backend,
         backend + " audit readback");
+    core::AdminRoleStore admin_roles(database);
+    require(
+        admin_roles.grant(
+            user->id, "moderator", "bootstrap", reason),
+        backend + " admin role grant");
+    require(
+        admin_roles.has_role(user->id, "moderator") &&
+            !admin_roles.has_role(user->id, "operator"),
+        backend + " admin role hierarchy");
+    require(
+        admin_roles.grant(
+            user->id, "administrator", "bootstrap", reason),
+        backend + " admin role elevate");
+    require(
+        admin_roles.has_role(user->id, "operator") &&
+            admin_roles.has_role(user->id, "administrator"),
+        backend + " admin role inheritance");
 
     core::IdentityStore identities_reloaded(database);
     core::SessionStore sessions_reloaded(
@@ -220,6 +239,7 @@ void exercise_backend(const std::string& backend) {
     core::RegionRegistry regions_reloaded(database);
     core::ModerationStore moderation_reloaded(database);
     core::AuditStore audit_reloaded(database);
+    core::AdminRoleStore admin_roles_reloaded(database);
 
     require(
         identities_reloaded.find_by_id(user->id).has_value(),
@@ -238,11 +258,18 @@ void exercise_backend(const std::string& backend) {
         backend + " moderation restart view");
     require(audit_reloaded.count() == 1U,
             backend + " audit restart view");
+    require(
+        admin_roles_reloaded.has_role(
+            user->id, "administrator"),
+        backend + " admin role restart view");
 
     require(sessions.revoke(session.token),
             backend + " session revoke");
     require(moderation.unban(ban->id),
             backend + " moderation remove");
+    require(
+        admin_roles.revoke(user->id),
+        backend + " admin role revoke");
 
     const auto health = database->health();
     require(
