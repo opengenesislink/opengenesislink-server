@@ -145,7 +145,8 @@ public:
         std::uint64_t destination_root_entity_id,
         physics::Vec3 destination_position,
         std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map,
-        std::string& reason);
+        std::string& reason,
+        bool preserve_source_ids = false);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
     [[nodiscard]] std::vector<Entity> linkset_members(
