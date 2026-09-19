@@ -993,12 +993,12 @@ void AdminHttpServer::run() {
                                          .y = y,
                                          .z = requested_z},
                                         now + lifetime, reason);
-                                } catch (const std::exception& error) {
+                                } catch (const std::exception& store_error) {
                                     common::log(
                                         common::LogLevel::error,
                                         "core.object_crossing",
                                         std::string{"prepare persistence failed: "} +
-                                            error.what());
+                                            store_error.what());
                                     response = {
                                         .status = 503,
                                         .body = "{\"error\":\"object-crossing-store-unavailable\"}"};
@@ -1022,11 +1022,11 @@ void AdminHttpServer::run() {
                                                 ":" +
                                                 std::to_string(
                                                     crossing->source_entity_id));
-                                    } catch (const std::exception& error) {
+                                    } catch (const std::exception& audit_error) {
                                         common::log(
                                             common::LogLevel::warning,
                                             "core.object_crossing.audit",
-                                            error.what());
+                                            audit_error.what());
                                     }
                                 }
                             }
