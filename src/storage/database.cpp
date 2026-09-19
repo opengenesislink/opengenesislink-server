@@ -214,6 +214,10 @@ public:
                 std::max<std::uint32_t>(
                     1U, config.connect_timeout_seconds));
         const auto port_text = std::to_string(port);
+        const auto ssl_mode =
+            config.ssl_mode == "preferred" ? std::string{"prefer"} :
+            (config.ssl_mode == "required" ? std::string{"require"} :
+             config.ssl_mode);
         const char* keywords[] = {
             "host", "port", "dbname", "user", "password",
             "connect_timeout", "sslmode", nullptr};
@@ -221,7 +225,7 @@ public:
             config.host.c_str(), port_text.c_str(),
             config.database.c_str(), config.user.c_str(),
             config.password.c_str(), timeout.c_str(),
-            config.ssl_mode.c_str(), nullptr};
+            ssl_mode.c_str(), nullptr};
         connection_ = PQconnectdbParams(keywords, values, 0);
         if (!connection_ ||
             PQstatus(connection_) != CONNECTION_OK) {
