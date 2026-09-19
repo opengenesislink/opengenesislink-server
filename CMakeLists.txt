@@ -64,6 +64,7 @@ add_library(opengenesis-foundation
     src/scripting/script_runtime.cpp
     src/scripting/script_vm.cpp
     src/scripting/script_host.cpp
+    src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
