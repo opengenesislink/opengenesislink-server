@@ -224,7 +224,8 @@ int main(int argc, char** argv) {
         auto hypergrid_inventory =
             std::make_shared<opengenesis::compat::hypergrid::HypergridInventoryAdapter>(
                 identities, inventory, assets,
-                config.get_bool("hypergrid.inventory_write_enabled", false));
+                config.get_bool("hypergrid.inventory_write_enabled", false),
+                config.get_string("hypergrid.inventory_write_secret", ""));
         auto hypergrid_appearance =
             std::make_shared<opengenesis::compat::hypergrid::HypergridAppearanceAdapter>(
                 identities, appearance, inventory, assets, hypergrid_sessions);
