@@ -309,7 +309,6 @@ bool ScriptRuntime::rebind_objects(
         }
     }
 
-    bool changed = false;
     for (auto& [_, script] : scripts_) {
         if (script.owner_user_id != owner_user_id) continue;
         const auto binding = std::find_if(
@@ -319,7 +318,6 @@ bool ScriptRuntime::rebind_objects(
             });
         if (binding == bindings.end()) continue;
         script.object_id = binding->second;
-        changed = true;
     }
     // Persist even on an idempotent retry. A previous persist attempt may
     // have failed after the in-memory bindings were already updated.
