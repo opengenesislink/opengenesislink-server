@@ -855,6 +855,10 @@ int main(int argc, char** argv) {
                                     << "snapshot_b64="
                                     << opengenesis::security::base64_encode(
                                            applied.snapshot)
+                                    << '\n'
+                                    << "entity_map_b64="
+                                    << opengenesis::security::base64_encode(
+                                           applied.entity_map)
                                     << '\n';
                                 socket.send_frame({
                                     protocol::MessageType::object_crossing_result,
