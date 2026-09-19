@@ -196,7 +196,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v1","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-world-actions-v1","script-world-actions-v2","script-world-queries-v1","crossing-v2"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","scripts":"GET|POST /v1/scripts","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-world-actions-v1","script-world-actions-v2","script-world-queries-v1","crossing-v3","crossing-reservation-v1"],"endpoints":{"status":"/v1/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","scripts":"GET|POST /v1/scripts","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -747,6 +747,12 @@ void AdminHttpServer::run() {
                                 const auto vx = json_number(request->body, "vx").value_or(0.0);
                                 const auto vy = json_number(request->body, "vy").value_or(0.0);
                                 const auto vz = json_number(request->body, "vz").value_or(0.0);
+                                const auto rx = json_number(request->body, "rx").value_or(0.0);
+                                const auto ry = json_number(request->body, "ry").value_or(0.0);
+                                const auto rz = json_number(request->body, "rz").value_or(0.0);
+                                const auto avx = json_number(request->body, "avx").value_or(0.0);
+                                const auto avy = json_number(request->body, "avy").value_or(0.0);
+                                const auto avz = json_number(request->body, "avz").value_or(0.0);
                                 const auto avatar = appearance_->find(user->id);
                                 const auto attachment_state = avatar ? appearance_json(*avatar) : std::string{"{}"};
 
@@ -765,6 +771,14 @@ void AdminHttpServer::run() {
                                 }
                                 script_state << ']';
 
+                                std::ostringstream physics_state;
+                                physics_state << "{\"linear_velocity\":{\"x\":" << vx
+                                              << ",\"y\":" << vy
+                                              << ",\"z\":" << vz
+                                              << "},\"angular_velocity\":{\"x\":" << avx
+                                              << ",\"y\":" << avy
+                                              << ",\"z\":" << avz << "}}";
+
                                 const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                                     std::chrono::system_clock::now().time_since_epoch()).count();
                                 std::string reason;
@@ -773,7 +787,10 @@ void AdminHttpServer::run() {
                                     {.x = x, .y = y, .z = 0.0},
                                     {.x = vx, .y = vy, .z = vz},
                                     now + std::min<std::int64_t>(scene_ticket_lifetime_.count(), 300),
-                                    reason, attachment_state, script_state.str());
+                                    reason, attachment_state, script_state.str(),
+                                    {.x = rx, .y = ry, .z = rz},
+                                    {.x = avx, .y = avy, .z = avz},
+                                    physics_state.str(), "[]");
                                 if (!crossing) {
                                     response = {.status = 409,
                                                 .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
@@ -786,7 +803,7 @@ void AdminHttpServer::run() {
                             }
                         }
                     }
-                } else if (method == "POST" && path == "/v1/viewer/handoff/complete") {
+                } else if (method == "POST" && path == "/v1/viewer/handoff/reserve") {
                     auto [session, user] = auth();
                     const auto crossing_id = json_string(request->body, "crossing_id");
                     const auto region_id = json_string(request->body, "region");
@@ -796,13 +813,60 @@ void AdminHttpServer::run() {
                         response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
                     } else {
                         std::string reason;
-                        const auto crossing = crossings_->complete(*crossing_id, user->id, *region_id, reason);
+                        const auto crossing =
+                            crossings_->reserve(*crossing_id, user->id, *region_id, reason);
+                        if (!crossing) {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "region.handoff.reserve", crossing->id,
+                                           crossing->from_region + "->" + crossing->to_region);
+                            response.body = crossing_json(*crossing);
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/handoff/complete") {
+                    auto [session, user] = auth();
+                    const auto crossing_id = json_string(request->body, "crossing_id");
+                    const auto region_id = json_string(request->body, "region");
+                    const auto reservation_token =
+                        json_string(request->body, "reservation_token");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!crossing_id || !region_id || !reservation_token) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto crossing = crossings_->complete(
+                            *crossing_id, user->id, *region_id,
+                            *reservation_token, reason);
                         if (!crossing) {
                             response = {.status = 409,
                                         .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         } else {
                             audit_->append(user->id, "region.handoff.complete", crossing->id,
                                            crossing->from_region + "->" + crossing->to_region);
+                            response.body = crossing_json(*crossing);
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/handoff/rollback") {
+                    auto [session, user] = auth();
+                    const auto crossing_id = json_string(request->body, "crossing_id");
+                    const auto rollback_reason =
+                        json_string(request->body, "reason").value_or("client-rollback");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!crossing_id) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto crossing = crossings_->rollback(
+                            *crossing_id, user->id, rollback_reason, reason);
+                        if (!crossing) {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "region.handoff.rollback", crossing->id,
+                                           crossing->rollback_reason);
                             response.body = crossing_json(*crossing);
                         }
                     }
@@ -1270,6 +1334,9 @@ void AdminHttpServer::run() {
                 } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
                            path == "/v1/auth/logout" || path == "/v1/viewer/session" ||
                            path == "/v1/viewer/teleport" || path == "/v1/viewer/handoff" ||
+                           path == "/v1/viewer/handoff/reserve" ||
+                           path == "/v1/viewer/handoff/complete" ||
+                           path == "/v1/viewer/handoff/rollback" ||
                            path == "/v1/groups" || path == "/v1/groups/members" ||
                            path == "/v1/groups/role" || path == "/v1/groups/remove" ||
                            path == "/v1/parcels" || path == "/v1/parcels/policy" ||

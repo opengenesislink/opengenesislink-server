@@ -54,13 +54,34 @@ std::string crossing_json(const RegionCrossing& crossing) {
            "},\"velocity\":{\"x\":" + std::to_string(crossing.velocity.x) +
            ",\"y\":" + std::to_string(crossing.velocity.y) +
            ",\"z\":" + std::to_string(crossing.velocity.z) +
+           "},\"rotation\":{\"x\":" + std::to_string(crossing.rotation.x) +
+           ",\"y\":" + std::to_string(crossing.rotation.y) +
+           ",\"z\":" + std::to_string(crossing.rotation.z) +
+           "},\"angular_velocity\":{\"x\":" +
+           std::to_string(crossing.angular_velocity.x) +
+           ",\"y\":" + std::to_string(crossing.angular_velocity.y) +
+           ",\"z\":" + std::to_string(crossing.angular_velocity.z) +
            "},\"attachment_state\":" +
            (crossing.attachment_state.empty() ? "null" : crossing.attachment_state) +
            ",\"script_state\":" +
            (crossing.script_state.empty() ? "null" : crossing.script_state) +
+           ",\"physics_state\":" +
+           (crossing.physics_state.empty() ? "null" : crossing.physics_state) +
+           ",\"linkset_state\":" +
+           (crossing.linkset_state.empty() ? "null" : crossing.linkset_state) +
+           ",\"reservation_token\":" +
+           (crossing.reservation_token.empty()
+                ? "null"
+                : "\"" + json_escape(crossing.reservation_token) + "\"") +
+           ",\"rollback_reason\":" +
+           (crossing.rollback_reason.empty()
+                ? "null"
+                : "\"" + json_escape(crossing.rollback_reason) + "\"") +
            ",\"created_unix\":" + std::to_string(crossing.created_unix) +
            ",\"expires_unix\":" + std::to_string(crossing.expires_unix) +
-           ",\"completed_unix\":" + std::to_string(crossing.completed_unix) + "}";
+           ",\"reserved_unix\":" + std::to_string(crossing.reserved_unix) +
+           ",\"completed_unix\":" + std::to_string(crossing.completed_unix) +
+           ",\"rolled_back_unix\":" + std::to_string(crossing.rolled_back_unix) + "}";
 }
 
 

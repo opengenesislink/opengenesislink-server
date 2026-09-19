@@ -248,6 +248,7 @@ int main() {
 
         const auto crossing_path = (root / "crossings.db").string();
         std::string crossing_id;
+        std::string reservation_token;
         {
             opengenesis::core::CrossingStore crossings(crossing_path);
             const auto crossing = crossings.prepare(
@@ -256,23 +257,86 @@ int main() {
                 {.x = 4.0, .y = 1.5, .z = 0.25},
                 unix_now() + 60, reason,
                 "{\"attachments\":[{\"item_id\":\"hat\"}]}",
-                "[{\"id\":\"script-1\",\"vm_state\":\"" + state_encoded + "\"}]");
-            require(crossing.has_value(), "crossing prepared with runtime state");
+                "[{\"id\":\"script-1\",\"vm_state\":\"" + state_encoded + "\"}]",
+                {.x = 0.0, .y = 0.0, .z = 90.0},
+                {.x = 0.0, .y = 0.0, .z = 1.25},
+                "{\"physical\":true}",
+                "[{\"root\":\"vehicle-1\",\"children\":[\"seat-1\"]}]");
+            require(crossing.has_value(), "crossing v3 prepared with runtime state");
             crossing_id = crossing->id;
         }
         {
             opengenesis::core::CrossingStore crossings(crossing_path);
             const auto restored = crossings.find(crossing_id);
             require(restored && restored->velocity.x == 4.0 &&
+                        restored->rotation.z == 90.0 &&
+                        restored->angular_velocity.z == 1.25 &&
                         restored->attachment_state.find("hat") != std::string::npos &&
-                        restored->script_state.find("script-1") != std::string::npos,
-                    "crossing runtime state persisted");
-            const auto completed =
-                crossings.complete(crossing_id, "user-1", "region-b", reason);
-            require(completed && completed->state == opengenesis::core::CrossingState::completed,
-                    "crossing completes once");
-            require(!crossings.complete(crossing_id, "user-1", "region-b", reason),
-                    "crossing replay rejected");
+                        restored->script_state.find("script-1") != std::string::npos &&
+                        restored->physics_state.find("physical") != std::string::npos &&
+                        restored->linkset_state.find("vehicle-1") != std::string::npos,
+                    "crossing v3 motion/runtime state persisted");
+
+            require(!crossings.complete(
+                        crossing_id, "user-1", "region-b", "not-reserved", reason),
+                    "crossing cannot commit before destination reservation");
+
+            const auto reserved =
+                crossings.reserve(crossing_id, "user-1", "region-b", reason);
+            require(reserved &&
+                        reserved->state == opengenesis::core::CrossingState::reserved &&
+                        !reserved->reservation_token.empty() &&
+                        reserved->reserved_unix > 0,
+                    "destination crossing reservation created");
+            reservation_token = reserved->reservation_token;
+
+            const auto idempotent_reserve =
+                crossings.reserve(crossing_id, "user-1", "region-b", reason);
+            require(idempotent_reserve &&
+                        idempotent_reserve->reservation_token == reservation_token,
+                    "destination reservation retry is idempotent");
+
+            require(!crossings.complete(
+                        crossing_id, "user-1", "region-b", "wrong-token", reason),
+                    "crossing rejects incorrect reservation token");
+
+            const auto completed = crossings.complete(
+                crossing_id, "user-1", "region-b", reservation_token, reason);
+            require(completed &&
+                        completed->state == opengenesis::core::CrossingState::completed &&
+                        completed->completed_unix > 0,
+                    "reserved crossing commits once");
+            require(!crossings.complete(
+                        crossing_id, "user-1", "region-b", reservation_token, reason),
+                    "crossing commit replay rejected");
+        }
+
+        {
+            opengenesis::core::CrossingStore crossings(crossing_path);
+            const auto rollback_crossing = crossings.prepare(
+                "user-1", "region-b", "region-a",
+                {.x = 255.5, .y = 128.0, .z = 22.0},
+                {.x = -2.0, .y = 0.0, .z = 0.0},
+                unix_now() + 60, reason);
+            require(rollback_crossing.has_value(), "rollback crossing prepared");
+            const auto reserved = crossings.reserve(
+                rollback_crossing->id, "user-1", "region-a", reason);
+            require(reserved.has_value(), "rollback crossing reserved");
+            const auto rolled_back = crossings.rollback(
+                rollback_crossing->id, "user-1",
+                "destination-scene-rejected", reason);
+            require(rolled_back &&
+                        rolled_back->state ==
+                            opengenesis::core::CrossingState::rolled_back &&
+                        rolled_back->rollback_reason == "destination-scene-rejected" &&
+                        rolled_back->rolled_back_unix > 0,
+                    "reserved crossing rolls back with reason");
+            const auto idempotent_rollback = crossings.rollback(
+                rollback_crossing->id, "user-1", "ignored", reason);
+            require(idempotent_rollback &&
+                        idempotent_rollback->rollback_reason ==
+                            "destination-scene-rejected",
+                    "rollback retry is idempotent");
         }
 
         const std::string secret = "0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -286,10 +350,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 6.5 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 7.0 Script/Crossing runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 6.5 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 7.0 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }

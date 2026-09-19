@@ -113,11 +113,18 @@ int main() {
                 {.x = 1.0, .y = 2.0, .z = 3.0},
                 unix_now() + 60, reason);
             require(crossing.has_value(), "crossing prepared");
+            const auto reserved =
+                crossings.reserve(crossing->id, "user-1", "region-b", reason);
+            require(reserved && !reserved->reservation_token.empty(),
+                    "crossing destination reserved");
             const auto completed = crossings.complete(
-                crossing->id, "user-1", "region-b", reason);
-            require(completed && completed->velocity.z == 3.0, "crossing state transferred");
+                crossing->id, "user-1", "region-b",
+                reserved->reservation_token, reason);
+            require(completed && completed->velocity.z == 3.0,
+                    "crossing state transferred");
             require(!crossings.complete(
-                        crossing->id, "user-1", "region-b", reason).has_value(),
+                        crossing->id, "user-1", "region-b",
+                        reserved->reservation_token, reason).has_value(),
                     "crossing completion is one-time");
         }
 

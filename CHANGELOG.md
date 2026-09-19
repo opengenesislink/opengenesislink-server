@@ -1,5 +1,24 @@
 # Changelog
 
+## 7.0.0-dev — 2026-09-19
+
+Transactional Region Crossing v3 milestone.
+
+- upgraded adjacent-Region handoff from one-step completion to a two-phase `prepare → reserve → commit` transaction
+- destination reservation generates a separate 192-bit random reservation token and is idempotent for safe client retries
+- commit now requires the same authenticated user, destination Region and reservation token
+- incorrect reservation tokens, commit-before-reserve and commit replay are rejected
+- added explicit authenticated `POST /v1/viewer/handoff/rollback` for prepared/reserved transactions
+- expired prepared/reserved Crossings transition to `rolled_back` with a persisted reason instead of being immediately deleted
+- terminal Crossing records are retained for 24 hours for replay/audit diagnostics before cleanup
+- Crossing v3 persistence now carries position, linear velocity, rotation, angular velocity, Avatar Appearance/attachment context, Script VM context, physics context and linkset context
+- CrossingStore v3 remains backward-readable for v1/v2 persisted records
+- handoff preparation accepts bounded rotation/angular-velocity context and records server-generated physics context
+- API discovery now advertises `region-handoff-v2`, `crossing-v3` and `crossing-reservation-v1`
+- integrated Linux smoke is upgraded at runtime to exercise reserve/commit and motion-context preservation
+- Script/Crossing unit coverage includes idempotent reservation, wrong-token rejection, replay rejection and idempotent rollback
+
+
 ## 6.5.0-dev — 2026-09-19
 
 Script World reliability and readback milestone.
