@@ -51,3 +51,15 @@ std::string crossing_json(const RegionCrossing& crossing) {
            ",\"expires_unix\":" + std::to_string(crossing.expires_unix) +
            ",\"completed_unix\":" + std::to_string(crossing.completed_unix) + "}";
 }
+
+
+std::string string_list_json(const std::vector<std::string>& values) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) out << ',';
+        out << "\"" << json_escape(values[i]) << "\"";
+    }
+    out << ']';
+    return out.str();
+}
