@@ -12,7 +12,9 @@ namespace opengenesis::core {
 
 enum class CrossingState {
     prepared,
+    reserved,
     completed,
+    rolled_back,
     aborted
 };
 
@@ -31,10 +33,19 @@ struct RegionCrossing {
     CrossingVector velocity;
     std::string attachment_state;
     std::string script_state;
+    CrossingVector rotation;
+    CrossingVector angular_velocity;
+    bool physical{false};
+    std::string object_state;
+    std::string linkset_state;
+    std::string reservation_token;
     CrossingState state{CrossingState::prepared};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
+    std::int64_t reserved_unix{0};
     std::int64_t completed_unix{0};
+    std::int64_t rolled_back_unix{0};
+    std::string rollback_reason;
 };
 
 class CrossingStore final {
@@ -50,12 +61,30 @@ public:
         std::int64_t expires_unix,
         std::string& reason,
         std::string attachment_state = {},
-        std::string script_state = {});
+        std::string script_state = {},
+        CrossingVector rotation = {},
+        CrossingVector angular_velocity = {},
+        bool physical = false,
+        std::string object_state = {},
+        std::string linkset_state = {});
+
+    [[nodiscard]] std::optional<RegionCrossing> reserve(
+        std::string_view crossing_id,
+        std::string_view user_id,
+        std::string_view destination_region,
+        std::string& reason);
 
     [[nodiscard]] std::optional<RegionCrossing> complete(
         std::string_view crossing_id,
         std::string_view user_id,
         std::string_view destination_region,
+        std::string& reason,
+        std::string_view reservation_token = {});
+
+    [[nodiscard]] std::optional<RegionCrossing> rollback(
+        std::string_view crossing_id,
+        std::string_view user_id,
+        std::string rollback_reason,
         std::string& reason);
 
     [[nodiscard]] bool abort(std::string_view crossing_id);
