@@ -1,5 +1,26 @@
 # Changelog
 
+## 7.0.0-dev — 2026-09-19
+
+Transactional Region Crossing v3 and native Object Transfer milestone.
+
+- upgraded Region Crossing persistence to v3 while retaining v1/v2 record loading
+- added explicit `prepared -> reserved -> completed` transaction flow
+- destination reservation produces a cryptographically random token; reserved completion requires the matching token using constant-time comparison
+- added authenticated Handoff reserve and rollback Core APIs
+- added persisted rollback state, rollback reason and transaction timestamps
+- Crossing records now preserve rotation, angular velocity and physical-state metadata in addition to position and linear velocity
+- added bounded object-state and linkset-state carrier fields for future distributed object/linkset orchestration
+- existing unreserved Handoff completion remains compatible for the legacy development flow
+- added native RegionRuntime Object Transfer v1 for root objects
+- Object Transfer preserves transform, linear velocity, physical state, owner/group IDs and owner/group/everyone permission masks
+- transfer commit removes the source object only after destination import succeeds; failed source commit removes the destination copy
+- Angular Velocity, linkset state and Script state are preserved in the transfer package but are not yet applied by subsystems that lack native support
+- added cross-platform Object Transfer and Crossing v3 transaction tests
+- added Linux process smoke for reservation-token rejection, successful commit, rollback and replay rejection
+- added `crossing-v3` and `object-transfer-v1` capability discovery
+
+
 ## 6.5.0-dev — 2026-09-19
 
 Script World reliability and readback milestone.
