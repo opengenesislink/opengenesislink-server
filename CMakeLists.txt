@@ -69,6 +69,7 @@ add_library(opengenesis-foundation
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
+    src/world/object_transfer.cpp
     src/world/region_persistence.cpp
     src/world/terrain.cpp
     src/world/scene_server.cpp
