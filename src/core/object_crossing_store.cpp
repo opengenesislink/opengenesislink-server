@@ -197,7 +197,7 @@ bool ObjectCrossingStore::record_export(
     const std::string_view source_region,
     std::string snapshot,
     std::string& reason) {
-    if (snapshot.empty() || snapshot.size() > 64U * 1024U) {
+    if (snapshot.empty() || snapshot.size() > 256U * 1024U) {
         reason = "invalid-object-snapshot";
         return false;
     }
@@ -233,7 +233,12 @@ bool ObjectCrossingStore::record_import(
     const std::string_view crossing_id,
     const std::string_view destination_region,
     const std::uint64_t destination_entity_id,
+    std::string entity_map,
     std::string& reason) {
+    if (entity_map.empty() || entity_map.size() > 16U * 1024U) {
+        reason = "invalid-object-crossing-entity-map";
+        return false;
+    }
     std::scoped_lock lock(mutex_);
     const auto it = crossings_.find(std::string{crossing_id});
     if (it == crossings_.end()) {
@@ -247,6 +252,10 @@ bool ObjectCrossingStore::record_import(
         return false;
     }
     if (record.state == ObjectCrossingState::imported) {
+        if (record.entity_map != entity_map) {
+            reason = "object-crossing-entity-map-mismatch";
+            return false;
+        }
         reason.clear();
         return true;
     }
@@ -254,6 +263,7 @@ bool ObjectCrossingStore::record_import(
         reason = "object-crossing-not-importable";
         return false;
     }
+    record.entity_map = std::move(entity_map);
     record.state = ObjectCrossingState::imported;
     record.imported_unix = unix_now();
     record.last_error.clear();
@@ -473,7 +483,8 @@ std::optional<ObjectCrossingRecord> ObjectCrossingStore::rollback(
     }
 
     record.rollback_reason = std::move(rollback_reason);
-    if (record.state == ObjectCrossingState::imported ||
+    if (record.state == ObjectCrossingState::exported ||
+        record.state == ObjectCrossingState::imported ||
         record.state == ObjectCrossingState::cleanup_pending) {
         record.state = ObjectCrossingState::cleanup_pending;
     } else {
@@ -512,13 +523,13 @@ std::size_t ObjectCrossingStore::maintenance(const std::int64_t now_unix) {
 
     for (auto& [_, record] : crossings_) {
         if (record.expires_unix > now_unix) continue;
-        if (record.state == ObjectCrossingState::prepared ||
-            record.state == ObjectCrossingState::exported) {
+        if (record.state == ObjectCrossingState::prepared) {
             record.state = ObjectCrossingState::rolled_back;
             record.rolled_back_unix = now_unix;
             record.rollback_reason = "object-crossing-expired";
             ++changed;
-        } else if (record.state == ObjectCrossingState::imported) {
+        } else if (record.state == ObjectCrossingState::exported ||
+                   record.state == ObjectCrossingState::imported) {
             record.state = ObjectCrossingState::cleanup_pending;
             record.rollback_reason = "object-crossing-expired";
             ++changed;
@@ -555,7 +566,7 @@ void ObjectCrossingStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 26U) continue;
+        if (fields.size() != 26U && fields.size() != 27U) continue;
         try {
             ObjectCrossingRecord record;
             record.id = fields[0];
@@ -578,9 +589,12 @@ void ObjectCrossingStore::load() {
             record.imported_unix = std::stoll(fields[17]);
             record.completed_unix = std::stoll(fields[18]);
             record.rolled_back_unix = std::stoll(fields[19]);
-            record.snapshot = decode_b64(fields[20], 64U * 1024U);
+            record.snapshot = decode_b64(fields[20], 256U * 1024U);
             record.last_error = decode_b64(fields[21], 512U);
             record.rollback_reason = decode_b64(fields[22], 512U);
+            if (fields.size() == 27U) {
+                record.entity_map = decode_b64(fields[24], 16U * 1024U);
+            }
             crossings_[record.id] = std::move(record);
         } catch (...) {
         }
@@ -595,7 +609,7 @@ void ObjectCrossingStore::persist_locked() const {
     const auto temporary = path.string() + ".tmp";
     std::ofstream output(temporary, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write object crossing store");
-    output << "# OpenGenesisLINK object crossing store v1\n";
+    output << "# OpenGenesisLINK object crossing store v2\n";
     output << std::setprecision(17);
 
     std::vector<ObjectCrossingRecord> rows;
@@ -630,7 +644,9 @@ void ObjectCrossingStore::persist_locked() const {
                << security::base64_encode(record.snapshot) << '\t'
                << security::base64_encode(record.last_error) << '\t'
                << security::base64_encode(record.rollback_reason) << '\t'
-               << record.restore_attempts << "\t0\t0\n";
+               << record.restore_attempts << '\t'
+               << security::base64_encode(record.entity_map)
+               << "\t0\t0\n";
     }
 
     output.close();

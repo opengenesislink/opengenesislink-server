@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace opengenesis::world {
@@ -36,6 +37,9 @@ struct Entity {
     EntityKind kind{EntityKind::object};
     Transform transform{};
     std::uint64_t physics_body{0};
+    std::uint64_t parent_entity_id{0};
+    std::uint32_t link_number{1};
+    std::string floating_text;
 };
 
 struct ObjectTransferSnapshot {
@@ -48,7 +52,16 @@ struct ObjectTransferSnapshot {
     core::PermissionMask everyone_permissions{0};
     Transform transform{};
     physics::Vec3 velocity{};
+    physics::Vec3 angular_velocity{};
     bool physical{false};
+    std::uint64_t parent_source_entity_id{0};
+    std::uint32_t link_number{1};
+    std::string floating_text;
+};
+
+struct ObjectLinksetTransferSnapshot {
+    std::uint64_t source_root_entity_id{0};
+    std::vector<ObjectTransferSnapshot> members;
 };
 
 struct SceneEvent {
@@ -71,7 +84,9 @@ struct RuntimeMetrics {
 
 class RegionRuntime final {
 public:
-    RegionRuntime(std::string id, double target_hz, double terrain_base_height = 21.0);
+    RegionRuntime(std::string id, double target_hz,
+                  double terrain_base_height = 21.0,
+                  double water_height = 20.0);
     ~RegionRuntime();
     RegionRuntime(const RegionRuntime&) = delete;
     RegionRuntime& operator=(const RegionRuntime&) = delete;
@@ -79,55 +94,90 @@ public:
     void start();
     void stop();
 
-    std::uint64_t spawn_object(std::string name, Transform transform = {}, bool physical = true,
-                               std::string owner_user_id = {}, std::string group_id = {},
-                               core::PermissionMask group_permissions = 0,
-                               core::PermissionMask everyone_permissions = 0);
-    std::uint64_t spawn_avatar(std::string user_id, std::string name, Transform transform = {});
-    bool restore_object(std::uint64_t id, std::string name, Transform transform, bool physical,
-                        std::string owner_user_id = {}, std::string group_id = {},
-                        core::PermissionMask owner_permissions = core::perm_all,
-                        core::PermissionMask group_permissions = 0,
-                        core::PermissionMask everyone_permissions = 0);
+    std::uint64_t spawn_object(
+        std::string name, Transform transform = {}, bool physical = true,
+        std::string owner_user_id = {}, std::string group_id = {},
+        core::PermissionMask group_permissions = 0,
+        core::PermissionMask everyone_permissions = 0);
+    std::uint64_t spawn_avatar(
+        std::string user_id, std::string name, Transform transform = {});
+    bool restore_object(
+        std::uint64_t id, std::string name, Transform transform, bool physical,
+        std::string owner_user_id = {}, std::string group_id = {},
+        core::PermissionMask owner_permissions = core::perm_all,
+        core::PermissionMask group_permissions = 0,
+        core::PermissionMask everyone_permissions = 0,
+        std::uint64_t parent_entity_id = 0,
+        std::uint32_t link_number = 1,
+        std::string floating_text = {},
+        physics::Vec3 velocity = {},
+        physics::Vec3 angular_velocity = {});
+
     bool remove_entity(std::uint64_t id);
+    bool remove_linkset(std::uint64_t entity_id);
     bool update_transform(std::uint64_t id, Transform transform);
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
+    bool set_angular_velocity(std::uint64_t id,
+                              physics::Vec3 angular_velocity);
     bool set_physical(std::uint64_t id, bool enabled);
-    bool set_object_permissions(std::uint64_t id, std::string group_id,
-                                core::PermissionMask group_permissions,
-                                core::PermissionMask everyone_permissions);
-    bool move_avatar(std::uint64_t id, Transform transform, physics::Vec3 velocity,
-                     std::string& boundary);
+    bool set_floating_text(std::uint64_t id, std::string text);
+    bool link_objects(std::uint64_t root_id, std::uint64_t child_id,
+                      std::string& reason);
+    bool unlink_object(std::uint64_t child_id, std::string& reason);
+    bool set_object_permissions(
+        std::uint64_t id, std::string group_id,
+        core::PermissionMask group_permissions,
+        core::PermissionMask everyone_permissions);
+    bool move_avatar(std::uint64_t id, Transform transform,
+                     physics::Vec3 velocity, std::string& boundary);
     bool set_terrain_height(std::size_t x, std::size_t y, double value);
 
     [[nodiscard]] std::optional<ObjectTransferSnapshot> export_object(
         std::uint64_t id) const;
+    [[nodiscard]] std::optional<ObjectLinksetTransferSnapshot> export_linkset(
+        std::uint64_t entity_id) const;
     bool import_object(const ObjectTransferSnapshot& snapshot,
                        std::uint64_t destination_entity_id,
                        physics::Vec3 destination_position,
                        std::string& reason);
+    bool import_linkset(
+        const ObjectLinksetTransferSnapshot& snapshot,
+        std::uint64_t destination_root_entity_id,
+        physics::Vec3 destination_position,
+        std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map,
+        std::string& reason,
+        bool preserve_source_ids = false);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
+    [[nodiscard]] std::vector<Entity> linkset_members(
+        std::uint64_t entity_id) const;
     [[nodiscard]] std::vector<Entity> snapshot_entities() const;
-    [[nodiscard]] std::vector<SceneEvent> events_since(std::uint64_t sequence,
-                                                        std::size_t max_events = 256) const;
+    [[nodiscard]] std::vector<SceneEvent> events_since(
+        std::uint64_t sequence, std::size_t max_events = 256) const;
     std::uint64_t chat(std::uint64_t sender_entity, std::string text,
                        std::string event_type = "chat");
 
     [[nodiscard]] RuntimeMetrics metrics() const;
     [[nodiscard]] std::uint64_t latest_sequence() const;
     [[nodiscard]] const std::string& id() const { return id_; }
+    [[nodiscard]] double water_height() const { return water_height_; }
     [[nodiscard]] Terrain& terrain() { return terrain_; }
     [[nodiscard]] const Terrain& terrain() const { return terrain_; }
 
 private:
     void loop();
-    std::uint64_t spawn_entity(std::string name, std::string owner_user_id, std::string group_id, EntityKind kind, Transform transform, bool physical, core::PermissionMask group_permissions = 0, core::PermissionMask everyone_permissions = 0);
-    std::uint64_t append_event_locked(std::string type, std::uint64_t entity_id,
-                                      const Transform& transform, std::string text = {});
+    std::uint64_t spawn_entity(
+        std::string name, std::string owner_user_id, std::string group_id,
+        EntityKind kind, Transform transform, bool physical,
+        core::PermissionMask group_permissions = 0,
+        core::PermissionMask everyone_permissions = 0);
+    std::uint64_t append_event_locked(
+        std::string type, std::uint64_t entity_id,
+        const Transform& transform, std::string text = {});
 
     std::string id_;
     double target_hz_;
+    double water_height_;
     Terrain terrain_;
     std::atomic_bool running_{false};
     std::thread thread_;

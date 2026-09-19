@@ -117,7 +117,14 @@ std::string serialize_object_snapshot(
         << "vx=" << snapshot.velocity.x << '\n'
         << "vy=" << snapshot.velocity.y << '\n'
         << "vz=" << snapshot.velocity.z << '\n'
-        << "physical=" << (snapshot.physical ? 1 : 0) << '\n';
+        << "avx=" << snapshot.angular_velocity.x << '\n'
+        << "avy=" << snapshot.angular_velocity.y << '\n'
+        << "avz=" << snapshot.angular_velocity.z << '\n'
+        << "physical=" << (snapshot.physical ? 1 : 0) << '\n'
+        << "parent_source=" << snapshot.parent_source_entity_id << '\n'
+        << "link_number=" << snapshot.link_number << '\n'
+        << "text_b64="
+        << opengenesis::security::base64_encode(snapshot.floating_text) << '\n';
     return out.str();
 }
 
@@ -157,7 +164,26 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
             std::stod(field(encoded, "vx")),
             std::stod(field(encoded, "vy")),
             std::stod(field(encoded, "vz"))};
+        const auto avx = field(encoded, "avx");
+        const auto avy = field(encoded, "avy");
+        const auto avz = field(encoded, "avz");
+        if (!avx.empty() && !avy.empty() && !avz.empty()) {
+            snapshot.angular_velocity = {
+                std::stod(avx), std::stod(avy), std::stod(avz)};
+        }
         snapshot.physical = field(encoded, "physical") == "1";
+        const auto parent = field(encoded, "parent_source");
+        if (!parent.empty()) snapshot.parent_source_entity_id = std::stoull(parent);
+        const auto link_number = field(encoded, "link_number");
+        if (!link_number.empty()) {
+            snapshot.link_number =
+                static_cast<std::uint32_t>(std::stoul(link_number));
+        }
+        const auto text_b64 = field(encoded, "text_b64");
+        if (!text_b64.empty()) {
+            snapshot.floating_text = opengenesis::security::base64_decode(
+                text_b64, 512U);
+        }
         if (snapshot.source_entity_id == 0 || snapshot.owner_user_id.empty()) {
             reason = "invalid-object-transfer-snapshot";
             return std::nullopt;
@@ -170,10 +196,76 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
     }
 }
 
+std::string serialize_linkset_snapshot(
+    const world::ObjectLinksetTransferSnapshot& snapshot) {
+    std::ostringstream out;
+    out << "format=linkset-v2\n"
+        << "root=" << snapshot.source_root_entity_id << '\n'
+        << "count=" << snapshot.members.size() << '\n';
+    for (std::size_t index = 0; index < snapshot.members.size(); ++index) {
+        out << "member" << index << "_b64="
+            << opengenesis::security::base64_encode(
+                   serialize_object_snapshot(snapshot.members[index]))
+            << '\n';
+    }
+    return out.str();
+}
+
+std::optional<world::ObjectLinksetTransferSnapshot> deserialize_linkset_snapshot(
+    const std::string& encoded, std::string& reason) {
+    try {
+        if (field(encoded, "format") != "linkset-v2") {
+            reason = "unsupported-linkset-snapshot";
+            return std::nullopt;
+        }
+        world::ObjectLinksetTransferSnapshot snapshot;
+        snapshot.source_root_entity_id =
+            std::stoull(field(encoded, "root"));
+        const auto count = std::stoull(field(encoded, "count"));
+        if (snapshot.source_root_entity_id == 0 || count == 0 || count > 64U) {
+            reason = "invalid-linkset-snapshot";
+            return std::nullopt;
+        }
+        snapshot.members.reserve(static_cast<std::size_t>(count));
+        bool root_found = false;
+        for (std::size_t index = 0; index < count; ++index) {
+            const auto key = "member" + std::to_string(index) + "_b64";
+            const auto member_encoded = opengenesis::security::base64_decode(
+                field(encoded, key), 8U * 1024U);
+            auto member = deserialize_object_snapshot(member_encoded, reason);
+            if (!member) return std::nullopt;
+            if (member->source_entity_id == snapshot.source_root_entity_id) {
+                root_found = true;
+            }
+            snapshot.members.push_back(std::move(*member));
+        }
+        if (!root_found) {
+            reason = "linkset-root-missing";
+            return std::nullopt;
+        }
+        reason.clear();
+        return snapshot;
+    } catch (...) {
+        reason = "invalid-linkset-snapshot";
+        return std::nullopt;
+    }
+}
+
+std::string serialize_entity_map(
+    const std::vector<std::pair<std::uint64_t, std::uint64_t>>& entity_map) {
+    std::ostringstream out;
+    for (std::size_t index = 0; index < entity_map.size(); ++index) {
+        if (index != 0) out << ',';
+        out << entity_map[index].first << ':' << entity_map[index].second;
+    }
+    return out.str();
+}
+
 struct ObjectCrossingApplyResult {
     bool ok{false};
     std::string snapshot;
     std::uint64_t destination_entity_id{0};
+    std::string entity_map;
     std::string error;
 };
 
@@ -195,45 +287,69 @@ ObjectCrossingApplyResult apply_object_crossing_command(
     }
 
     if (command == "export") {
-        const auto snapshot = runtime.export_object(source_entity_id);
-        if (!snapshot) return {.error = "source-object-not-found"};
-        if (snapshot->owner_user_id != owner) {
+        const auto snapshot = runtime.export_linkset(source_entity_id);
+        if (!snapshot) return {.error = "source-linkset-not-found"};
+        const auto root = std::find_if(
+            snapshot->members.begin(), snapshot->members.end(),
+            [&](const auto& member) {
+                return member.source_entity_id == snapshot->source_root_entity_id;
+            });
+        if (root == snapshot->members.end() || root->owner_user_id != owner) {
             return {.error = "source-object-owner-mismatch"};
         }
-        return {.ok = true, .snapshot = serialize_object_snapshot(*snapshot)};
+        return {
+            .ok = true,
+            .snapshot = serialize_linkset_snapshot(*snapshot)};
     }
 
-    if (command == "import") {
+    if (command == "import" || command == "restore") {
         std::string reason;
         std::string decoded;
         try {
             decoded = opengenesis::security::base64_decode(
-                field(body, "snapshot_b64"), 64U * 1024U);
+                field(body, "snapshot_b64"), 256U * 1024U);
         } catch (...) {
             return {.error = "object-snapshot-decode-failed"};
         }
-        const auto snapshot = deserialize_object_snapshot(decoded, reason);
+        const auto snapshot = deserialize_linkset_snapshot(decoded, reason);
         if (!snapshot) return {.error = reason};
-        if (snapshot->owner_user_id != owner) {
+
+        const auto root = std::find_if(
+            snapshot->members.begin(), snapshot->members.end(),
+            [&](const auto& member) {
+                return member.source_entity_id == snapshot->source_root_entity_id;
+            });
+        if (root == snapshot->members.end() || root->owner_user_id != owner) {
             return {.error = "destination-object-owner-mismatch"};
         }
 
-        opengenesis::physics::Vec3 position;
-        try {
-            position = {
-                std::stod(field(body, "x")),
-                std::stod(field(body, "y")),
-                std::stod(field(body, "z"))};
-        } catch (...) {
-            return {.error = "invalid-destination-position"};
+        opengenesis::physics::Vec3 position = root->transform.position;
+        bool preserve_source_ids = command == "restore";
+        if (!preserve_source_ids) {
+            try {
+                position = {
+                    std::stod(field(body, "x")),
+                    std::stod(field(body, "y")),
+                    std::stod(field(body, "z"))};
+            } catch (...) {
+                return {.error = "invalid-destination-position"};
+            }
         }
 
-        if (!runtime.import_object(
-                *snapshot, destination_entity_id, position, reason)) {
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> entity_map;
+        const auto root_destination_id =
+            preserve_source_ids
+                ? snapshot->source_root_entity_id
+                : destination_entity_id;
+        if (!runtime.import_linkset(
+                *snapshot, root_destination_id, position,
+                entity_map, reason, preserve_source_ids)) {
             return {.error = reason};
         }
-        return {.ok = true,
-                .destination_entity_id = destination_entity_id};
+        return {
+            .ok = true,
+            .destination_entity_id = root_destination_id,
+            .entity_map = serialize_entity_map(entity_map)};
     }
 
     if (command == "remove") {
@@ -243,8 +359,8 @@ ObjectCrossingApplyResult apply_object_crossing_command(
                 existing->owner_user_id != owner) {
                 return {.error = "source-object-owner-mismatch"};
             }
-            if (!runtime.remove_entity(source_entity_id)) {
-                return {.error = "source-object-remove-failed"};
+            if (!runtime.remove_linkset(source_entity_id)) {
+                return {.error = "source-linkset-remove-failed"};
             }
         }
         return {.ok = true};
@@ -257,35 +373,13 @@ ObjectCrossingApplyResult apply_object_crossing_command(
                 existing->owner_user_id != owner) {
                 return {.error = "destination-object-owner-mismatch"};
             }
-            if (!runtime.remove_entity(destination_entity_id)) {
-                return {.error = "destination-object-cleanup-failed"};
+            if (!runtime.remove_linkset(destination_entity_id)) {
+                return {.error = "destination-linkset-cleanup-failed"};
             }
         }
-        return {.ok = true,
-                .destination_entity_id = destination_entity_id};
-    }
-
-    if (command == "restore") {
-        std::string reason;
-        std::string decoded;
-        try {
-            decoded = opengenesis::security::base64_decode(
-                field(body, "snapshot_b64"), 64U * 1024U);
-        } catch (...) {
-            return {.error = "object-snapshot-decode-failed"};
-        }
-        const auto snapshot = deserialize_object_snapshot(decoded, reason);
-        if (!snapshot) return {.error = reason};
-        if (snapshot->owner_user_id != owner ||
-            snapshot->source_entity_id != source_entity_id) {
-            return {.error = "source-object-restore-binding-mismatch"};
-        }
-        if (!runtime.import_object(
-                *snapshot, source_entity_id,
-                snapshot->transform.position, reason)) {
-            return {.error = reason};
-        }
-        return {.ok = true};
+        return {
+            .ok = true,
+            .destination_entity_id = destination_entity_id};
     }
 
     return {.error = "unsupported-object-crossing-command"};
@@ -331,6 +425,12 @@ ScriptActionApplyResult apply_script_action(
     }
 
     if (type == "query_object") {
+        const auto transfer = (*runtime)->export_object(entity_id);
+        const auto linkset = (*runtime)->linkset_members(entity_id);
+        const opengenesis::physics::Vec3 velocity =
+            transfer ? transfer->velocity : opengenesis::physics::Vec3{};
+        const opengenesis::physics::Vec3 angular =
+            transfer ? transfer->angular_velocity : opengenesis::physics::Vec3{};
         std::ostringstream out;
         out << std::fixed << std::setprecision(3)
             << "name=" << clean_wire_field(entity->name) << '\n'
@@ -340,7 +440,13 @@ ScriptActionApplyResult apply_script_action(
             << entity->transform.rotation.y << ' ' << entity->transform.rotation.z << '\n'
             << "scale=" << entity->transform.scale.x << ' '
             << entity->transform.scale.y << ' ' << entity->transform.scale.z << '\n'
+            << "velocity=" << velocity.x << ' ' << velocity.y << ' ' << velocity.z << '\n'
+            << "angular_velocity=" << angular.x << ' ' << angular.y << ' ' << angular.z << '\n'
             << "physical=" << (entity->physics_body != 0 ? 1 : 0) << '\n'
+            << "parent_entity=" << entity->parent_entity_id << '\n'
+            << "link_number=" << entity->link_number << '\n'
+            << "linkset_count=" << linkset.size() << '\n'
+            << "text=" << clean_wire_field(entity->floating_text) << '\n'
             << "group=" << clean_wire_field(entity->group_id) << '\n'
             << "owner_permissions=" << entity->owner_permissions << '\n'
             << "group_permissions=" << entity->group_permissions << '\n'
@@ -356,6 +462,7 @@ ScriptActionApplyResult apply_script_action(
             << "terrain_width=" << (*runtime)->terrain().width() << '\n'
             << "terrain_height=" << (*runtime)->terrain().height() << '\n'
             << "terrain_revision=" << (*runtime)->terrain().revision() << '\n'
+            << "water_height=" << (*runtime)->water_height() << '\n'
             << "entity_count=" << metrics.entities << '\n'
             << "avatar_count=" << metrics.avatars << '\n'
             << "sim_fps=" << metrics.sim_fps << '\n';
@@ -371,6 +478,22 @@ ScriptActionApplyResult apply_script_action(
             << "x=" << entity->transform.position.x << '\n'
             << "y=" << entity->transform.position.y << '\n';
         return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_water") {
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(3)
+            << "height=" << (*runtime)->water_height() << '\n';
+        return {.ok = true, .result = out.str()};
+    }
+
+    if (type == "query_time") {
+        const auto current_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count();
+        return {.ok = true,
+                .result = "unix_ms=" + std::to_string(current_ms) + "\n"};
     }
 
     if (type == "query_nearby") {
@@ -424,7 +547,9 @@ ScriptActionApplyResult apply_script_action(
     }
 
     const bool modifies_object =
-        type == "move" || type == "rotate" || type == "scale" || type == "physics";
+        type == "move" || type == "rotate" || type == "scale" ||
+        type == "velocity" || type == "angular_velocity" ||
+        type == "physics" || type == "text";
     if (modifies_object &&
         !opengenesis::core::has_permission(
             entity->owner_permissions, opengenesis::core::perm_modify)) {
@@ -443,6 +568,11 @@ ScriptActionApplyResult apply_script_action(
                    ? ScriptActionApplyResult{.ok = true}
                    : ScriptActionApplyResult{.error = "physics-update-failed"};
     }
+    if (type == "text") {
+        return (*runtime)->set_floating_text(entity_id, payload)
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{.error = "object-text-update-failed"};
+    }
     if (type == "say" || type == "whisper" || type == "shout") {
         const auto event_type = type == "whisper" ? "chat_whisper"
                               : type == "shout" ? "chat_shout"
@@ -458,6 +588,21 @@ ScriptActionApplyResult apply_script_action(
         !std::isfinite(vector.z)) {
         return {.error = "invalid-world-vector"};
     }
+    if (type == "velocity" || type == "angular_velocity") {
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(), entity->transform.position.x,
+                entity->transform.position.y, owner, {})) {
+            return {.error = "parcel-build-denied"};
+        }
+        const bool ok =
+            type == "velocity"
+                ? (*runtime)->set_velocity(entity_id, vector)
+                : (*runtime)->set_angular_velocity(entity_id, vector);
+        return ok ? ScriptActionApplyResult{.ok = true}
+                  : ScriptActionApplyResult{.error = "physical-object-motion-update-failed"};
+    }
+
     auto transform = entity->transform;
     if (type == "move") {
         transform.position = vector;
@@ -506,6 +651,7 @@ int main(int argc, char** argv) {
         const auto lease = std::chrono::seconds{config.get_int("core.lease_seconds", 5)};
         const auto tick_hz = config.get_double("runtime.tick_hz", 45.0);
         const auto terrain_base = config.get_double("runtime.terrain_base_height", 21.0);
+        const auto water_height = config.get_double("runtime.water_height", 20.0);
         const auto scene_ticket_secret = config.get_string(
             "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
         if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
@@ -530,7 +676,8 @@ int main(int argc, char** argv) {
         runtimes.reserve(region_configs.size());
         persistence.reserve(region_configs.size());
         for (const auto& region : region_configs) {
-            auto runtime = std::make_shared<world::RegionRuntime>(region.id, tick_hz, terrain_base);
+            auto runtime = std::make_shared<world::RegionRuntime>(
+                region.id, tick_hz, terrain_base, water_height);
             auto store = std::make_unique<world::RegionPersistence>(storage_root / region.id);
             store->load(*runtime);
             runtime->start();
@@ -708,6 +855,10 @@ int main(int argc, char** argv) {
                                     << "snapshot_b64="
                                     << opengenesis::security::base64_encode(
                                            applied.snapshot)
+                                    << '\n'
+                                    << "entity_map_b64="
+                                    << opengenesis::security::base64_encode(
+                                           applied.entity_map)
                                     << '\n';
                                 socket.send_frame({
                                     protocol::MessageType::object_crossing_result,

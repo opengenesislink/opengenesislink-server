@@ -132,6 +132,7 @@ std::string serialize_snapshot(const RegionRuntime& region) {
            << "terrain_height=" << region.terrain().height() << '\n'
            << "terrain_cell_size=" << region.terrain().cell_size() << '\n'
            << "terrain_revision=" << region.terrain().revision() << '\n'
+           << "water_height=" << region.water_height() << '\n'
            << "entity_count=" << entities.size() << '\n';
     for (const auto& entity : entities) {
         const auto& transform = entity.transform;
@@ -142,7 +143,22 @@ std::string serialize_snapshot(const RegionRuntime& region) {
                << '|' << transform.scale.y << '|' << transform.scale.z << '|'
                << clean(entity.owner_user_id, 64) << '|' << clean(entity.group_id, 64) << '|'
                << entity.owner_permissions << '|' << entity.group_permissions << '|'
-               << entity.everyone_permissions << '\n';
+               << entity.everyone_permissions << '|'
+               << entity.parent_entity_id << '|' << entity.link_number << '|'
+               << (entity.physics_body != 0 ? 1 : 0) << '|'
+               << clean(entity.floating_text, 512);
+        if (entity.kind == EntityKind::object) {
+            const auto transfer = region.export_object(entity.id);
+            const physics::Vec3 velocity =
+                transfer ? transfer->velocity : physics::Vec3{};
+            const physics::Vec3 angular =
+                transfer ? transfer->angular_velocity : physics::Vec3{};
+            output << '|' << velocity.x << '|' << velocity.y << '|' << velocity.z
+                   << '|' << angular.x << '|' << angular.y << '|' << angular.z;
+        } else {
+            output << "|0|0|0|0|0|0";
+        }
+        output << '\n';
     }
     return output.str();
 }
@@ -186,7 +202,8 @@ void handle_client(opengenesis::network::TcpSocket socket,
         socket.send_frame({protocol::MessageType::hello_ack, hello.request_id,
                            protocol::payload_from_string(
                                "protocol=1\nserver=opengenesis-scene\nauth=scene-ticket-v1\n"
-                               "movement=avatar-move-v1\ncapabilities=scene-capabilities-v1\n")});
+                               "movement=avatar-move-v1\ncapabilities=scene-capabilities-v1\n"
+                               "object_runtime=linkset-v1,motion-v1,text-v1\n")});
 
         const auto join = socket.receive_frame();
         if (join.type != protocol::MessageType::scene_join) throw std::runtime_error("SCENE_JOIN required");
@@ -347,6 +364,93 @@ void handle_client(opengenesis::network::TcpSocket socket,
                 const bool ok = owner && group_ok && region->set_object_permissions(id, std::move(group_id), group_permissions, everyone_permissions);
                 socket.send_frame({ok ? protocol::MessageType::entity_permissions_ack : protocol::MessageType::error,
                                    frame.request_id, protocol::payload_from_string(ok ? "status=permissions-updated\n" : "reason=permission-update-denied\n")});
+            } else if (frame.type == protocol::MessageType::entity_link) {
+                if (!security::has_scene_capability(claims, "scene.object.link")) {
+                    send_capability_error(socket, frame, "scene.object.link");
+                    continue;
+                }
+                const auto action = field(request, "action");
+                const auto root_id = integer(request, "root_id");
+                const auto child_id = integer(request, "child_id");
+                const auto root = region->entity(root_id);
+                const auto child = region->entity(child_id);
+                std::string reason;
+                bool ok = false;
+                if (action == "unlink") {
+                    ok = child && child->kind == EntityKind::object &&
+                         can_modify_object(*child, claims) &&
+                         region->unlink_object(child_id, reason);
+                } else {
+                    ok = root && child &&
+                         root->kind == EntityKind::object &&
+                         child->kind == EntityKind::object &&
+                         can_modify_object(*root, claims) &&
+                         can_modify_object(*child, claims) &&
+                         region->link_objects(root_id, child_id, reason);
+                }
+                socket.send_frame({
+                    ok ? protocol::MessageType::entity_link_ack
+                       : protocol::MessageType::error,
+                    frame.request_id,
+                    protocol::payload_from_string(
+                        ok ? "status=updated\n"
+                           : "reason=" +
+                                 (reason.empty()
+                                      ? std::string{"linkset-operation-denied"}
+                                      : reason) +
+                                 "\n")});
+            } else if (frame.type == protocol::MessageType::entity_text) {
+                if (!security::has_scene_capability(
+                        claims, "scene.object.modify.own")) {
+                    send_capability_error(
+                        socket, frame, "scene.object.modify.own");
+                    continue;
+                }
+                const auto id = integer(request, "id");
+                const auto current = region->entity(id);
+                const auto text_value =
+                    clean(field(request, "text"), 512);
+                const bool ok =
+                    current && current->kind == EntityKind::object &&
+                    can_modify_object(*current, claims) &&
+                    region->set_floating_text(id, text_value);
+                socket.send_frame({
+                    ok ? protocol::MessageType::entity_text_ack
+                       : protocol::MessageType::error,
+                    frame.request_id,
+                    protocol::payload_from_string(
+                        ok ? "status=text-updated\n"
+                           : "reason=object-permission-denied\n")});
+            } else if (frame.type == protocol::MessageType::entity_motion) {
+                if (!security::has_scene_capability(
+                        claims, "scene.object.modify.own")) {
+                    send_capability_error(
+                        socket, frame, "scene.object.modify.own");
+                    continue;
+                }
+                const auto id = integer(request, "id");
+                const auto current = region->entity(id);
+                const physics::Vec3 velocity{
+                    number(request, "vx", 0.0),
+                    number(request, "vy", 0.0),
+                    number(request, "vz", 0.0)};
+                const physics::Vec3 angular{
+                    number(request, "avx", 0.0),
+                    number(request, "avy", 0.0),
+                    number(request, "avz", 0.0)};
+                const bool permitted =
+                    current && current->kind == EntityKind::object &&
+                    can_modify_object(*current, claims);
+                const bool ok =
+                    permitted && region->set_velocity(id, velocity) &&
+                    region->set_angular_velocity(id, angular);
+                socket.send_frame({
+                    ok ? protocol::MessageType::entity_motion_ack
+                       : protocol::MessageType::error,
+                    frame.request_id,
+                    protocol::payload_from_string(
+                        ok ? "status=motion-updated\n"
+                           : "reason=physical-object-motion-denied\n")});
             } else if (frame.type == protocol::MessageType::chat_send) {
                 if (!security::has_scene_capability(claims, "scene.chat")) {
                     send_capability_error(socket, frame, "scene.chat");

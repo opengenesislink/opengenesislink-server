@@ -51,14 +51,20 @@ int main() {
         require(source_id != 0, "source object created");
         require(source.set_velocity(source_id, {3.5, 0.5, 1.25}),
                 "source velocity set");
+        require(source.set_angular_velocity(source_id, {0.0, 0.0, 12.5}),
+                "source angular velocity set");
+        require(source.set_floating_text(source_id, "Crossing Runtime v2"),
+                "source floating text set");
 
         const auto snapshot = source.export_object(source_id);
         require(snapshot && snapshot->owner_user_id == "user-1" &&
                     snapshot->group_id == "group-1" &&
                     snapshot->transform.rotation.z == 45.0 &&
                     snapshot->velocity.x == 3.5 &&
+                    snapshot->angular_velocity.z == 12.5 &&
+                    snapshot->floating_text == "Crossing Runtime v2" &&
                     snapshot->physical,
-                "object export captures transform permissions and velocity");
+                "object export captures rich runtime state");
 
         const auto store_path = (root / "object-crossings.db").string();
         std::string crossing_id;
@@ -117,11 +123,17 @@ int main() {
             const auto imported_snapshot =
                 destination.export_object(destination_id);
             require(imported_snapshot &&
-                        imported_snapshot->velocity.x == 3.5,
-                    "destination restores physical velocity");
+                        imported_snapshot->velocity.x == 3.5 &&
+                        imported_snapshot->angular_velocity.z == 12.5 &&
+                        imported_snapshot->floating_text ==
+                            "Crossing Runtime v2",
+                    "destination restores linear/angular motion and text");
 
             require(crossings.record_import(
-                        crossing_id, "region-b", destination_id, reason),
+                        crossing_id, "region-b", destination_id,
+                        std::to_string(source_id) + ":" +
+                            std::to_string(destination_id),
+                        reason),
                     "destination import ACK stored");
             require(source.entity(source_id).has_value(),
                     "source still exists until destination ACK transition");
@@ -155,6 +167,148 @@ int main() {
                     "completed object crossing survives restart");
         }
 
+        std::uint64_t linkset_destination_root = 0;
+        std::uint64_t linkset_destination_child = 0;
+        {
+            opengenesis::world::Transform root_transform;
+            root_transform.position = {245.0, 64.0, 28.0};
+            root_transform.rotation = {0.0, 0.0, 15.0};
+            root_transform.scale = {2.0, 2.0, 2.0};
+            opengenesis::world::Transform child_transform = root_transform;
+            child_transform.position.x += 3.0;
+            child_transform.scale = {1.0, 1.0, 1.0};
+
+            const auto link_root = source.spawn_object(
+                "Vehicle Root", root_transform, true, "user-1");
+            const auto link_child = source.spawn_object(
+                "Vehicle Child", child_transform, false, "user-1");
+            require(link_root != 0 && link_child != 0,
+                    "linkset members created");
+            require(source.set_velocity(link_root, {2.0, 0.25, 0.0}),
+                    "linkset root linear velocity set");
+            require(source.set_angular_velocity(link_root, {0.0, 0.0, 25.0}),
+                    "linkset root angular velocity set");
+            require(source.set_floating_text(link_root, "Vehicle"),
+                    "linkset root text set");
+            require(source.set_floating_text(link_child, "Seat"),
+                    "linkset child text set");
+            require(source.link_objects(link_root, link_child, reason),
+                    "native linkset created");
+
+            const auto linkset = source.export_linkset(link_child);
+            require(linkset &&
+                        linkset->source_root_entity_id == link_root &&
+                        linkset->members.size() == 2,
+                    "linkset export resolves root from child");
+
+            linkset_destination_root = 0x8000000000005001ULL;
+            std::vector<std::pair<std::uint64_t, std::uint64_t>> entity_map;
+            require(destination.import_linkset(
+                        *linkset, linkset_destination_root,
+                        {4.0, 64.0, 28.0}, entity_map, reason),
+                    "destination imports complete linkset");
+            require(entity_map.size() == 2,
+                    "linkset import returns source destination map");
+            for (const auto& [source_entity, destination_entity] : entity_map) {
+                if (source_entity == link_child) {
+                    linkset_destination_child = destination_entity;
+                }
+            }
+            require(linkset_destination_child != 0,
+                    "child destination mapping returned");
+
+            const auto imported_root =
+                destination.export_object(linkset_destination_root);
+            const auto imported_child =
+                destination.entity(linkset_destination_child);
+            require(imported_root &&
+                        imported_root->velocity.x == 2.0 &&
+                        imported_root->angular_velocity.z == 25.0 &&
+                        imported_root->floating_text == "Vehicle",
+                    "linkset root preserves motion and text");
+            require(imported_child &&
+                        imported_child->parent_entity_id ==
+                            linkset_destination_root &&
+                        imported_child->link_number >= 2 &&
+                        imported_child->floating_text == "Seat" &&
+                        imported_child->physics_body == 0,
+                    "linkset child preserves topology and non-root physics");
+
+            std::vector<std::pair<std::uint64_t, std::uint64_t>> retry_map;
+            require(destination.import_linkset(
+                        *linkset, linkset_destination_root,
+                        {4.0, 64.0, 28.0}, retry_map, reason),
+                    "linkset import retry is idempotent");
+            require(retry_map == entity_map,
+                    "linkset retry returns stable entity mapping");
+
+            const auto mapping_store_path =
+                (root / "linkset-crossings.db").string();
+            std::string mapping_crossing_id;
+            {
+                opengenesis::core::ObjectCrossingStore crossings(
+                    mapping_store_path, 2);
+                const auto prepared = crossings.prepare(
+                    "user-1", "region-a", "region-b", link_root,
+                    {.x = 4.0, .y = 64.0, .z = 28.0},
+                    unix_now() + 60, reason);
+                require(prepared.has_value(),
+                        "linkset crossing transaction prepared");
+                mapping_crossing_id = prepared->id;
+                require(crossings.record_export(
+                            prepared->id, "region-a",
+                            "linkset-v2-snapshot", reason),
+                        "linkset snapshot persisted");
+                std::string serialized_map;
+                for (std::size_t index = 0; index < entity_map.size(); ++index) {
+                    if (index != 0) serialized_map += ",";
+                    serialized_map +=
+                        std::to_string(entity_map[index].first) + ":" +
+                        std::to_string(entity_map[index].second);
+                }
+                require(crossings.record_import(
+                            prepared->id, "region-b",
+                            prepared->destination_entity_id,
+                            serialized_map, reason),
+                        "linkset entity map persisted with import ACK");
+                const auto imported_tx = crossings.find(prepared->id);
+                require(imported_tx &&
+                            imported_tx->entity_map == serialized_map,
+                        "linkset entity map visible in transaction");
+            }
+            {
+                opengenesis::core::ObjectCrossingStore crossings(
+                    mapping_store_path, 2);
+                const auto restored_tx =
+                    crossings.find(mapping_crossing_id);
+                require(restored_tx && !restored_tx->entity_map.empty(),
+                        "linkset entity map survives Core restart");
+            }
+
+            const auto expiry_store_path =
+                (root / "expired-linkset-crossings.db").string();
+            opengenesis::core::ObjectCrossingStore expiring(
+                expiry_store_path, 2);
+            const auto expiring_tx = expiring.prepare(
+                "user-1", "region-a", "region-b", link_root,
+                {.x = 4.0, .y = 64.0, .z = 28.0},
+                unix_now() + 30, reason);
+            require(expiring_tx.has_value(),
+                    "expiring linkset transaction prepared");
+            require(expiring.record_export(
+                        expiring_tx->id, "region-a",
+                        "linkset-v2-snapshot", reason),
+                    "expiring linkset export persisted");
+            require(expiring.maintenance(unix_now() + 31) == 1,
+                    "expired exported crossing enters reconciliation");
+            const auto expired = expiring.find(expiring_tx->id);
+            require(expired &&
+                        expired->state ==
+                            opengenesis::core::ObjectCrossingState::
+                                cleanup_pending,
+                    "lost destination import ACK triggers cleanup instead of blind rollback");
+        }
+
         {
             const auto persistence_path = root / "destination-persistence";
             opengenesis::world::RegionPersistence persistence(
@@ -174,8 +328,17 @@ int main() {
                         restored->transform.rotation.z == 45.0 &&
                         restored->velocity.x == 3.5 &&
                         restored->velocity.y == 0.5 &&
-                        restored->velocity.z == 1.25,
-                    "scene persistence v4 preserves crossed object velocity");
+                        restored->velocity.z == 1.25 &&
+                        restored->angular_velocity.z == 12.5 &&
+                        restored->floating_text == "Crossing Runtime v2",
+                    "scene persistence v5 preserves rich crossed object state");
+            const auto restored_child =
+                restored_destination.entity(linkset_destination_child);
+            require(restored_child &&
+                        restored_child->parent_entity_id ==
+                            linkset_destination_root &&
+                        restored_child->floating_text == "Seat",
+                    "scene persistence v5 preserves linkset topology");
         }
 
         const auto rollback_source_id = source.spawn_object(
@@ -201,7 +364,10 @@ int main() {
                     "rollback destination imported");
             require(crossings.record_import(
                         prepared->id, "region-b",
-                        prepared->destination_entity_id, reason),
+                        prepared->destination_entity_id,
+                        std::to_string(rollback_source_id) + ":" +
+                            std::to_string(prepared->destination_entity_id),
+                        reason),
                     "rollback import ACK recorded");
 
             require(source.remove_entity(rollback_source_id),
@@ -304,10 +470,10 @@ int main() {
         }
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 7.5 Object Crossing tests: PASS\n";
+        std::cout << "OpenGenesisLINK 8.0 Object Runtime/Crossing tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 7.5 Object Crossing test failure: "
+        std::cerr << "OpenGenesisLINK 8.0 Object Runtime/Crossing test failure: "
                   << error.what() << '\n';
         return 1;
     }

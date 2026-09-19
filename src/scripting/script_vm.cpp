@@ -129,8 +129,13 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         } else if(op=="message"){
             ins.opcode=ScriptOpcode::message; parts>>ins.a; std::getline(parts,ins.b); ins.b=trim(ins.b);
             if(!atom(ins.a,256)||ins.b.empty()||ins.b.size()>2000){reason="invalid-message";return std::nullopt;}
-        } else if(op=="move"||op=="rotate"||op=="scale"){
-            ins.opcode=op=="move"?ScriptOpcode::move:(op=="rotate"?ScriptOpcode::rotate:ScriptOpcode::scale);
+        } else if(op=="move"||op=="rotate"||op=="scale"||
+                  op=="velocity"||op=="angular_velocity"){
+            ins.opcode=op=="move"?ScriptOpcode::move:
+                       (op=="rotate"?ScriptOpcode::rotate:
+                        (op=="scale"?ScriptOpcode::scale:
+                         (op=="velocity"?ScriptOpcode::velocity:
+                                          ScriptOpcode::angular_velocity)));
             parts>>ins.a>>ins.b>>ins.c;
             std::string extra; parts>>extra;
             if(ins.a.empty()||ins.b.empty()||ins.c.empty()||!extra.empty()||
@@ -140,13 +145,21 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         } else if(op=="physics"){
             ins.opcode=ScriptOpcode::physics; parts>>ins.a;
             if(ins.a!="0"&&ins.a!="1"){reason="invalid-physics";return std::nullopt;}
+        } else if(op=="text"){
+            ins.opcode=ScriptOpcode::text; std::getline(parts,ins.a); ins.a=trim(ins.a);
+            if(ins.a.size()>512){reason="invalid-object-text";return std::nullopt;}
         } else if(op=="say"||op=="whisper"||op=="shout"){
             ins.opcode=op=="say"?ScriptOpcode::say:(op=="whisper"?ScriptOpcode::whisper:ScriptOpcode::shout);
             std::getline(parts,ins.a); ins.a=trim(ins.a);
             if(ins.a.empty()||ins.a.size()>512){reason="invalid-chat";return std::nullopt;}
-        } else if(op=="object_info"||op=="region_info"||op=="terrain_height"){
+        } else if(op=="object_info"||op=="region_info"||
+                  op=="terrain_height"||op=="water_level"||
+                  op=="world_time"){
             ins.opcode=op=="object_info"?ScriptOpcode::object_info:
-                       (op=="region_info"?ScriptOpcode::region_info:ScriptOpcode::terrain_height);
+                       (op=="region_info"?ScriptOpcode::region_info:
+                        (op=="terrain_height"?ScriptOpcode::terrain_height:
+                         (op=="water_level"?ScriptOpcode::water_level:
+                                             ScriptOpcode::world_time)));
             parts>>ins.a;
             std::string extra; parts>>extra;
             if(!atom(ins.a,64)||!extra.empty()){reason="invalid-world-query";return std::nullopt;}
@@ -209,10 +222,14 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
                                       .value=ins.a+"\n"+resolve(ins.b,result.state),.number=0});
         } else if(ins.opcode==ScriptOpcode::move||
                   ins.opcode==ScriptOpcode::rotate||
-                  ins.opcode==ScriptOpcode::scale){
+                  ins.opcode==ScriptOpcode::scale||
+                  ins.opcode==ScriptOpcode::velocity||
+                  ins.opcode==ScriptOpcode::angular_velocity){
             const auto type=ins.opcode==ScriptOpcode::move?ScriptActionType::world_move:
                             (ins.opcode==ScriptOpcode::rotate?ScriptActionType::world_rotate:
-                                                             ScriptActionType::world_scale);
+                             (ins.opcode==ScriptOpcode::scale?ScriptActionType::world_scale:
+                              (ins.opcode==ScriptOpcode::velocity?ScriptActionType::world_velocity:
+                                                                        ScriptActionType::world_angular_velocity)));
             result.actions.push_back({.type=type,
                                       .value=resolve(ins.a,result.state)+" "+
                                              resolve(ins.b,result.state)+" "+
@@ -221,6 +238,9 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
         } else if(ins.opcode==ScriptOpcode::physics){
             result.actions.push_back({.type=ScriptActionType::world_physics,
                                       .value=ins.a,.number=0});
+        } else if(ins.opcode==ScriptOpcode::text){
+            result.actions.push_back({.type=ScriptActionType::world_text,
+                                      .value=resolve(ins.a,result.state),.number=0});
         } else if(ins.opcode==ScriptOpcode::say||
                   ins.opcode==ScriptOpcode::whisper||
                   ins.opcode==ScriptOpcode::shout){
@@ -230,10 +250,14 @@ ScriptVmResult execute_script_event(const CompiledScript& program,std::string_vi
             result.actions.push_back({.type=type,.value=resolve(ins.a,result.state),.number=0});
         } else if(ins.opcode==ScriptOpcode::object_info||
                   ins.opcode==ScriptOpcode::region_info||
-                  ins.opcode==ScriptOpcode::terrain_height){
+                  ins.opcode==ScriptOpcode::terrain_height||
+                  ins.opcode==ScriptOpcode::water_level||
+                  ins.opcode==ScriptOpcode::world_time){
             const auto type=ins.opcode==ScriptOpcode::object_info?ScriptActionType::world_query_object:
                             (ins.opcode==ScriptOpcode::region_info?ScriptActionType::world_query_region:
-                                                                  ScriptActionType::world_query_terrain);
+                             (ins.opcode==ScriptOpcode::terrain_height?ScriptActionType::world_query_terrain:
+                              (ins.opcode==ScriptOpcode::water_level?ScriptActionType::world_query_water:
+                                                                    ScriptActionType::world_query_time)));
             result.actions.push_back({.type=type,.value=ins.a,.number=0});
         } else if(ins.opcode==ScriptOpcode::nearby_avatars){
             result.actions.push_back({.type=ScriptActionType::world_query_nearby,

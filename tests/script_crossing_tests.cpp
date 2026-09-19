@@ -117,13 +117,18 @@ int main() {
             "move 10 20 30\n"
             "rotate 0 0 90\n"
             "scale 2 2 2\n"
+            "velocity 1 2 3\n"
+            "angular_velocity 0 0 15\n"
             "physics 1\n"
+            "text Runtime v3\n"
             "say Hello region\n"
             "whisper Quiet region\n"
             "shout Loud region\n"
             "object_info obj\n"
             "region_info region\n"
             "terrain_height ground\n"
+            "water_level water\n"
+            "world_time clock\n"
             "nearby_avatars nearby 32\n"
             "end\n";
         const auto host_compiled =
@@ -131,14 +136,14 @@ int main() {
         require(host_compiled.has_value(), "Script host program compiles");
         const auto host_vm = opengenesis::scripting::execute_script_event(
             *host_compiled, "touch", {});
-        require(host_vm.ok && host_vm.actions.size() == 13,
-                "Script host and World query actions emitted");
+        require(host_vm.ok && host_vm.actions.size() == 18,
+                "Script host and World v3 actions emitted");
         const auto host_result = host.apply(
             alice->id, "host-script", host_vm.actions, "region-a/42");
-        require(host_result.applied == 13 && host_result.errors.empty(),
-                "Script host and World actions applied");
-        require(world_actions->size() == 11,
-                "Script World Actions queued");
+        require(host_result.applied == 18 && host_result.errors.empty(),
+                "Script host and World v3 actions applied");
+        require(world_actions->size() == 16,
+                "Script World v3 Actions queued");
 
         const auto queue_now = unix_now() * 1000;
         const auto move_action = world_actions->lease("region-a", queue_now);
@@ -169,7 +174,7 @@ int main() {
                     rotate_action->id, "temporary-world-error", queue_now + 1000),
                 "Script World Action NACK schedules retry");
 
-        for (int index = 0; index < 9; ++index) {
+        for (int index = 0; index < 14; ++index) {
             const auto action = restored_actions.lease("region-a", queue_now);
             require(action.has_value(), "other Script World Action leased");
             require(restored_actions.ack(action->id),
@@ -197,7 +202,7 @@ int main() {
             opengenesis::scripting::ScriptRuntime scripts(scripts_path);
             require(scripts.upsert(
                         {.id = "script-1",
-                         .object_id = "object-1",
+                         .object_id = "region-a/42",
                          .owner_user_id = "user-1",
                          .source_hash = "pending",
                          .source = {},
@@ -238,6 +243,17 @@ int main() {
                         query_state->variables.at("obj.name") == "Query Cube" &&
                         query_state->variables.at("obj.ready") == "1",
                     "Script World query result is persisted into VM state");
+            require(scripts.rebind_objects(
+                        "region-a", "region-b", {{42, 9001}},
+                        "user-1", reason),
+                    "Script binding migrates with crossed object");
+            const auto rebound = scripts.find("script-1");
+            require(rebound && rebound->object_id == "region-b/9001",
+                    "Script object binding points at destination entity");
+            require(scripts.rebind_objects(
+                        "region-a", "region-b", {{42, 9001}},
+                        "user-1", reason),
+                    "Script binding migration retry is idempotent");
         }
         {
             opengenesis::scripting::ScriptRuntime scripts(scripts_path);
@@ -350,10 +366,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 7.0 Script/Crossing runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 8.0 Script/Crossing runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 7.0 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 8.0 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }

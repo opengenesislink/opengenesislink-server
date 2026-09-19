@@ -16,6 +16,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
+      - name: Prepare vcpkg binary cache
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "$env:GITHUB_WORKSPACE\.vcpkg-cache" | Out-Null
+          "VCPKG_DEFAULT_BINARY_CACHE=$env:GITHUB_WORKSPACE\.vcpkg-cache" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-windows-x64-openssl-${{ hashFiles('.github/workflows/ci-windows.yml') }}
+          restore-keys: |
+            vcpkg-windows-x64-openssl-
       - name: Install OpenSSL
         shell: pwsh
         run: vcpkg install openssl:x64-windows
