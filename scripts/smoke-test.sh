@@ -65,6 +65,7 @@ base_url = "http://127.0.0.1:$ADMIN_PORT"
 [hypergrid]
 enabled = true
 inventory_write_enabled = true
+inventory_write_secret = "smoke-xinventory-service-secret-123456"
 listen_address = "127.0.0.1"
 port = $HG_PORT
 external_name = "http://127.0.0.1:$HG_PORT"
@@ -225,7 +226,7 @@ import re
 root_match=re.search(r'<ID>([0-9a-fA-F-]{36})</ID>',body); assert root_match
 hg_root=root_match.group(1)
 hg_folder='55555555-5555-4555-8555-555555555555'
-st,body=hg_form('/xinventory',{'METHOD':'ADDFOLDER','ParentID':hg_root,'Type':'-1','Version':'1','Name':'HG Smoke Folder','Owner':hgtravel['agent_id'],'ID':hg_folder}); assert st==200 and '<RESULT>True</RESULT>' in body
+st,body=hg_form('/xinventory',{'SERVICEKEY':'smoke-xinventory-service-secret-123456','METHOD':'ADDFOLDER','ParentID':hg_root,'Type':'-1','Version':'1','Name':'HG Smoke Folder','Owner':hgtravel['agent_id'],'ID':hg_folder}); assert st==200 and '<RESULT>True</RESULT>' in body
 st,body=hg_form('/xinventory',{'METHOD':'GETFOLDER','PRINCIPAL':hgtravel['agent_id'],'ID':hg_folder}); assert st==200 and 'HG Smoke Folder' in body
 st,body=hg_form('/avatar',{'METHOD':'getavatar','UserID':hgtravel['agent_id']}); assert st==200 and '<AvatarType>1</AvatarType>' in body
 remote_hg='12345678-1234-4234-8234-123456789abc'
@@ -328,6 +329,13 @@ replay,_=join('genesis-central',ticket,False); replay.close()
 # object/terrain persistence
 send(s,110,3,'name=One Persistent Cube\nx=130\ny=128\nz=30\nphysical=false\n'); t,_,p=recv(s); assert t==111
 obj=int(fields(p)['id']); open('/tmp/ogl-object-id','w').write(str(obj))
+world_program='event touch\nmove 140 141 31\nsay Script World API smoke\nend\n'
+st,_,raw=api('/v1/scripts','POST',{'object_id':f'genesis-central/{obj}','source':world_program},at); assert st==201
+world_script_id=json.loads(raw)['id']
+st,_,raw=api('/v1/scripts/event','POST',{'script_id':world_script_id,'event':'touch'},at); assert st==200
+world_exec=json.loads(raw); assert world_exec['host_applied']==2 and world_exec['host_errors']==[]
+time.sleep(0.6)
+send(s,102,30,''); ty,_,snap=recv(s); assert ty==103 and f'entity={obj}|object|One Persistent Cube|140.000|141.000|31.000|' in snap
 send(s,142,4,'x=5\ny=6\nheight=29.25\n'); assert recv(s)[0]==143
 # native avatar movement and boundary detection
 send(s,150,5,'x=300\ny=128\nz=23\nvx=4\nvy=0\nvz=0\n'); t,_,p=recv(s); assert t==151 and fields(p)['boundary']=='east',(t,p)
