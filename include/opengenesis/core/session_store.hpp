@@ -8,6 +8,9 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <memory>
+
+namespace opengenesis::storage { class DatabasePool; }
 
 namespace opengenesis::core {
 
@@ -27,6 +30,8 @@ class SessionStore final {
 public:
     explicit SessionStore(std::string path,
                           std::chrono::seconds lifetime = std::chrono::hours{24});
+    explicit SessionStore(std::shared_ptr<storage::DatabasePool> database,
+                          std::chrono::seconds lifetime = std::chrono::hours{24});
 
     [[nodiscard]] CreatedSession create(std::string user_id);
     [[nodiscard]] std::optional<AuthSession> find(std::string_view token);
@@ -45,6 +50,7 @@ private:
     void purge_expired_locked(std::int64_t now);
 
     std::string path_;
+    std::shared_ptr<storage::DatabasePool> database_;
     std::chrono::seconds lifetime_;
     mutable std::mutex mutex_;
     std::unordered_map<std::string, StoredSession> by_hash_;
