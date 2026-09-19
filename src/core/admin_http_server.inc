@@ -747,6 +747,12 @@ void AdminHttpServer::run() {
                                 const auto vx = json_number(request->body, "vx").value_or(0.0);
                                 const auto vy = json_number(request->body, "vy").value_or(0.0);
                                 const auto vz = json_number(request->body, "vz").value_or(0.0);
+                                const auto rx = json_number(request->body, "rx").value_or(0.0);
+                                const auto ry = json_number(request->body, "ry").value_or(0.0);
+                                const auto rz = json_number(request->body, "rz").value_or(0.0);
+                                const auto avx = json_number(request->body, "avx").value_or(0.0);
+                                const auto avy = json_number(request->body, "avy").value_or(0.0);
+                                const auto avz = json_number(request->body, "avz").value_or(0.0);
                                 const auto avatar = appearance_->find(user->id);
                                 const auto attachment_state = avatar ? appearance_json(*avatar) : std::string{"{}"};
 
@@ -765,6 +771,14 @@ void AdminHttpServer::run() {
                                 }
                                 script_state << ']';
 
+                                std::ostringstream physics_state;
+                                physics_state << "{\"linear_velocity\":{\"x\":" << vx
+                                              << ",\"y\":" << vy
+                                              << ",\"z\":" << vz
+                                              << "},\"angular_velocity\":{\"x\":" << avx
+                                              << ",\"y\":" << avy
+                                              << ",\"z\":" << avz << "}}";
+
                                 const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                                     std::chrono::system_clock::now().time_since_epoch()).count();
                                 std::string reason;
@@ -773,7 +787,10 @@ void AdminHttpServer::run() {
                                     {.x = x, .y = y, .z = 0.0},
                                     {.x = vx, .y = vy, .z = vz},
                                     now + std::min<std::int64_t>(scene_ticket_lifetime_.count(), 300),
-                                    reason, attachment_state, script_state.str());
+                                    reason, attachment_state, script_state.str(),
+                                    {.x = rx, .y = ry, .z = rz},
+                                    {.x = avx, .y = avy, .z = avz},
+                                    physics_state.str(), "[]");
                                 if (!crossing) {
                                     response = {.status = 409,
                                                 .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
@@ -786,7 +803,7 @@ void AdminHttpServer::run() {
                             }
                         }
                     }
-                } else if (method == "POST" && path == "/v1/viewer/handoff/complete") {
+                } else if (method == "POST" && path == "/v1/viewer/handoff/reserve") {
                     auto [session, user] = auth();
                     const auto crossing_id = json_string(request->body, "crossing_id");
                     const auto region_id = json_string(request->body, "region");
@@ -796,13 +813,60 @@ void AdminHttpServer::run() {
                         response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
                     } else {
                         std::string reason;
-                        const auto crossing = crossings_->complete(*crossing_id, user->id, *region_id, reason);
+                        const auto crossing =
+                            crossings_->reserve(*crossing_id, user->id, *region_id, reason);
+                        if (!crossing) {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "region.handoff.reserve", crossing->id,
+                                           crossing->from_region + "->" + crossing->to_region);
+                            response.body = crossing_json(*crossing);
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/handoff/complete") {
+                    auto [session, user] = auth();
+                    const auto crossing_id = json_string(request->body, "crossing_id");
+                    const auto region_id = json_string(request->body, "region");
+                    const auto reservation_token =
+                        json_string(request->body, "reservation_token");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!crossing_id || !region_id || !reservation_token) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto crossing = crossings_->complete(
+                            *crossing_id, user->id, *region_id,
+                            *reservation_token, reason);
                         if (!crossing) {
                             response = {.status = 409,
                                         .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         } else {
                             audit_->append(user->id, "region.handoff.complete", crossing->id,
                                            crossing->from_region + "->" + crossing->to_region);
+                            response.body = crossing_json(*crossing);
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/viewer/handoff/rollback") {
+                    auto [session, user] = auth();
+                    const auto crossing_id = json_string(request->body, "crossing_id");
+                    const auto rollback_reason =
+                        json_string(request->body, "reason").value_or("client-rollback");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!crossing_id) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-crossing-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto crossing = crossings_->rollback(
+                            *crossing_id, user->id, rollback_reason, reason);
+                        if (!crossing) {
+                            response = {.status = 409,
+                                        .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "region.handoff.rollback", crossing->id,
+                                           crossing->rollback_reason);
                             response.body = crossing_json(*crossing);
                         }
                     }
@@ -1270,6 +1334,9 @@ void AdminHttpServer::run() {
                 } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
                            path == "/v1/auth/logout" || path == "/v1/viewer/session" ||
                            path == "/v1/viewer/teleport" || path == "/v1/viewer/handoff" ||
+                           path == "/v1/viewer/handoff/reserve" ||
+                           path == "/v1/viewer/handoff/complete" ||
+                           path == "/v1/viewer/handoff/rollback" ||
                            path == "/v1/groups" || path == "/v1/groups/members" ||
                            path == "/v1/groups/role" || path == "/v1/groups/remove" ||
                            path == "/v1/parcels" || path == "/v1/parcels/policy" ||
