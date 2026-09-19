@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 9.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 10.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,6 +10,16 @@ option(OGL_ENABLE_WERROR "Treat warnings as errors" OFF)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(SQLite3 REQUIRED)
+find_package(PostgreSQL REQUIRED)
+if(WIN32)
+    find_package(unofficial-libmariadb CONFIG REQUIRED)
+    set(OGL_MARIADB_TARGET unofficial::libmariadb)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MARIADB REQUIRED IMPORTED_TARGET libmariadb)
+    set(OGL_MARIADB_TARGET PkgConfig::MARIADB)
+endif()
 
 add_library(opengenesis-foundation
     src/common/log.cpp
@@ -72,6 +82,8 @@ add_library(opengenesis-foundation
     src/scripting/script_host.cpp
     src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
+    src/storage/database.cpp
+    src/storage/migrations.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
@@ -84,7 +96,13 @@ add_library(OpenGenesis::Foundation ALIAS opengenesis-foundation)
 target_include_directories(opengenesis-foundation PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto OpenSSL::SSL)
+target_link_libraries(opengenesis-foundation PUBLIC
+    Threads::Threads
+    OpenSSL::Crypto
+    OpenSSL::SSL
+    SQLite::SQLite3
+    PostgreSQL::PostgreSQL
+    ${OGL_MARIADB_TARGET})
 if(WIN32)
     target_link_libraries(opengenesis-foundation PUBLIC ws2_32)
 endif()
