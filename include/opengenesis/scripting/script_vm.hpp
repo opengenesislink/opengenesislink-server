@@ -26,6 +26,7 @@ struct ScriptInstruction {
 };
 
 struct ScriptHandler {
+    std::string state{"*"};
     std::string event;
     std::vector<ScriptInstruction> instructions;
 };
