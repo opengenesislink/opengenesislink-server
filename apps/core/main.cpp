@@ -220,6 +220,10 @@ int main(int argc, char** argv) {
             "security.admin_api_key",
             "security.admin_api_key_env",
             "development-only-change-this-admin-api-key");
+        const auto world_node_secret = secret_from_env(
+            "security.world_node_secret",
+            "security.world_node_secret_env",
+            "");
         if (scene_ticket_secret.size() < 32) {
             throw std::runtime_error(
                 "security.scene_ticket_secret must contain at least 32 bytes");
@@ -227,6 +231,15 @@ int main(int argc, char** argv) {
         if (admin_api_key.size() < 24) {
             throw std::runtime_error(
                 "security.admin_api_key must contain at least 24 bytes");
+        }
+        if (!world_node_secret.empty() &&
+            world_node_secret.size() < 32U) {
+            throw std::runtime_error(
+                "security.world_node_secret must be empty or contain at least 32 bytes");
+        }
+        if (production_mode && world_node_secret.size() < 32U) {
+            throw std::runtime_error(
+                "production_mode requires security.world_node_secret");
         }
         if (production_mode &&
             (scene_ticket_secret ==
@@ -483,7 +496,7 @@ int main(int argc, char** argv) {
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
                          node_sessions, script_world_actions, object_crossings, scripts,
-                         lease_timeout]() mutable {
+                         lease_timeout, world_node_secret]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -491,18 +504,54 @@ int main(int argc, char** argv) {
                     if (hello.type != protocol::MessageType::hello) {
                         throw std::runtime_error("HELLO required");
                     }
-                    socket.send_frame({protocol::MessageType::hello_ack, hello.request_id,
-                                       protocol::payload_from_string(
-                                           "protocol=1\nserver=opengenesis-core\n")});
+                    const auto auth_challenge =
+                        world_node_secret.empty()
+                            ? std::string{}
+                            : opengenesis::security::random_hex(16);
+                    socket.send_frame({
+                        protocol::MessageType::hello_ack,
+                        hello.request_id,
+                        protocol::payload_from_string(
+                            "protocol=1\nserver=opengenesis-core\n"
+                            "auth=" +
+                            std::string(
+                                world_node_secret.empty()
+                                    ? "none"
+                                    : "hmac-sha256") +
+                            "\nchallenge=" + auth_challenge + "\n")});
 
                     const auto registration = socket.receive_frame();
                     if (registration.type != protocol::MessageType::world_register) {
                         throw std::runtime_error("WORLD_REGISTER required");
                     }
-                    const auto registration_body = protocol::payload_as_string(registration);
+                    const auto registration_body =
+                        protocol::payload_as_string(registration);
+                    const auto registration_id =
+                        field(registration_body, "id");
+                    const auto registration_endpoint =
+                        field(registration_body, "endpoint");
+                    if (!world_node_secret.empty()) {
+                        const auto expected =
+                            opengenesis::security::hmac_sha256_hex(
+                                world_node_secret,
+                                auth_challenge + "\n" +
+                                    registration_id + "\n" +
+                                    registration_endpoint);
+                        if (!opengenesis::security::secure_equals(
+                                expected,
+                                field(registration_body, "auth"))) {
+                            socket.send_frame({
+                                protocol::MessageType::error,
+                                registration.request_id,
+                                protocol::payload_from_string(
+                                    "reason=world-node-authentication-failed\n")});
+                            throw std::runtime_error(
+                                "world node authentication failed");
+                        }
+                    }
                     const auto info = worlds->register_or_reconnect(
-                        field(registration_body, "id"), field(registration_body, "name"),
-                        field(registration_body, "endpoint"));
+                        registration_id, field(registration_body, "name"),
+                        registration_endpoint);
                     node_id = info.id;
                     generation = info.generation;
                     node_sessions->open(node_id, generation);
