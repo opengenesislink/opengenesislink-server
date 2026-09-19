@@ -882,12 +882,18 @@ void AdminHttpServer::run() {
                                 response = {.status = 400,
                                             .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                             } else {
+                                const auto host =
+                                    script_host_->apply(user->id, *script_id, result->actions);
                                 response.body = "{\"status\":\"executed\",\"instructions\":" +
                                                 std::to_string(result->instructions_executed) +
                                                 ",\"state\":\"" +
                                                 json_escape(result->state.state) +
                                                 "\",\"actions\":" +
-                                                script_actions_json(result->actions) + "}";
+                                                script_actions_json(result->actions) +
+                                                ",\"host_applied\":" +
+                                                std::to_string(host.applied) +
+                                                ",\"host_errors\":" +
+                                                string_list_json(host.errors) + "}";
                             }
                         }
                     }
