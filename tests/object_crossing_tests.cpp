@@ -45,7 +45,7 @@ int main() {
 
         const auto source_id = source.spawn_object(
             "Crossing Crate", transform, true, "user-1", "group-1",
-            opengenesis::core::perm_copy | opengenesis::core::perm_move,
+            opengenesis::core::perm_copy | opengenesis::core::perm_modify,
             opengenesis::core::perm_copy);
         require(source_id != 0, "source object created");
         require(source.set_velocity(source_id, {3.5, 0.5, 1.25}),
