@@ -287,9 +287,12 @@ _,escrows=api('/v1/economy/escrows',token=bt,expect=200)
 assert any(e['state']=='committed' and e['amount_minor']==2500
            for e in escrows['escrows']),escrows
 
-_,ledger=api('/v1/economy/ledger',token=bt,expect=200)
-assert any(e['kind']=='escrow_reserve' for e in ledger['entries']),ledger
-assert any(e['kind']=='escrow_commit' for e in ledger['entries']),ledger
+_,buyer_ledger=api('/v1/economy/ledger',token=bt,expect=200)
+assert any(e['kind']=='escrow_reserve'
+           for e in buyer_ledger['entries']),buyer_ledger
+_,seller_ledger=api('/v1/economy/ledger',token=at,expect=200)
+assert any(e['kind']=='escrow_commit'
+           for e in seller_ledger['entries']),seller_ledger
 
 _,policies=api('/v1/social/policies',token=ct,expect=200)
 assert any(p['target_user_id']==bid and p['muted'] is True
