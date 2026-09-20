@@ -1,10 +1,10 @@
 # Hypergrid Compatibility Foundation v0
 
-OpenGenesisLINK keeps OpenSimulator Hypergrid compatibility separate from native `OGL-FED/1`.
+OpenGenesisLINK keeps OpenSimulator Hypergrid compatibility separate from native OGL-FED/2.
 
-The compatibility layer follows the OpenSimulator Gatekeeper/UserAgent control-plane conventions without importing OpenSimulator code.
+The compatibility layer follows OpenSimulator Gatekeeper/UserAgent control-plane conventions without importing OpenSimulator code.
 
-Implemented through 6.0.0-dev:
+Implemented through 14.0.0-dev:
 
 - XML-RPC method parsing and struct responses
 - `link_region`
@@ -19,6 +19,7 @@ Implemented through 6.0.0-dev:
 - HomeURI verification callback before a foreign identity is recorded
 - service-token destination binding
 - persistent verified foreign visitor records with expiry cleanup
+- foreign session identity-collision protection: an existing session ID cannot be overwritten by another Agent/HomeURI/service-token identity
 - Core API for Hypergrid travel/session state
 - Hypergrid Friends `/hgfriends` adapter backed by the native FriendsStore
 - HG friend permission lookup, new/delete friendship, friendship offer validation and status notifications
@@ -40,17 +41,22 @@ Implemented through 6.0.0-dev:
 - shared portable HTTP/HTTPS callback client with certificate-chain and hostname verification
 - cross-platform tests
 
-The OpenSimulator reference behavior uses XML-RPC for Gatekeeper/UserAgent calls and JSON for `/foreignagent` agent creation. OpenGenesisLINK now parses and verifies that foreign-agent identity flow, but still returns a non-success result after verification because the legacy simulator/viewer data plane is not complete. This prevents a false compatibility claim.
+## Deliberate compatibility boundary
+
+OpenGenesisLINK parses and verifies incoming `/foreignagent` identity/circuit requests and records verified service routes.
+
+It still returns a non-success result after verification because the OpenSimulator legacy simulator/viewer data plane is not implemented.
+
+Scene Protocol v2 does **not** make an OpenSimulator/Firestorm viewer automatically compatible with the native OpenGenesisLINK World protocol. Returning Hypergrid success before the expected legacy simulator data plane exists would be a false interoperability claim.
 
 Still open:
 
-- final legacy simulator/viewer data-plane handoff after verified `/foreignagent`
-- per-grid signed XInventory requests, nonces/replay protection and remote-grid allowlists beyond the current shared-key foundation
-- broader legacy Appearance edge cases and baking compatibility
-- real OpenSimulator 0.9.3.x end-to-end interoperability validation
+- legacy simulator/viewer data-plane handoff after verified `/foreignagent`
+- real OpenSimulator 0.9.3.x end-to-end validation
+- broader legacy Appearance/baking edge cases
+- optional stronger per-grid signed XInventory mutation requests beyond the existing shared-service-key mode
 
-OGL-FED Ed25519 keys are never reused as Hypergrid secrets or session tokens.
-
+OGL-FED keys and service grants are never reused as Hypergrid credentials.
 
 ## XInventory write mode
 
@@ -62,4 +68,8 @@ inventory_write_enabled = false
 inventory_write_secret = ""
 ```
 
-When write mode is enabled, `inventory_write_secret` must contain at least 24 bytes and each legacy write request must provide the matching `SERVICEKEY` form field. Keys are compared in constant time before mutation is attempted. Use HTTPS or a private authenticated transport so the shared key is not exposed, and continue restricting the HG listener at the network/reverse-proxy layer. Native OGL-FED credentials are not reused for this compatibility mechanism.
+When write mode is enabled, `inventory_write_secret` must contain at least 24 bytes and each legacy write request must provide the matching `SERVICEKEY` form field.
+
+Keys are compared in constant time before mutation is attempted.
+
+Use HTTPS or a private authenticated transport so the shared key is not exposed, and continue restricting the HG listener at the network/reverse-proxy layer.
