@@ -121,6 +121,13 @@ std::string serialize_object_snapshot(
         << "avx=" << snapshot.angular_velocity.x << '\n'
         << "avy=" << snapshot.angular_velocity.y << '\n'
         << "avz=" << snapshot.angular_velocity.z << '\n'
+        << "mass=" << snapshot.mass << '\n'
+        << "restitution=" << snapshot.restitution << '\n'
+        << "friction=" << snapshot.friction << '\n'
+        << "linear_damping=" << snapshot.linear_damping << '\n'
+        << "angular_damping=" << snapshot.angular_damping << '\n'
+        << "gravity_scale=" << snapshot.gravity_scale << '\n'
+        << "buoyancy=" << snapshot.buoyancy << '\n'
         << "physical=" << (snapshot.physical ? 1 : 0) << '\n'
         << "parent_source=" << snapshot.parent_source_entity_id << '\n'
         << "link_number=" << snapshot.link_number << '\n'
@@ -172,6 +179,26 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
             snapshot.angular_velocity = {
                 std::stod(avx), std::stod(avy), std::stod(avz)};
         }
+        const auto mass = field(encoded, "mass");
+        const auto restitution = field(encoded, "restitution");
+        const auto friction = field(encoded, "friction");
+        const auto linear_damping = field(encoded, "linear_damping");
+        const auto angular_damping = field(encoded, "angular_damping");
+        const auto gravity_scale = field(encoded, "gravity_scale");
+        const auto buoyancy = field(encoded, "buoyancy");
+        if (!mass.empty()) snapshot.mass = std::stod(mass);
+        if (!restitution.empty()) snapshot.restitution = std::stod(restitution);
+        if (!friction.empty()) snapshot.friction = std::stod(friction);
+        if (!linear_damping.empty()) {
+            snapshot.linear_damping = std::stod(linear_damping);
+        }
+        if (!angular_damping.empty()) {
+            snapshot.angular_damping = std::stod(angular_damping);
+        }
+        if (!gravity_scale.empty()) {
+            snapshot.gravity_scale = std::stod(gravity_scale);
+        }
+        if (!buoyancy.empty()) snapshot.buoyancy = std::stod(buoyancy);
         snapshot.physical = field(encoded, "physical") == "1";
         const auto parent = field(encoded, "parent_source");
         if (!parent.empty()) snapshot.parent_source_entity_id = std::stoull(parent);
