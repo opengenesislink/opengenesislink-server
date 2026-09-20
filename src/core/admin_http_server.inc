@@ -1838,6 +1838,68 @@ void AdminHttpServer::run() {
                         if (!ok) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         else { audit_->append(user->id, "parcel.policy", *parcel_id); response.body = "{\"status\":\"updated\"}"; }
                     }
+                } else if (method == "GET" &&
+                           path.starts_with("/v1/parcels/") &&
+                           path.ends_with("/access")) {
+                    auto [session, user] = auth();
+                    constexpr std::string_view prefix = "/v1/parcels/";
+                    constexpr std::string_view suffix = "/access";
+                    const auto parcel_id = path.substr(
+                        prefix.size(),
+                        path.size() - prefix.size() - suffix.size());
+                    const auto parcel = parcels_->find(parcel_id);
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!parcel) {
+                        response = {.status = 404, .body = "{\"error\":\"parcel-not-found\"}"};
+                    } else if (parcel->owner_user_id != user->id) {
+                        response = {.status = 403, .body = "{\"error\":\"permission-denied\"}"};
+                    } else {
+                        response.body = "{\"parcel_id\":\"" + json_escape(parcel_id) +
+                                        "\",\"access\":" +
+                                        parcel_access_json(parcels_->access_list(parcel_id)) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/parcels/access") {
+                    auto [session, user] = auth();
+                    const auto parcel_id = json_string(request->body, "parcel_id");
+                    const auto target_user = json_string(request->body, "user_id");
+                    const auto allowed = json_bool(request->body, "allowed");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!parcel_id || !target_user || !allowed.has_value() ||
+                               !identities_->find_by_id(*target_user)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-parcel-access\"}"};
+                    } else {
+                        std::string reason;
+                        if (!parcels_->set_access(
+                                user->id, *parcel_id, *target_user, *allowed, reason)) {
+                            response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                user->id, "parcel.access.set", *parcel_id,
+                                *target_user + ":" + (*allowed ? "allow" : "deny"));
+                            response.body = "{\"status\":\"updated\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/parcels/access/remove") {
+                    auto [session, user] = auth();
+                    const auto parcel_id = json_string(request->body, "parcel_id");
+                    const auto target_user = json_string(request->body, "user_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!parcel_id || !target_user) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-parcel-access\"}"};
+                    } else {
+                        std::string reason;
+                        if (!parcels_->remove_access(
+                                user->id, *parcel_id, *target_user, reason)) {
+                            response = {.status = 404, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                user->id, "parcel.access.remove", *parcel_id, *target_user);
+                            response.body = "{\"status\":\"removed\"}";
+                        }
+                    }
                 } else if (method == "GET" && path == "/v1/estates") {
                     auto [session, user] = auth();
                     if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
