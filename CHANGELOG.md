@@ -1,5 +1,25 @@
 # Changelog
 
+## 14.0.0-dev — 2026-09-20
+
+Federation Completion milestone.
+
+- promoted native federation to `OGL-FED/2`
+- extended signed Travel Tokens with home-grid routing and scoped remote-service grants while retaining verification compatibility for earlier OGL-FED/1 tokens
+- added persistent audience/user/scope-bound Federation Service Grants with bounded lifetime and automatic expiry
+- home-grid grant persistence stores only a hash of the service credential
+- added native remote federation services for profile, Appearance, Inventory, exportable Assets, Social relations and Presence
+- remote Asset delivery requires subject ownership plus native `perm_export`
+- added user/operator grant revocation and peer-revocation cascading into grants and active foreign sessions
+- pinned trusted peer Ed25519 keys; key rotation requires explicit revoke/re-trust
+- foreign sessions persist home-service routing state across restart without exposing service credentials through the admin session API
+- added Federation grant metrics and safe administrative grant inspection
+- hardened Hypergrid foreign-session persistence against session-ID identity collisions
+- retained strict separation between OGL-FED/2 and the explicit OpenSimulator Hypergrid compatibility bridge
+- added dedicated OGL-FED/2 remote-services smoke coverage on Linux x86_64 and ARM64
+- added canonical `docs/OGL-FED-v2.md` and updated Hypergrid compatibility documentation
+- 14.0 does not claim global federation PKI, cross-grid content mutation, economy settlement, a stable 1.0 federation wire format or a completed OpenSimulator legacy data plane
+
 ## 13.0.0-dev — 2026-09-20
 
 Viewer & Scene Protocol Completion milestone.
