@@ -1947,6 +1947,60 @@ void AdminHttpServer::run() {
                     if (!session || !user) {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else response.body = "{\"presences\":" + presences_json(presences_->list()) + "}";
+                } else if (method == "GET" && path == "/v1/social/policies") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body = "{\"policies\":" +
+                                        social_policies_json(
+                                            social_policies_->list_for_user(user->id)) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/social/block") {
+                    auto [session, user] = auth();
+                    const auto target = json_string(request->body, "user_id");
+                    const auto blocked = json_bool(request->body, "blocked");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!target || !blocked.has_value() ||
+                               !identities_->find_by_id(*target)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-social-policy\"}"};
+                    } else {
+                        std::string reason;
+                        if (!social_policies_->set_blocked(
+                                user->id, *target, *blocked, reason)) {
+                            response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            if (*blocked) {
+                                (void)friends_->remove(user->id, *target);
+                            }
+                            audit_->append(
+                                user->id, "social.block", *target,
+                                *blocked ? "blocked" : "unblocked");
+                            response.body = "{\"status\":\"updated\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/social/mute") {
+                    auto [session, user] = auth();
+                    const auto target = json_string(request->body, "user_id");
+                    const auto muted = json_bool(request->body, "muted");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!target || !muted.has_value() ||
+                               !identities_->find_by_id(*target)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-social-policy\"}"};
+                    } else {
+                        std::string reason;
+                        if (!social_policies_->set_muted(
+                                user->id, *target, *muted, reason)) {
+                            response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                user->id, "social.mute", *target,
+                                *muted ? "muted" : "unmuted");
+                            response.body = "{\"status\":\"updated\"}";
+                        }
+                    }
                 } else if (method == "GET" && path == "/v1/social/friends") {
                     auto [session, user] = auth();
                     if (!session || !user) {
@@ -1960,6 +2014,9 @@ void AdminHttpServer::run() {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!target_id || !identities_->find_by_id(*target_id)) {
                         response = {.status = 404, .body = "{\"error\":\"user-not-found\"}"};
+                    } else if (social_policies_->blocks(user->id, *target_id) ||
+                               social_policies_->blocks(*target_id, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
                     } else {
                         std::string reason;
                         const auto relation = friends_->request(user->id, *target_id, reason);
@@ -1977,6 +2034,9 @@ void AdminHttpServer::run() {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!other_id) {
                         response = {.status = 400, .body = "{\"error\":\"missing-user-id\"}"};
+                    } else if (social_policies_->blocks(user->id, *other_id) ||
+                               social_policies_->blocks(*other_id, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
                     } else {
                         std::string reason;
                         const auto relation = friends_->accept(user->id, *other_id, reason);
@@ -2007,6 +2067,9 @@ void AdminHttpServer::run() {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!recipient || !text || !identities_->find_by_id(*recipient)) {
                         response = {.status = 400, .body = "{\"error\":\"invalid-message-fields\"}"};
+                    } else if (social_policies_->blocks(user->id, *recipient) ||
+                               social_policies_->blocks(*recipient, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
                     } else if (!friends_->are_friends(user->id, *recipient)) {
                         response = {.status = 403, .body = "{\"error\":\"recipient-not-friend\"}"};
                     } else {
@@ -2014,7 +2077,12 @@ void AdminHttpServer::run() {
                         const auto message = messages_->send(user->id, *recipient, *text, reason);
                         if (!message) response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         else {
-                            notifications_->push(*recipient, "direct_message", "Message from " + user->display_name, *text, message->id);
+                            if (!social_policies_->muted(*recipient, user->id)) {
+                                notifications_->push(
+                                    *recipient, "direct_message",
+                                    "Message from " + user->display_name,
+                                    *text, message->id);
+                            }
                             response.status = 201;
                             response.body = "{\"message_id\":\"" + message->id + "\",\"sent_unix\":" +
                                             std::to_string(message->sent_unix) + "}";
