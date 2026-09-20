@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **11.0.0-dev**.
+Current development version: **12.0.0-dev**.
 
-`11.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`12.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -14,6 +14,10 @@ Current development version: **11.0.0-dev**.
 - 256×256 terrain runtime with persistence
 - persistent Scene objects, authenticated Avatar Presence and local chat/events
 - native OpenGenesis Physics foundation
+- Physics v2 with body-vs-body and terrain contacts, restitution/friction, force/impulse/torque, damping, buoyancy and distance constraints
+- collision start/stay/end and land-collision events emitted by Region Runtime
+- rigid root rotation/translation propagation for linked object children
+- Scene Persistence v6 and Object Crossing preserve Physics v2 material state
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
 - production relational storage layer for SQLite, PostgreSQL and MariaDB with prepared parameters, bounded connection pools and transactions
 - cross-database schema migrations with SQL-authoritative Identity, Auth Session, World Registry, Region Registry, Audit, Moderation and Admin Role stores
