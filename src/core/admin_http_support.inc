@@ -384,10 +384,138 @@ std::string group_members_json(const std::vector<GroupMember>& members) {
     for(std::size_t i=0;i<members.size();++i){if(i)out<<',';const auto&m=members[i];out<<"{\"user_id\":\""<<json_escape(m.user_id)<<"\",\"role\":\""<<json_escape(m.role)<<"\",\"powers\":"<<m.powers<<",\"joined_unix\":"<<m.joined_unix<<'}';}
     out<<']';return out.str();
 }
+
+std::string group_invites_json(const std::vector<GroupInvite>& invites) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < invites.size(); ++i) {
+        if (i) out << ',';
+        const auto& invite = invites[i];
+        out << "{\"id\":\"" << json_escape(invite.id)
+            << "\",\"group_id\":\"" << json_escape(invite.group_id)
+            << "\",\"invited_user_id\":\"" << json_escape(invite.invited_user_id)
+            << "\",\"invited_by_user_id\":\"" << json_escape(invite.invited_by_user_id)
+            << "\",\"role\":\"" << json_escape(invite.role)
+            << "\",\"state\":\"" << group_invite_state_name(invite.state)
+            << "\",\"created_unix\":" << invite.created_unix
+            << ",\"expires_unix\":" << invite.expires_unix
+            << ",\"resolved_unix\":" << invite.resolved_unix << '}';
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string social_policies_json(const std::vector<SocialPolicy>& policies) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < policies.size(); ++i) {
+        if (i) out << ',';
+        const auto& policy = policies[i];
+        out << "{\"target_user_id\":\"" << json_escape(policy.target_user_id)
+            << "\",\"blocked\":" << (policy.blocked ? "true" : "false")
+            << ",\"muted\":" << (policy.muted ? "true" : "false")
+            << ",\"updated_unix\":" << policy.updated_unix << '}';
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string economy_account_json(const EconomyAccount& account,
+                                 std::string_view currency_code) {
+    std::ostringstream out;
+    out << "{\"user_id\":\"" << json_escape(account.user_id)
+        << "\",\"currency\":\"" << json_escape(currency_code)
+        << "\",\"balance_minor\":" << account.balance_minor
+        << ",\"created_unix\":" << account.created_unix
+        << ",\"updated_unix\":" << account.updated_unix << '}';
+    return out.str();
+}
+
+std::string economy_entries_json(const std::vector<EconomyEntry>& entries) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (i) out << ',';
+        const auto& entry = entries[i];
+        out << "{\"id\":\"" << json_escape(entry.id)
+            << "\",\"kind\":\"" << economy_entry_kind_name(entry.kind)
+            << "\",\"reference\":\"" << json_escape(entry.reference)
+            << "\",\"from_user\":\"" << json_escape(entry.from_user)
+            << "\",\"to_user\":\"" << json_escape(entry.to_user)
+            << "\",\"amount_minor\":" << entry.amount_minor
+            << ",\"memo\":\"" << json_escape(entry.memo)
+            << "\",\"created_unix\":" << entry.created_unix << '}';
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string economy_escrows_json(const std::vector<EconomyEscrow>& escrows) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < escrows.size(); ++i) {
+        if (i) out << ',';
+        const auto& escrow = escrows[i];
+        out << "{\"id\":\"" << json_escape(escrow.id)
+            << "\",\"reference\":\"" << json_escape(escrow.reference)
+            << "\",\"buyer_user\":\"" << json_escape(escrow.buyer_user)
+            << "\",\"seller_user\":\"" << json_escape(escrow.seller_user)
+            << "\",\"amount_minor\":" << escrow.amount_minor
+            << ",\"state\":\"" << escrow_state_name(escrow.state)
+            << "\",\"created_unix\":" << escrow.created_unix
+            << ",\"updated_unix\":" << escrow.updated_unix << '}';
+    }
+    out << ']';
+    return out.str();
+}
+
+std::string marketplace_listing_json(const MarketplaceListing& listing) {
+    std::ostringstream out;
+    out << "{\"id\":\"" << json_escape(listing.id)
+        << "\",\"seller_user_id\":\"" << json_escape(listing.seller_user_id)
+        << "\",\"asset_id\":\"" << json_escape(listing.asset_id)
+        << "\",\"title\":\"" << json_escape(listing.title)
+        << "\",\"description\":\"" << json_escape(listing.description)
+        << "\",\"price_minor\":" << listing.price_minor
+        << ",\"currency\":\"" << json_escape(listing.currency_code)
+        << "\",\"state\":\"" << marketplace_listing_state_name(listing.state)
+        << "\",\"buyer_user_id\":\"" << json_escape(listing.buyer_user_id)
+        << "\",\"sale_reference\":\"" << json_escape(listing.sale_reference)
+        << "\",\"created_unix\":" << listing.created_unix
+        << ",\"updated_unix\":" << listing.updated_unix << '}';
+    return out.str();
+}
+
+std::string marketplace_listings_json(
+    const std::vector<MarketplaceListing>& listings) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < listings.size(); ++i) {
+        if (i) out << ',';
+        out << marketplace_listing_json(listings[i]);
+    }
+    out << ']';
+    return out.str();
+}
 std::string parcels_json(const std::vector<ParcelInfo>& parcels) {
     std::ostringstream out; out << '[';
     for(std::size_t i=0;i<parcels.size();++i){if(i)out<<',';const auto&p=parcels[i];out<<"{\"id\":\""<<json_escape(p.id)<<"\",\"region_id\":\""<<json_escape(p.region_id)<<"\",\"name\":\""<<json_escape(p.name)<<"\",\"owner_user_id\":\""<<json_escape(p.owner_user_id)<<"\",\"group_id\":\""<<json_escape(p.group_id)<<"\",\"x1\":"<<p.x1<<",\"y1\":"<<p.y1<<",\"x2\":"<<p.x2<<",\"y2\":"<<p.y2<<",\"public_entry\":"<<(p.public_entry?"true":"false")<<",\"public_build\":"<<(p.public_build?"true":"false")<<",\"group_build\":"<<(p.group_build?"true":"false")<<",\"group_terraform\":"<<(p.group_terraform?"true":"false")<<'}';}
     out<<']';return out.str();
+}
+
+std::string parcel_access_json(
+    const std::vector<ParcelAccessEntry>& entries) {
+    std::ostringstream out;
+    out << '[';
+    for (std::size_t i = 0; i < entries.size(); ++i) {
+        if (i) out << ',';
+        const auto& entry = entries[i];
+        out << "{\"user_id\":\"" << json_escape(entry.user_id)
+            << "\",\"allowed\":" << (entry.allowed ? "true" : "false")
+            << ",\"updated_unix\":" << entry.updated_unix << '}';
+    }
+    out << ']';
+    return out.str();
 }
 std::string bans_json(const std::vector<BanRecord>& bans) {
     std::ostringstream out;out<<'[';for(std::size_t i=0;i<bans.size();++i){if(i)out<<',';const auto&b=bans[i];out<<"{\"id\":\""<<json_escape(b.id)<<"\",\"user_id\":\""<<json_escape(b.user_id)<<"\",\"scope\":\""<<json_escape(b.scope)<<"\",\"scope_id\":\""<<json_escape(b.scope_id)<<"\",\"reason\":\""<<json_escape(b.reason)<<"\",\"created_by\":\""<<json_escape(b.created_by)<<"\",\"created_unix\":"<<b.created_unix<<",\"expires_unix\":"<<b.expires_unix<<'}';}out<<']';return out.str();
