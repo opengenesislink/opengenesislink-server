@@ -141,6 +141,7 @@ bool FederationRuntime::revoke_peer(
     const bool revoked = trust_->revoke(grid_id);
     if (revoked) {
         (void)grants_->revoke_audience(grid_id);
+        (void)sessions_->logout_issuer(grid_id);
     }
     return revoked;
 }
