@@ -607,6 +607,130 @@ bool RegionRuntime::set_buoyancy(
     return ok;
 }
 
+bool RegionRuntime::set_physics_shape(
+    const std::uint64_t id,
+    const physics::CollisionShape shape) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() ||
+        it->second.kind != EntityKind::object ||
+        it->second.physics_body == 0) {
+        return false;
+    }
+
+    const auto half_extents = physics::Vec3{
+        std::max(0.05, it->second.transform.scale.x * 0.5),
+        std::max(0.05, it->second.transform.scale.y * 0.5),
+        std::max(0.05, it->second.transform.scale.z * 0.5)};
+    auto radius = std::max(
+        {0.05, half_extents.x, half_extents.y, half_extents.z});
+    auto capsule_half_height = 0.0;
+    if (shape == physics::CollisionShape::capsule) {
+        radius = std::max(
+            0.05,
+            std::max(
+                it->second.transform.scale.x,
+                it->second.transform.scale.y) * 0.5);
+        capsule_half_height = std::max(
+            0.0,
+            it->second.transform.scale.z * 0.5 - radius);
+    }
+    if (!physics_.set_body_radius(
+            it->second.physics_body, radius) ||
+        !physics_.set_body_shape(
+            it->second.physics_body,
+            shape,
+            half_extents,
+            capsule_half_height)) {
+        return false;
+    }
+    append_event_locked(
+        "physics_shape", id, it->second.transform,
+        physics::collision_shape_name(shape));
+    return true;
+}
+
+bool RegionRuntime::configure_character(
+    const std::uint64_t id,
+    const double max_slope_degrees,
+    const double step_height,
+    const double jump_speed) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() ||
+        it->second.kind != EntityKind::avatar ||
+        it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok = physics_.set_character_controller(
+        it->second.physics_body,
+        max_slope_degrees,
+        step_height,
+        jump_speed);
+    if (ok) {
+        append_event_locked(
+            "character_config", id, it->second.transform,
+            std::to_string(max_slope_degrees) + "," +
+                std::to_string(step_height) + "," +
+                std::to_string(jump_speed));
+    }
+    return ok;
+}
+
+bool RegionRuntime::avatar_jump(const std::uint64_t id) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() ||
+        it->second.kind != EntityKind::avatar ||
+        it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.character_jump(it->second.physics_body);
+    if (ok) {
+        append_event_locked(
+            "character_jump", id, it->second.transform);
+    }
+    return ok;
+}
+
+std::optional<RuntimeRaycastHit> RegionRuntime::raycast(
+    const physics::Vec3 origin,
+    const physics::Vec3 direction,
+    const double max_distance,
+    const std::uint64_t ignore_entity_id) const {
+    std::scoped_lock lock(mutex_);
+
+    std::uint64_t ignore_body = 0;
+    if (ignore_entity_id != 0) {
+        const auto ignored = entities_.find(ignore_entity_id);
+        if (ignored != entities_.end()) {
+            ignore_body = ignored->second.physics_body;
+        }
+    }
+
+    const auto hit = physics_.raycast(
+        origin, direction, max_distance, ignore_body);
+    if (!hit) return std::nullopt;
+
+    RuntimeRaycastHit result{
+        .entity_id = 0,
+        .point = hit->point,
+        .normal = hit->normal,
+        .distance = hit->distance,
+        .ground = hit->ground};
+    if (hit->body_id != 0) {
+        const auto entity = std::find_if(
+            entities_.begin(), entities_.end(),
+            [&](const auto& item) {
+                return item.second.physics_body == hit->body_id;
+            });
+        if (entity == entities_.end()) return std::nullopt;
+        result.entity_id = entity->first;
+    }
+    return result;
+}
+
 std::uint64_t RegionRuntime::constrain_distance(
     const std::uint64_t entity_a,
     const std::uint64_t entity_b,
@@ -631,6 +755,40 @@ std::uint64_t RegionRuntime::constrain_distance(
     }
     append_event_locked(
         "physics_constraint", entity_a, a->second.transform,
+        std::to_string(constraint) + "," +
+            std::to_string(entity_b));
+    reason.clear();
+    return constraint;
+}
+
+std::uint64_t RegionRuntime::constrain_spring(
+    const std::uint64_t entity_a,
+    const std::uint64_t entity_b,
+    const double rest_length,
+    const double stiffness,
+    const double damping,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto a = entities_.find(entity_a);
+    const auto b = entities_.find(entity_b);
+    if (a == entities_.end() || b == entities_.end() ||
+        a->second.physics_body == 0 ||
+        b->second.physics_body == 0) {
+        reason = "constraint-physical-entity-required";
+        return 0;
+    }
+    const auto constraint = physics_.add_spring_constraint(
+        a->second.physics_body,
+        b->second.physics_body,
+        rest_length,
+        stiffness,
+        damping);
+    if (constraint == 0) {
+        reason = "constraint-rejected";
+        return 0;
+    }
+    append_event_locked(
+        "physics_spring", entity_a, a->second.transform,
         std::to_string(constraint) + "," +
             std::to_string(entity_b));
     reason.clear();
@@ -1405,7 +1563,9 @@ RuntimeMetrics RegionRuntime::metrics() const {
         .scene_events = next_event_ - 1,
         .terrain_revision = terrain_.revision(),
         .collision_contacts = collision_contacts_.load(),
-        .physics_constraints = physics_.constraints().size(),
+        .physics_constraints =
+            physics_.constraints().size() +
+            physics_.spring_constraints().size(),
         .sim_fps = sim_fps_.load()};
 }
 
