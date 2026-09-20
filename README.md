@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **13.0.0-dev**.
+Current development version: **14.0.0-dev**.
 
-`13.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`14.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -41,11 +41,16 @@ Current development version: **13.0.0-dev**.
 - persistent Group channels and Group notices
 - Prometheus-compatible `/metrics` endpoint with low-cardinality Core/Region gauges
 - browser-readable Core dashboard and JSON API
-- native OGL-FED runtime with persistent Grid identity, Ed25519 Travel Tokens, Audience Binding and replay protection
+- native OGL-FED/2 runtime with persistent Grid identity, Ed25519 Travel Tokens, Audience Binding and replay protection
+- OGL-FED/2 Travel Tokens carry short-lived audience-bound remote service context for profile, Appearance, Inventory, exportable Assets, Social and Presence
+- remote service grants persist only SHA-256 token hashes on the home Grid, enforce scope/user/audience binding, expire automatically and can be explicitly revoked
+- trusted federation peer Ed25519 keys are pinned; key rotation requires explicit peer revocation before re-trust
+- peer revocation cascades into active foreign sessions and outstanding outbound service grants
 - authenticated outbound Federation travel issuance and signed inbound visitor acceptance
-- persistent foreign visitor sessions with logout/expiry lifecycle
+- persistent foreign visitor sessions retain home-service routing context across restart without exposing service tokens through the admin session API
 - incoming OGL-FED visitors receive destination-bound Scene Tickets after Region/Parcel/Estate policy checks
-- persistent Federation trust/revocation store with Core admin API
+- native Core peer-to-peer Federation service APIs provide remote profile/Appearance, Inventory, export-safe Asset, Social and Presence contracts
+- persistent Federation trust/revocation/service-grant stores with Core admin API and Prometheus visibility
 - transactional Region Crossing v3 records with position, velocity, rotation, angular velocity, Avatar Appearance/attachment context, persistent Script state and bounded physics/linkset context
 - two-phase adjacent-Region handoff with destination reservation token, explicit commit, replay rejection and rollback
 - crossing IDs remain signed into destination Scene Tickets; destination reservation is separately bound to user, Region and short-lived transaction state
@@ -70,7 +75,7 @@ Current development version: **13.0.0-dev**.
 - reusable runtime Rate Limiter and storage Schema Version guard
 - provider-neutral OGL-VOICE / OGL-VOICE-CAP contract for future hosted or self-hosted Voice
 - OpenSimulator Hypergrid compatibility gateway with `link_region`, `get_region`, `get_server_urls`, `verify_agent`, `verify_client`, `agent_is_coming_home` and `logout_agent`
-- persistent Hypergrid home-travel and verified foreign-visitor sessions
+- persistent Hypergrid home-travel and verified foreign-visitor sessions with foreign session identity-collision protection
 - Hypergrid Friends compatibility mapped directly into the native FriendsStore, including offers, validation, permissions, status and removal
 - export-safe Hypergrid Asset GET compatibility for full Asset XML, metadata and raw data with deterministic legacy UUID mapping
 - persistent native Avatar Appearance records with wearables, attachments and revision tracking
