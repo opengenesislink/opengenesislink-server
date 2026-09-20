@@ -254,6 +254,28 @@ assert parts[28]=='0.400',parts
 assert parts[29]=='0.700',parts
 assert parts[30]=='1.000',parts
 
+# Exercise the authenticated Scene Physics v2 wire contract directly.
+send(scene,126,29,
+     f'id={entity}\n'
+     'action=material\n'
+     'mass=4\n'
+     'restitution=0.2\n'
+     'friction=0.5\n')
+msg,_,physics_ack=recv(scene)
+assert msg==127,physics_ack
+assert 'status=updated' in physics_ack,physics_ack
+
+send(scene,102,30,'')
+msg,_,physics_snapshot=recv(scene)
+assert msg==103
+physics_line=next(
+    x for x in physics_snapshot.splitlines()
+    if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
+physics_parts=physics_line.split('|')
+assert physics_parts[27]=='4.000',physics_parts
+assert physics_parts[28]=='0.200',physics_parts
+assert physics_parts[29]=='0.500',physics_parts
+
 lsl=(
     'default {\n'
     '  state_entry() {\n'
