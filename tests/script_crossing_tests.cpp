@@ -173,6 +173,8 @@ int main() {
             "world.torque 0 0 3\n"
             "world.buoyancy 0.5\n"
             "world.material 3 0.4 0.7\n"
+            "world.shape box\n"
+            "world.raycast scan 1 0 0 32\n"
             "end\n";
         const auto ogl_physics_compiled =
             opengenesis::scripting::compile_script_source(
@@ -185,7 +187,7 @@ int main() {
             opengenesis::scripting::execute_script_event(
                 *ogl_physics_compiled, "touch", {});
         require(ogl_physics_run.ok &&
-                    ogl_physics_run.actions.size() == 6 &&
+                    ogl_physics_run.actions.size() == 8 &&
                     ogl_physics_run.actions[0].type ==
                         opengenesis::scripting::ScriptActionType::world_force &&
                     ogl_physics_run.actions[1].type ==
@@ -197,8 +199,15 @@ int main() {
                     ogl_physics_run.actions[4].type ==
                         opengenesis::scripting::ScriptActionType::world_buoyancy &&
                     ogl_physics_run.actions[5].type ==
-                        opengenesis::scripting::ScriptActionType::world_material,
-                "OGL physics commands execute through shared VM");
+                        opengenesis::scripting::ScriptActionType::world_material &&
+                    ogl_physics_run.actions[6].type ==
+                        opengenesis::scripting::ScriptActionType::world_shape &&
+                    ogl_physics_run.actions[6].value == "box" &&
+                    ogl_physics_run.actions[7].type ==
+                        opengenesis::scripting::ScriptActionType::world_query_raycast &&
+                    ogl_physics_run.actions[7].value ==
+                        "scan|1 0 0|32",
+                "OGL Physics v3 shape and raycast commands execute through shared VM");
 
         const std::string lsl_program =
             "default {\n"
@@ -291,6 +300,11 @@ int main() {
             "    rotation identity = llEuler2Rot(<0,0,0>);\n"
             "    vector forward = llRot2Fwd(identity);\n"
             "    float angle = llAngleBetween(identity, <0,0,0,1>);\n"
+            "    rotation axes = llAxes2Rot(<1,0,0>, <0,1,0>, <0,0,1>);\n"
+            "    vector black = llLinear2sRGB(<0,0,0>);\n"
+            "    integer modpow = llModPow(2, 10, 1000);\n"
+            "    string md5 = llMD5String(\"Hello, Avatar!\", 0);\n"
+            "    integer secondMatch = llListFindListNext([\"a\",\"b\",\"a\"], [\"a\"], 1);\n"
             "    llOwnerSay(second);\n"
             "  }\n"
             "}\n";
@@ -318,6 +332,14 @@ int main() {
                         "<1.000000, 0.000000, 0.000000>" &&
                     lsl_builtin_run.state.variables.at("angle") ==
                         "0.000000" &&
+                    lsl_builtin_run.state.variables.at("axes") ==
+                        "<0.000000, 0.000000, 0.000000, 1.000000>" &&
+                    lsl_builtin_run.state.variables.at("black") ==
+                        "<0.000000, 0.000000, 0.000000>" &&
+                    lsl_builtin_run.state.variables.at("modpow") == "24" &&
+                    lsl_builtin_run.state.variables.at("md5") ==
+                        "112abd47ceaae1c05a826828650434a6" &&
+                    lsl_builtin_run.state.variables.at("secondMatch") == "2" &&
                     lsl_builtin_run.actions.size() == 1 &&
                     lsl_builtin_run.actions.front().value == "two",
                 "expanded deterministic LSL builtins execute");
@@ -329,6 +351,7 @@ int main() {
             "    llApplyRotationalImpulse(<0,0,2>, FALSE);\n"
             "    llSetForce(<4,5,6>, FALSE);\n"
             "    llSetTorque(<0,0,3>, FALSE);\n"
+            "    llSetForceAndTorque(<7,8,9>, <0,1,2>, FALSE);\n"
             "    llSetBuoyancy(0.5);\n"
             "  }\n"
             "}\n";
@@ -343,7 +366,7 @@ int main() {
             opengenesis::scripting::execute_script_event(
                 *lsl_physics_compiled, "touch_start", {}, {}, "1");
         require(lsl_physics_run.ok &&
-                    lsl_physics_run.actions.size() == 5 &&
+                    lsl_physics_run.actions.size() == 7 &&
                     lsl_physics_run.actions[0].type ==
                         opengenesis::scripting::ScriptActionType::world_impulse &&
                     lsl_physics_run.actions[1].type ==
@@ -353,8 +376,41 @@ int main() {
                     lsl_physics_run.actions[3].type ==
                         opengenesis::scripting::ScriptActionType::world_torque &&
                     lsl_physics_run.actions[4].type ==
+                        opengenesis::scripting::ScriptActionType::world_force &&
+                    lsl_physics_run.actions[5].type ==
+                        opengenesis::scripting::ScriptActionType::world_torque &&
+                    lsl_physics_run.actions[6].type ==
                         opengenesis::scripting::ScriptActionType::world_buoyancy,
                 "LSL physics compatibility actions execute");
+
+        const std::string lsl_collision_program =
+            "default {\n"
+            "  collision_start(integer detected) {\n"
+            "    integer count = detected;\n"
+            "    llOwnerSay(\"collision\");\n"
+            "  }\n"
+            "  land_collision(vector position) {\n"
+            "    vector point = position;\n"
+            "  }\n"
+            "}\n";
+        const auto lsl_collision_compiled =
+            opengenesis::scripting::compile_script_source(
+                opengenesis::scripting::ScriptLanguage::lsl,
+                lsl_collision_program, reason);
+        require(lsl_collision_compiled &&
+                    lsl_collision_compiled->handlers.size() == 2,
+                "LSL collision event handlers compile");
+        const auto lsl_collision_run =
+            opengenesis::scripting::execute_script_event(
+                *lsl_collision_compiled,
+                "collision_start", {}, {}, "1");
+        require(lsl_collision_run.ok &&
+                    lsl_collision_run.state.variables.at("detected") == "1" &&
+                    lsl_collision_run.state.variables.at("count") == "1" &&
+                    lsl_collision_run.actions.size() == 1 &&
+                    lsl_collision_run.actions.front().type ==
+                        opengenesis::scripting::ScriptActionType::notify_owner,
+                "LSL collision event payload executes through shared VM");
 
         require(opengenesis::scripting::lsl_function_catalog().size() >= 500,
                 "LSL canonical function catalog is populated");
@@ -380,20 +436,20 @@ int main() {
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::implemented) ==
-                        56 &&
+                        62 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::partial) ==
-                        29 &&
+                        33 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::recognized) ==
-                        413 &&
+                        403 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
                         25,
-                "LSL function status matrix matches 12.0 contract");
+                "LSL function status matrix matches 16.0 contract");
         require(lsl_events.size() == 44 &&
                     count_status(
                         lsl_events,
@@ -402,18 +458,26 @@ int main() {
                     count_status(
                         lsl_events,
                         opengenesis::scripting::ScriptFeatureStatus::partial) ==
-                        3,
-                "LSL event status matrix matches 9.0 contract");
-        require(ogl_features.size() == 37 &&
+                        9 &&
+                    count_status(
+                        lsl_events,
+                        opengenesis::scripting::ScriptFeatureStatus::recognized) ==
+                        33 &&
+                    count_status(
+                        lsl_events,
+                        opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
+                        1,
+                "LSL event status matrix matches 16.0 contract");
+        require(ogl_features.size() == 39 &&
                     count_status(
                         ogl_features,
                         opengenesis::scripting::ScriptFeatureStatus::implemented) ==
-                        37 &&
+                        39 &&
                     count_status(
                         ogl_features,
                         opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
                         0,
-                "OGL feature status matrix matches 12.0 contract");
+                "OGL feature status matrix matches 16.0 contract");
 
 
         auto identities = std::make_shared<opengenesis::core::IdentityStore>(
@@ -458,6 +522,7 @@ int main() {
             "buoyancy 0.25\n"
             "material 2 0.2 0.6\n"
             "physics 1\n"
+            "shape box\n"
             "text Runtime v3\n"
             "say Hello region\n"
             "whisper Quiet region\n"
@@ -468,20 +533,21 @@ int main() {
             "water_level water\n"
             "world_time clock\n"
             "nearby_avatars nearby 32\n"
+            "raycast scan 1 0 0 32\n"
             "end\n";
         const auto host_compiled =
             opengenesis::scripting::compile_script(host_program, reason);
         require(host_compiled.has_value(), "Script host program compiles");
         const auto host_vm = opengenesis::scripting::execute_script_event(
             *host_compiled, "touch", {});
-        require(host_vm.ok && host_vm.actions.size() == 24,
-                "Script host and World physics actions emitted");
+        require(host_vm.ok && host_vm.actions.size() == 26,
+                "Script host and Physics v3 World actions emitted");
         const auto host_result = host.apply(
             alice->id, "host-script", host_vm.actions, "region-a/42");
-        require(host_result.applied == 24 && host_result.errors.empty(),
-                "Script host and World physics actions applied");
-        require(world_actions->size() == 22,
-                "Script World physics Actions queued");
+        require(host_result.applied == 26 && host_result.errors.empty(),
+                "Script host and Physics v3 World actions applied");
+        require(world_actions->size() == 24,
+                "Script World Physics v3 actions queued");
 
         const auto queue_now = unix_now() * 1000;
         const auto move_action = world_actions->lease("region-a", queue_now);
@@ -512,7 +578,7 @@ int main() {
                     rotate_action->id, "temporary-world-error", queue_now + 1000),
                 "Script World Action NACK schedules retry");
 
-        for (int index = 0; index < 20; ++index) {
+        for (int index = 0; index < 22; ++index) {
             const auto action = restored_actions.lease("region-a", queue_now);
             require(action.has_value(), "other Script World Action leased");
             require(restored_actions.ack(action->id),
