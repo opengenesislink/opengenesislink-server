@@ -4,6 +4,7 @@
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/world/region_runtime.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -175,7 +176,8 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                         std::stod(fields[17]), std::stod(fields[18]),
                         std::stod(fields[19])};
                 }
-                if (fields.size() == 26 || fields.size() == 33) {
+                if (fields.size() == 26 || fields.size() == 33 ||
+                    fields.size() == 38) {
                     angular_velocity = {
                         std::stod(fields[20]), std::stod(fields[21]),
                         std::stod(fields[22])};
