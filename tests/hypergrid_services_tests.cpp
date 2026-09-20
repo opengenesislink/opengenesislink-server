@@ -343,6 +343,29 @@ int main() {
                     reason),
                 "foreign service routes persisted");
 
+        require(!sessions->upsert_foreign(
+                    {.session_id =
+                         "87654321-4321-4321-8321-cba987654321",
+                     .agent_id =
+                         "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                     .home_uri = "https://attacker.example:8002",
+                     .asset_uri = "https://attacker.example:8002",
+                     .inventory_uri = "https://attacker.example:8002",
+                     .avatar_uri = "https://attacker.example:8002",
+                     .im_uri = "https://attacker.example:8002",
+                     .service_token =
+                         "http://local.example:8002;other-token",
+                     .destination_region = "region-a",
+                     .first_name = "Other",
+                     .last_name = "Resident",
+                     .client_ip = "192.0.2.91",
+                     .verified = true,
+                     .created_unix = now,
+                     .expires_unix = now + 600},
+                    reason) &&
+                    reason == "foreign-session-collision",
+                "foreign session identity collision rejected");
+
         std::string send_reason;
         require(!hg_im.send_remote(
                     user->id, user->display_name, remote_agent,
