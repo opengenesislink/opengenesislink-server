@@ -285,6 +285,20 @@ std::optional<std::string> translate_call(
              (name == "llSetForce" ? "force " : "torque "));
         return command + *value;
     }
+    if (name == "llSetForceAndTorque") {
+        if (args.size() != 3U ||
+            !false_constant(args[2])) {
+            reason = "lsl-world-space-physics-only";
+            return std::nullopt;
+        }
+        const auto force = vector3(args[0]);
+        const auto torque = vector3(args[1]);
+        if (!force || !torque) {
+            reason = "lsl-vector-constant-required";
+            return std::nullopt;
+        }
+        return "force " + *force + "\ntorque " + *torque;
+    }
     if (name == "llSetBuoyancy") {
         if (args.size() != 1U) {
             reason = "lsl-invalid-buoyancy";
@@ -629,9 +643,9 @@ const std::vector<ScriptFeature>& lsl_event_catalog() {
         {"at_rot_target", "event", ScriptFeatureStatus::recognized},
         {"at_target", "event", ScriptFeatureStatus::recognized},
         {"changed", "event", ScriptFeatureStatus::recognized},
-        {"collision", "event", ScriptFeatureStatus::recognized},
-        {"collision_end", "event", ScriptFeatureStatus::recognized},
-        {"collision_start", "event", ScriptFeatureStatus::recognized},
+        {"collision", "event", ScriptFeatureStatus::partial},
+        {"collision_end", "event", ScriptFeatureStatus::partial},
+        {"collision_start", "event", ScriptFeatureStatus::partial},
         {"control", "event", ScriptFeatureStatus::recognized},
         {"dataserver", "event", ScriptFeatureStatus::recognized},
         {"email", "event", ScriptFeatureStatus::recognized},
@@ -642,9 +656,9 @@ const std::vector<ScriptFeature>& lsl_event_catalog() {
         {"game_control", "event", ScriptFeatureStatus::recognized},
         {"http_request", "event", ScriptFeatureStatus::recognized},
         {"http_response", "event", ScriptFeatureStatus::recognized},
-        {"land_collision", "event", ScriptFeatureStatus::recognized},
-        {"land_collision_end", "event", ScriptFeatureStatus::recognized},
-        {"land_collision_start", "event", ScriptFeatureStatus::recognized},
+        {"land_collision", "event", ScriptFeatureStatus::partial},
+        {"land_collision_end", "event", ScriptFeatureStatus::partial},
+        {"land_collision_start", "event", ScriptFeatureStatus::partial},
         {"linkset_data", "event", ScriptFeatureStatus::recognized},
         {"link_message", "event", ScriptFeatureStatus::recognized},
         {"listen", "event", ScriptFeatureStatus::partial},
