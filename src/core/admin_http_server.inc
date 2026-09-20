@@ -9,6 +9,9 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<PresenceStore> presences,
                                  std::shared_ptr<FriendsStore> friends,
                                  std::shared_ptr<MessageStore> messages,
+                                 std::shared_ptr<SocialPolicyStore> social_policies,
+                                 std::shared_ptr<EconomyLedger> economy,
+                                 std::shared_ptr<MarketplaceStore> marketplace,
                                  std::shared_ptr<GroupStore> groups,
                                  std::shared_ptr<ParcelStore> parcels,
                                  std::shared_ptr<ModerationStore> moderation,
@@ -35,7 +38,9 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
     : address_(std::move(address)), port_(port), worlds_(std::move(worlds)), regions_(std::move(regions)),
       identities_(std::move(identities)), sessions_(std::move(sessions)), assets_(std::move(assets)),
       appearance_(std::move(appearance)), inventory_(std::move(inventory)), presences_(std::move(presences)), friends_(std::move(friends)),
-      messages_(std::move(messages)), groups_(std::move(groups)), parcels_(std::move(parcels)),
+      messages_(std::move(messages)), social_policies_(std::move(social_policies)),
+      economy_(std::move(economy)), marketplace_(std::move(marketplace)),
+      groups_(std::move(groups)), parcels_(std::move(parcels)),
       moderation_(std::move(moderation)), audit_(std::move(audit)), estates_(std::move(estates)),
       landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
       group_channels_(std::move(group_channels)), crossings_(std::move(crossings)),
@@ -49,8 +54,10 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
       scene_ticket_lifetime_(scene_ticket_lifetime) {
-    if (!admin_roles_) {
-        throw std::invalid_argument("admin role store is required");
+    if (!admin_roles_ || !social_policies_ || !economy_ ||
+        !marketplace_) {
+        throw std::invalid_argument(
+            "admin platform service stores are required");
     }
 }
 
