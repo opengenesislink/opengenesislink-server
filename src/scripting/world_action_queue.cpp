@@ -39,6 +39,12 @@ std::optional<ScriptWorldActionType> parse_type(const std::string_view value) {
     if (value == "scale") return ScriptWorldActionType::scale;
     if (value == "velocity") return ScriptWorldActionType::velocity;
     if (value == "angular_velocity") return ScriptWorldActionType::angular_velocity;
+    if (value == "force") return ScriptWorldActionType::force;
+    if (value == "impulse") return ScriptWorldActionType::impulse;
+    if (value == "angular_impulse") return ScriptWorldActionType::angular_impulse;
+    if (value == "torque") return ScriptWorldActionType::torque;
+    if (value == "buoyancy") return ScriptWorldActionType::buoyancy;
+    if (value == "material") return ScriptWorldActionType::material;
     if (value == "physics") return ScriptWorldActionType::physics;
     if (value == "text") return ScriptWorldActionType::text;
     if (value == "say") return ScriptWorldActionType::chat_say;
@@ -62,6 +68,12 @@ const char* script_world_action_name(const ScriptWorldActionType type) noexcept 
         case ScriptWorldActionType::scale: return "scale";
         case ScriptWorldActionType::velocity: return "velocity";
         case ScriptWorldActionType::angular_velocity: return "angular_velocity";
+        case ScriptWorldActionType::force: return "force";
+        case ScriptWorldActionType::impulse: return "impulse";
+        case ScriptWorldActionType::angular_impulse: return "angular_impulse";
+        case ScriptWorldActionType::torque: return "torque";
+        case ScriptWorldActionType::buoyancy: return "buoyancy";
+        case ScriptWorldActionType::material: return "material";
         case ScriptWorldActionType::physics: return "physics";
         case ScriptWorldActionType::text: return "text";
         case ScriptWorldActionType::chat_say: return "say";
