@@ -6,6 +6,8 @@ OpenGenesisLINK Server 13.0.0-dev is the **Viewer & Scene Protocol Completion** 
 
 - repository: `opengenesislink/opengenesislink-server`
 - pull request: #18
+- final tested PR head: `b677ba64cd58c45cf747ba4ee11e13a253dc90a9`
+- squash merge: `1b4c9454c4b15693c7a07772f7ac133f80888615`
 - version: `13.0.0-dev`
 - implementation language: C++23
 - license: MPL 2.0
@@ -305,6 +307,28 @@ Final acceptance requires:
 - MariaDB integration
 - all existing unit/smoke/crossing tests
 - dedicated Viewer/Scene v2 smoke
+
+## Acceptance result
+
+All required gates passed on the final PR head `b677ba64cd58c45cf747ba4ee11e13a253dc90a9`:
+
+- Linux x86_64: PASS
+- Linux ARM64/aarch64: PASS
+- Windows x86_64/MSVC: PASS
+- unit tests: PASS
+- integrated world/social/handoff smoke: PASS
+- Script World query/ACK smoke: PASS
+- OGL/LSL ScriptEngine smoke: PASS
+- Crossing v3 smoke: PASS
+- Object Crossing smoke: PASS
+- Viewer bootstrap / Scene v2 smoke: PASS on x86_64 and ARM64
+- SQLite integration: PASS
+- PostgreSQL integration: PASS
+- MariaDB integration: PASS
+
+Canonical 13.0 squash merge:
+
+`1b4c9454c4b15693c7a07772f7ac133f80888615`
 
 ## Server state after 13.0
 

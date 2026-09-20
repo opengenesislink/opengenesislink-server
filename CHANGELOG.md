@@ -18,6 +18,8 @@ Viewer & Scene Protocol Completion milestone.
 - added `docs/SCENE-PROTOCOL-v2.md` and `docs/VIEWER-CONTRACT-13.0.md` as the canonical server handover for the separate Viewer project
 - added a dedicated Core → Viewer bootstrap → Scene v2 end-to-end smoke test to Linux x86_64 and ARM64 CI
 - 13.0 defines the native server contract only; it does not claim that the separate OpenGenesisLINK Viewer application is implemented or that the stable 1.0 wire protocol is frozen
+- final tested PR head: `b677ba64cd58c45cf747ba4ee11e13a253dc90a9`
+- squash merge: `1b4c9454c4b15693c7a07772f7ac133f80888615`
 
 ## 12.0.0-dev — 2026-09-20
 
