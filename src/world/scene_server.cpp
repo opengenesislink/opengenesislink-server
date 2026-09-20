@@ -153,10 +153,20 @@ std::string serialize_snapshot(const RegionRuntime& region) {
                 transfer ? transfer->velocity : physics::Vec3{};
             const physics::Vec3 angular =
                 transfer ? transfer->angular_velocity : physics::Vec3{};
+            const auto body = region.physics_body_state(entity.id);
             output << '|' << velocity.x << '|' << velocity.y << '|' << velocity.z
-                   << '|' << angular.x << '|' << angular.y << '|' << angular.z;
+                   << '|' << angular.x << '|' << angular.y << '|' << angular.z
+                   << '|' << (body ? body->mass : 0.0)
+                   << '|' << (body ? body->restitution : 0.0)
+                   << '|' << (body ? body->friction : 0.0)
+                   << '|' << (body ? body->buoyancy : 0.0);
         } else {
-            output << "|0|0|0|0|0|0";
+            const auto body = region.physics_body_state(entity.id);
+            output << "|0|0|0|0|0|0"
+                   << '|' << (body ? body->mass : 0.0)
+                   << '|' << (body ? body->restitution : 0.0)
+                   << '|' << (body ? body->friction : 0.0)
+                   << '|' << (body ? body->buoyancy : 0.0);
         }
         output << '\n';
     }
@@ -203,7 +213,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
                            protocol::payload_from_string(
                                "protocol=1\nserver=opengenesis-scene\nauth=scene-ticket-v1\n"
                                "movement=avatar-move-v1\ncapabilities=scene-capabilities-v1\n"
-                               "object_runtime=linkset-v1,motion-v1,text-v1\n")});
+                               "object_runtime=linkset-v2,motion-v1,text-v1,physics-v2,collision-events-v1\n")});
 
         const auto join = socket.receive_frame();
         if (join.type != protocol::MessageType::scene_join) throw std::runtime_error("SCENE_JOIN required");
@@ -451,6 +461,90 @@ void handle_client(opengenesis::network::TcpSocket socket,
                     protocol::payload_from_string(
                         ok ? "status=motion-updated\n"
                            : "reason=physical-object-motion-denied\n")});
+            } else if (frame.type == protocol::MessageType::entity_physics) {
+                if (!security::has_scene_capability(
+                        claims, "scene.object.modify.own")) {
+                    send_capability_error(
+                        socket, frame, "scene.object.modify.own");
+                    continue;
+                }
+                const auto id = integer(request, "id");
+                const auto current = region->entity(id);
+                const auto action = field(request, "action");
+                const bool permitted =
+                    current && current->kind == EntityKind::object &&
+                    can_modify_object(*current, claims);
+                bool ok = false;
+                std::string reason = "physics-operation-denied";
+                std::uint64_t constraint_id = 0;
+
+                if (permitted &&
+                    (action == "force" || action == "impulse" ||
+                     action == "angular_impulse" || action == "torque")) {
+                    const physics::Vec3 vector{
+                        number(request, "x", 0.0),
+                        number(request, "y", 0.0),
+                        number(request, "z", 0.0)};
+                    if (action == "force") {
+                        ok = region->apply_force(id, vector);
+                    } else if (action == "impulse") {
+                        ok = region->apply_impulse(id, vector);
+                    } else if (action == "angular_impulse") {
+                        ok = region->apply_angular_impulse(id, vector);
+                    } else {
+                        ok = region->apply_torque(id, vector);
+                    }
+                    reason = ok ? "" : "physical-object-required";
+                } else if (permitted && action == "buoyancy") {
+                    ok = region->set_buoyancy(
+                        id, number(request, "value", 0.0));
+                    reason = ok ? "" : "physical-object-required";
+                } else if (permitted && action == "material") {
+                    ok = region->set_physics_material(
+                        id,
+                        number(request, "mass", 1.0),
+                        number(request, "restitution", 0.15),
+                        number(request, "friction", 0.6));
+                    reason = ok ? "" : "invalid-physics-material";
+                } else if (permitted && action == "constraint") {
+                    const auto other_id = integer(request, "other_id");
+                    const auto other = region->entity(other_id);
+                    if (other && other->kind == EntityKind::object &&
+                        can_modify_object(*other, claims)) {
+                        constraint_id = region->constrain_distance(
+                            id, other_id,
+                            number(request, "rest_length", 1.0),
+                            number(request, "stiffness", 1.0),
+                            reason);
+                        ok = constraint_id != 0;
+                    }
+                } else if (permitted &&
+                           action == "constraint_remove") {
+                    constraint_id = integer(request, "constraint_id");
+                    ok = constraint_id != 0 &&
+                         region->remove_constraint(constraint_id);
+                    reason = ok ? "" : "constraint-not-found";
+                }
+
+                std::ostringstream response;
+                if (ok) {
+                    response << "status=updated\n";
+                    if (constraint_id != 0) {
+                        response << "constraint_id="
+                                 << constraint_id << '\n';
+                    }
+                } else {
+                    response << "reason="
+                             << (reason.empty()
+                                     ? "physics-operation-denied"
+                                     : reason)
+                             << '\n';
+                }
+                socket.send_frame({
+                    ok ? protocol::MessageType::entity_physics_ack
+                       : protocol::MessageType::error,
+                    frame.request_id,
+                    protocol::payload_from_string(response.str())});
             } else if (frame.type == protocol::MessageType::chat_send) {
                 if (!security::has_scene_capability(claims, "scene.chat")) {
                     send_capability_error(socket, frame, "scene.chat");
