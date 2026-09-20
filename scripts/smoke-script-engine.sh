@@ -211,9 +211,10 @@ ogl=(
     'else\n'
     'stop\n'
     'endif\n'
+    'world.physics 1\n'
     'world.material 3 0.4 0.7\n'
     'world.buoyancy 1\n'
-    'world.impulse 0 0 1\n'
+    'world.impulse 0 0 0\n'
     'world.text OGL online\n'
     'goto active\n'
     'end\n'
@@ -234,7 +235,7 @@ status,ogl_run=api('/v1/scripts/event','POST',{
     'event':'touch'},token)
 assert status==200,ogl_run
 assert ogl_run['state']=='active',ogl_run
-assert ogl_run['host_applied']==5,ogl_run
+assert ogl_run['host_applied']==6,ogl_run
 assert ogl_run['host_errors']==[],ogl_run
 
 time.sleep(1.0)
