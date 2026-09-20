@@ -23,7 +23,7 @@ std::string clean(std::string value) {
     }
     if (value.size() > 512U) value.resize(512U);
     return value;
-
+}
 
 std::optional<std::string> cell(
     const storage::DatabaseRow& row,
