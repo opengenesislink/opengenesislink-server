@@ -6,6 +6,8 @@ OpenGenesisLINK Server 15.0.0-dev is the **Platform Services Completion** milest
 
 - repository: `opengenesislink/opengenesislink-server`
 - pull request: #20
+- final tested PR head: `e82d137d7ed10494b752cbc4d8b21974a52790ac`
+- squash merge: `1c39990e016d91e4a434210f0295dbaa8286de64`
 - version: `15.0.0-dev`
 - implementation: C++23
 - license: MPL 2.0
@@ -200,7 +202,27 @@ The dedicated 15.0 smoke verifies:
 
 ## Acceptance result
 
-The exact final tested PR head and CI result are intentionally recorded by the post-merge documentation-only follow-up after all required CI gates pass. This prevents documentation from claiming acceptance before the final code/document head is actually tested.
+All required gates passed on final PR head `e82d137d7ed10494b752cbc4d8b21974a52790ac`:
+
+- Linux x86_64 warnings-as-errors build: PASS
+- Linux ARM64/aarch64 warnings-as-errors build: PASS
+- Windows x86_64/MSVC warnings-as-errors build: PASS
+- all unit tests: PASS
+- World/Social/Handoff smoke: PASS on Linux x86_64 and ARM64
+- Script World query/ACK smoke: PASS on Linux x86_64 and ARM64
+- OGL/LSL ScriptEngine smoke: PASS on Linux x86_64 and ARM64
+- Crossing v3 smoke: PASS on Linux x86_64 and ARM64
+- Object Crossing smoke: PASS on Linux x86_64 and ARM64
+- Viewer Bootstrap/Scene v2 smoke: PASS on Linux x86_64 and ARM64
+- OGL-FED/2 Remote Services smoke: PASS on Linux x86_64 and ARM64
+- Platform Services smoke: PASS on Linux x86_64 and ARM64
+- SQLite integration: PASS
+- PostgreSQL integration: PASS
+- MariaDB integration: PASS
+
+Canonical 15.0 squash merge:
+
+`1c39990e016d91e4a434210f0295dbaa8286de64`
 
 ## Explicit non-claims
 
