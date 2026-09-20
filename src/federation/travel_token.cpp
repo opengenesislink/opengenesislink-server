@@ -64,11 +64,11 @@ std::string b64url_decode(std::string value) {
         else if (c == '_') c = '/';
     }
     while ((value.size() % 4) != 0) value.push_back('=');
-    return security::base64_decode(value, 16 * 1024);
+    return security::base64_decode(value, 32U * 1024U);
 }
 
 std::string serialize(const TravelTokenClaims& claims) {
-    return "v=1\n"
+    return "v=2\n"
            "iss=" + hex_text(claims.issuer_grid) + "\n"
            "aud=" + hex_text(claims.audience_grid) + "\n"
            "sub=" + hex_text(claims.subject_user) + "\n"
@@ -76,6 +76,10 @@ std::string serialize(const TravelTokenClaims& claims) {
            "origin=" + hex_text(claims.origin_region) + "\n"
            "dest=" + hex_text(claims.destination_region) + "\n"
            "sid=" + hex_text(claims.session_id) + "\n"
+           "home=" + hex_text(claims.home_url) + "\n"
+           "grant=" + hex_text(claims.service_grant_id) + "\n"
+           "service=" + hex_text(claims.service_token) + "\n"
+           "scopes=" + hex_text(claims.service_capabilities) + "\n"
            "nonce=" + hex_text(claims.nonce) + "\n"
            "iat=" + std::to_string(claims.issued_unix) + "\n"
            "exp=" + std::to_string(claims.expires_unix) + "\n";
@@ -103,6 +107,13 @@ std::optional<std::int64_t> integer(
     return result;
 }
 
+std::string decoded_or_empty(
+    const std::unordered_map<std::string, std::string>& values,
+    const std::string& key) {
+    const auto it = values.find(key);
+    return it == values.end() ? std::string{} : unhex_text(it->second);
+}
+
 } // namespace
 
 IssuedTravelToken issue_travel_token(const std::string_view private_key_hex,
@@ -112,6 +123,17 @@ IssuedTravelToken issue_travel_token(const std::string_view private_key_hex,
         claims.subject_user.empty() || claims.destination_region.empty() ||
         claims.session_id.empty()) {
         throw std::runtime_error("incomplete OGL-FED travel claims");
+    }
+
+    const bool has_service_context =
+        !claims.service_grant_id.empty() || !claims.service_token.empty() ||
+        !claims.service_capabilities.empty() || !claims.home_url.empty();
+    if (has_service_context &&
+        (claims.service_grant_id.empty() ||
+         claims.service_token.size() < 32U ||
+         claims.service_capabilities.empty() ||
+         claims.home_url.empty())) {
+        throw std::runtime_error("incomplete OGL-FED service context");
     }
 
     lifetime = std::clamp(lifetime, std::chrono::seconds{30}, std::chrono::seconds{900});
@@ -133,16 +155,25 @@ std::optional<TravelTokenClaims> verify_travel_token(
     const std::string_view expected_issuer) {
     try {
         const auto split = token.find('.');
-        if (split == std::string_view::npos || token.find('.', split + 1) != std::string_view::npos) {
+        if (split == std::string_view::npos ||
+            token.find('.', split + 1) != std::string_view::npos) {
             return std::nullopt;
         }
 
-        const auto payload = b64url_decode(std::string{token.substr(0, split)});
-        const auto signature = b64url_decode(std::string{token.substr(split + 1)});
-        if (!verify_ed25519(public_key_hex, payload, signature)) return std::nullopt;
+        const auto payload =
+            b64url_decode(std::string{token.substr(0, split)});
+        const auto signature =
+            b64url_decode(std::string{token.substr(split + 1)});
+        if (!verify_ed25519(public_key_hex, payload, signature)) {
+            return std::nullopt;
+        }
 
         const auto values = fields(payload);
-        if (values.find("v") == values.end() || values.at("v") != "1") return std::nullopt;
+        const auto version = values.find("v");
+        if (version == values.end() ||
+            (version->second != "1" && version->second != "2")) {
+            return std::nullopt;
+        }
 
         const auto iat = integer(values, "iat");
         const auto exp = integer(values, "exp");
@@ -156,17 +187,41 @@ std::optional<TravelTokenClaims> verify_travel_token(
             .origin_region = unhex_text(values.at("origin")),
             .destination_region = unhex_text(values.at("dest")),
             .session_id = unhex_text(values.at("sid")),
+            .home_url = decoded_or_empty(values, "home"),
+            .service_grant_id = decoded_or_empty(values, "grant"),
+            .service_token = decoded_or_empty(values, "service"),
+            .service_capabilities = decoded_or_empty(values, "scopes"),
             .nonce = unhex_text(values.at("nonce")),
             .issued_unix = *iat,
             .expires_unix = *exp};
 
         const auto now = unix_now();
         if (claims.audience_grid != expected_audience) return std::nullopt;
-        if (!expected_issuer.empty() && claims.issuer_grid != expected_issuer) return std::nullopt;
-        if (claims.nonce.empty() || claims.expires_unix <= now ||
-            claims.issued_unix > now + 30 || claims.expires_unix <= claims.issued_unix ||
+        if (!expected_issuer.empty() &&
+            claims.issuer_grid != expected_issuer) {
+            return std::nullopt;
+        }
+        if (claims.nonce.empty() ||
+            claims.expires_unix <= now ||
+            claims.issued_unix > now + 30 ||
+            claims.expires_unix <= claims.issued_unix ||
             claims.expires_unix - claims.issued_unix > 900) {
             return std::nullopt;
+        }
+
+        if (version->second == "2") {
+            const bool any_service =
+                !claims.home_url.empty() ||
+                !claims.service_grant_id.empty() ||
+                !claims.service_token.empty() ||
+                !claims.service_capabilities.empty();
+            if (any_service &&
+                (claims.home_url.empty() ||
+                 claims.service_grant_id.empty() ||
+                 claims.service_token.size() < 32U ||
+                 claims.service_capabilities.empty())) {
+                return std::nullopt;
+            }
         }
         return claims;
     } catch (...) {
