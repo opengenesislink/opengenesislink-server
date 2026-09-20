@@ -924,7 +924,14 @@ bool RegionRuntime::import_object(
         snapshot.floating_text.size() > 512U ||
         !finite_vec(destination_position) ||
         !finite_vec(snapshot.velocity) ||
-        !finite_vec(snapshot.angular_velocity)) {
+        !finite_vec(snapshot.angular_velocity) ||
+        !std::isfinite(snapshot.mass) ||
+        !std::isfinite(snapshot.restitution) ||
+        !std::isfinite(snapshot.friction) ||
+        !std::isfinite(snapshot.linear_damping) ||
+        !std::isfinite(snapshot.angular_damping) ||
+        !std::isfinite(snapshot.gravity_scale) ||
+        !std::isfinite(snapshot.buoyancy)) {
         reason = "invalid-object-transfer-snapshot";
         return false;
     }
@@ -1028,7 +1035,14 @@ bool RegionRuntime::import_linkset(
             !finite_vec(member.transform.rotation) ||
             !finite_vec(member.transform.scale) ||
             !finite_vec(member.velocity) ||
-            !finite_vec(member.angular_velocity)) {
+            !finite_vec(member.angular_velocity) ||
+            !std::isfinite(member.mass) ||
+            !std::isfinite(member.restitution) ||
+            !std::isfinite(member.friction) ||
+            !std::isfinite(member.linear_damping) ||
+            !std::isfinite(member.angular_damping) ||
+            !std::isfinite(member.gravity_scale) ||
+            !std::isfinite(member.buoyancy)) {
             reason = "invalid-linkset-member";
             return false;
         }
