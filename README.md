@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **9.0.0-dev**.
+Current development version: **10.0.0-dev**.
 
-`9.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`10.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -15,6 +15,10 @@ Current development version: **9.0.0-dev**.
 - persistent Scene objects, authenticated Avatar Presence and local chat/events
 - native OpenGenesis Physics foundation
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
+- production relational storage layer for SQLite, PostgreSQL and MariaDB with prepared parameters, bounded connection pools and transactions
+- cross-database schema migrations with SQL-authoritative Identity, Auth Session, World Registry, Region Registry, Audit, Moderation and Admin Role stores
+- production-mode secret loading from environment variables with development-secret refusal and database TLS policy validation
+- storage health reporting through `/health`, `/v1/storage/status`, `/v1/status`, Prometheus metrics and the `opengenesis-storage` utility
 - short-lived HMAC-signed Scene Tickets with explicit capabilities, groups and server-selected spawn coordinates
 - authenticated avatar movement, Region boundary detection, teleport tickets and adjacent-Region handoff
 - live World-to-Core Presence snapshots

@@ -1,5 +1,26 @@
 # Changelog
 
+## 10.0.0-dev — 2026-09-20
+
+Production Server Foundation milestone.
+
+- added a real relational database driver layer for SQLite, PostgreSQL and MariaDB/MariaDB Connector-C
+- added prepared parameters for all three backends, bounded connection pools, transactions, ping/reconnect handling and database health counters
+- added cross-database schema migrations with schema-version tracking and idempotent migration execution
+- moved Identity, Auth Sessions, World Registry, Region Registry, Audit, Moderation and Admin Roles to SQL-authoritative stores when a database backend is configured
+- retained the existing file-store paths as explicit legacy/development compatibility mode
+- added `[database]` configuration for backend, SQLite path, host, port, database, user, password/environment password, pool size, connection timeout and TLS policy
+- added production-mode validation that rejects development secrets and supports environment-backed Scene Ticket, Admin API, World Node and database credentials
+- added storage visibility to `/health`, `/v1/storage/status`, `/v1/status` and Prometheus metrics
+- added the `opengenesis-storage` utility for storage status/schema inspection
+- added live database integration CI covering SQLite, PostgreSQL 17 and MariaDB 11.8
+- Linux x86_64 and Linux ARM64/aarch64 build and run the production database client layer under warnings-as-errors
+- Windows x86_64/MSVC builds the same production foundation through vcpkg and warnings-as-errors
+- fixed MariaDB numeric result decoding after live integration exposed truncated one-byte result buffers
+- made environment-secret loading portable and MSVC-safe
+- final tested PR head: `c8d72075feee07fe091ceecc3f70461f125ced90`
+- squash merge: `d895d8890346a12595590139254ac2e0f3a96298`
+
 ## 9.0.0-dev — 2026-09-19
 
 Multi-language ScriptEngine, native OGL language and LSL compatibility milestone.
