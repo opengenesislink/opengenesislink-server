@@ -240,6 +240,19 @@ bool PhysicsWorld::apply_impulse(
     return true;
 }
 
+bool PhysicsWorld::apply_angular_impulse(
+    const std::uint64_t id, const Vec3 impulse) {
+    if (!finite_vec(impulse)) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = bodies_.find(id);
+    if (it == bodies_.end() || !it->second.dynamic) return false;
+    add_scaled(
+        it->second.angular_velocity,
+        impulse,
+        inverse_mass(it->second));
+    return true;
+}
+
 bool PhysicsWorld::apply_torque(
     const std::uint64_t id, const Vec3 torque) {
     if (!finite_vec(torque)) return false;
