@@ -60,6 +60,7 @@ add_library(opengenesis-foundation
     src/federation/replay_cache.cpp
     src/federation/trust_store.cpp
     src/federation/session_store.cpp
+    src/federation/service_grant_store.cpp
     src/federation/runtime.cpp
     src/compat/hypergrid/xmlrpc.cpp
     src/compat/hypergrid/service.cpp
