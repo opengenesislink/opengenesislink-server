@@ -192,7 +192,10 @@ bool RegionRuntime::restore_object(
     const double linear_damping,
     const double angular_damping,
     const double gravity_scale,
-    const double buoyancy) {
+    const double buoyancy,
+    const physics::CollisionShape collision_shape,
+    const physics::Vec3 half_extents,
+    const double capsule_half_height) {
     if (id == 0 || name.size() > 256U || owner_user_id.size() > 256U ||
         group_id.size() > 256U || floating_text.size() > 512U ||
         !finite_vec(transform.position) || !finite_vec(transform.rotation) ||
@@ -201,7 +204,11 @@ bool RegionRuntime::restore_object(
         !std::isfinite(mass) || !std::isfinite(restitution) ||
         !std::isfinite(friction) || !std::isfinite(linear_damping) ||
         !std::isfinite(angular_damping) || !std::isfinite(gravity_scale) ||
-        !std::isfinite(buoyancy)) {
+        !std::isfinite(buoyancy) || !finite_vec(half_extents) ||
+        half_extents.x <= 0.0 || half_extents.y <= 0.0 ||
+        half_extents.z <= 0.0 ||
+        !std::isfinite(capsule_half_height) ||
+        capsule_half_height < 0.0) {
         return false;
     }
 
@@ -236,10 +243,13 @@ bool RegionRuntime::restore_object(
              .restitution = restitution,
              .friction = friction,
              .radius = radius,
+             .half_extents = half_extents,
+             .capsule_half_height = capsule_half_height,
              .linear_damping = linear_damping,
              .angular_damping = angular_damping,
              .gravity_scale = gravity_scale,
-             .buoyancy = buoyancy});
+             .buoyancy = buoyancy,
+             .shape = collision_shape});
     }
 
     entities_[id] = entity;
@@ -278,14 +288,31 @@ std::uint64_t RegionRuntime::spawn_entity(
         .floating_text = {}};
 
     if (physical) {
-        const double radius =
-            kind == EntityKind::avatar
-                ? 0.45
-                : std::max(0.1, transform.scale.z * 0.5);
-        entity.physics_body = physics_.add_body(
-            {.position = transform.position,
-             .rotation = transform.rotation,
-             .radius = radius});
+        const auto half_extents = physics::Vec3{
+            std::max(0.05, transform.scale.x * 0.5),
+            std::max(0.05, transform.scale.y * 0.5),
+            std::max(0.05, transform.scale.z * 0.5)};
+        if (kind == EntityKind::avatar) {
+            entity.physics_body = physics_.add_body(
+                {.position = transform.position,
+                 .rotation = transform.rotation,
+                 .radius = 0.45,
+                 .half_extents = {0.45, 0.45, 0.9},
+                 .capsule_half_height = 0.45,
+                 .shape = physics::CollisionShape::capsule,
+                 .character = true});
+            (void)physics_.set_character_controller(
+                entity.physics_body, 50.0, 0.45, 5.0);
+        } else {
+            entity.physics_body = physics_.add_body(
+                {.position = transform.position,
+                 .rotation = transform.rotation,
+                 .radius = std::max(
+                     {0.1, half_extents.x,
+                      half_extents.y, half_extents.z}),
+                 .half_extents = half_extents,
+                 .shape = physics::CollisionShape::box});
+        }
     }
     entities_[id] = entity;
     append_event_locked("entity_created", id, transform, entity.name);
@@ -369,6 +396,40 @@ bool RegionRuntime::update_transform(
             it->second.physics_body, transform.position);
         (void)physics_.set_body_rotation(
             it->second.physics_body, transform.rotation);
+        if (it->second.kind == EntityKind::object) {
+            const auto body = physics_.body(it->second.physics_body);
+            if (body.shape == physics::CollisionShape::box) {
+                (void)physics_.set_body_shape(
+                    it->second.physics_body,
+                    physics::CollisionShape::box,
+                    {std::max(0.05, transform.scale.x * 0.5),
+                     std::max(0.05, transform.scale.y * 0.5),
+                     std::max(0.05, transform.scale.z * 0.5)},
+                    body.capsule_half_height);
+            } else if (body.shape == physics::CollisionShape::sphere) {
+                (void)physics_.set_body_radius(
+                    it->second.physics_body,
+                    std::max(
+                        {0.05, transform.scale.x * 0.5,
+                         transform.scale.y * 0.5,
+                         transform.scale.z * 0.5}));
+            } else {
+                const auto radius =
+                    std::max(0.05, std::max(
+                        transform.scale.x,
+                        transform.scale.y) * 0.5);
+                (void)physics_.set_body_radius(
+                    it->second.physics_body, radius);
+                (void)physics_.set_body_shape(
+                    it->second.physics_body,
+                    physics::CollisionShape::capsule,
+                    {radius, radius,
+                     std::max(radius, transform.scale.z * 0.5)},
+                    std::max(
+                        0.0,
+                        transform.scale.z * 0.5 - radius));
+            }
+        }
     }
 
     if (it->second.kind == EntityKind::object &&
@@ -591,14 +652,31 @@ bool RegionRuntime::set_physical(
     if (enabled && entity.parent_entity_id != 0) return false;
 
     if (enabled && entity.physics_body == 0) {
-        const double radius =
-            entity.kind == EntityKind::avatar
-                ? 0.45
-                : std::max(0.1, entity.transform.scale.z * 0.5);
-        entity.physics_body = physics_.add_body(
-            {.position = entity.transform.position,
-             .rotation = entity.transform.rotation,
-             .radius = radius});
+        if (entity.kind == EntityKind::avatar) {
+            entity.physics_body = physics_.add_body(
+                {.position = entity.transform.position,
+                 .rotation = entity.transform.rotation,
+                 .radius = 0.45,
+                 .half_extents = {0.45, 0.45, 0.9},
+                 .capsule_half_height = 0.45,
+                 .shape = physics::CollisionShape::capsule,
+                 .character = true});
+            (void)physics_.set_character_controller(
+                entity.physics_body, 50.0, 0.45, 5.0);
+        } else {
+            const auto half_extents = physics::Vec3{
+                std::max(0.05, entity.transform.scale.x * 0.5),
+                std::max(0.05, entity.transform.scale.y * 0.5),
+                std::max(0.05, entity.transform.scale.z * 0.5)};
+            entity.physics_body = physics_.add_body(
+                {.position = entity.transform.position,
+                 .rotation = entity.transform.rotation,
+                 .radius = std::max(
+                     {0.1, half_extents.x,
+                      half_extents.y, half_extents.z}),
+                 .half_extents = half_extents,
+                 .shape = physics::CollisionShape::box});
+        }
     } else if (!enabled && entity.physics_body != 0) {
         (void)physics_.remove_body(entity.physics_body);
         entity.physics_body = 0;
@@ -742,7 +820,7 @@ bool RegionRuntime::move_avatar(
     const auto ground =
         terrain_.sample(transform.position.x, transform.position.y);
     transform.position.z =
-        std::max(transform.position.z, ground + 0.45);
+        std::max(transform.position.z, ground + 0.9);
 
     std::scoped_lock lock(mutex_);
     const auto it = entities_.find(id);
