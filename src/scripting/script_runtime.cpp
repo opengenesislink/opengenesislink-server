@@ -400,6 +400,23 @@ std::optional<ScriptRecord> ScriptRuntime::find(const std::string_view script_id
     return it == scripts_.end() ? std::nullopt : std::optional<ScriptRecord>{it->second};
 }
 
+std::vector<ScriptRecord> ScriptRuntime::list_for_object(
+    const std::string_view object_id) const {
+    std::scoped_lock lock(mutex_);
+    std::vector<ScriptRecord> result;
+    for (const auto& [_, script] : scripts_) {
+        if (script.enabled && script.object_id == object_id) {
+            result.push_back(script);
+        }
+    }
+    std::sort(
+        result.begin(), result.end(),
+        [](const ScriptRecord& left, const ScriptRecord& right) {
+            return left.id < right.id;
+        });
+    return result;
+}
+
 std::vector<ScriptRecord> ScriptRuntime::list() const {
     std::scoped_lock lock(mutex_);
     std::vector<ScriptRecord> output;
