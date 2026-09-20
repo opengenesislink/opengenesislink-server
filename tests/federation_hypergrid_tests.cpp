@@ -4,6 +4,7 @@
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
+#include "opengenesis/federation/service_grant_store.hpp"
 #include "opengenesis/federation/trust_store.hpp"
 
 #include <chrono>
@@ -39,8 +40,12 @@ std::shared_ptr<opengenesis::federation::FederationRuntime> make_runtime(
         (root / (prefix + "-trust.db")).string());
     auto sessions = std::make_shared<opengenesis::federation::FederationSessionStore>(
         (root / (prefix + "-sessions.db")).string());
+    auto grants =
+        std::make_shared<opengenesis::federation::FederationServiceGrantStore>(
+            (root / (prefix + "-grants.db")).string());
     return std::make_shared<opengenesis::federation::FederationRuntime>(
-        std::move(identity), std::move(trust), std::move(sessions));
+        std::move(identity), std::move(trust),
+        std::move(sessions), std::move(grants));
 }
 
 } // namespace
