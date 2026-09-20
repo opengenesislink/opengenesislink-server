@@ -55,10 +55,6 @@ RegionInfo row_to_region(const storage::DatabaseRow& row) {
     return region;
 }
 
-std::vector<std::string> region_columns() {
-    return {};
-}
-
 } // namespace
 
 RegionRegistry::RegionRegistry(std::string path)
@@ -500,8 +496,7 @@ void RegionRegistry::persist_locked() const {
                << region.physics_bodies << ' '
                << region.sim_fps << ' '
                << region.scene_events << ' '
-               << region.terrain_revision << '
-';
+               << region.terrain_revision << '\n';
     }
     output.close();
     if (!output) {

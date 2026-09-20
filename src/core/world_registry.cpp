@@ -350,8 +350,7 @@ void WorldRegistry::persist_locked() const {
                << std::quoted(node.state) << ' '
                << node.generation << ' '
                << epoch_ms(node.registered_at) << ' '
-               << epoch_ms(node.last_seen) << '
-';
+               << epoch_ms(node.last_seen) << '\n';
     }
     output.close();
     if (!output) {

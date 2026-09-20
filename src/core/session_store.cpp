@@ -258,16 +258,14 @@ void SessionStore::persist_locked() const {
     }
     output
         << "# OpenGenesisLINK session store v1 "
-           "(token hashes only)
-";
+           "(token hashes only)\n";
     for (const auto& [hash, stored] : by_hash_) {
         const auto& session = stored.public_info;
         output << hash << '	'
                << session.id << '	'
                << session.user_id << '	'
                << session.issued_unix << '	'
-               << session.expires_unix << '
-';
+               << session.expires_unix << '\n';
     }
     output.close();
     if (!output) {

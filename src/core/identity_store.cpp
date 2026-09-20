@@ -341,8 +341,7 @@ void IdentityStore::persist_locked() const {
         throw std::runtime_error(
             "cannot write identity store");
     }
-    output << "# OpenGenesisLINK identity store v1
-";
+    output << "# OpenGenesisLINK identity store v1\n";
     std::vector<StoredUser> users;
     users.reserve(by_username_.size());
     for (const auto& [_, stored] : by_username_) {
@@ -360,8 +359,7 @@ void IdentityStore::persist_locked() const {
                << user.username << '	'
                << user.display_name << '	'
                << stored.password_hash << '	'
-               << user.created_unix << '
-';
+               << user.created_unix << '\n';
     }
     output.close();
     if (!output) {

@@ -533,7 +533,7 @@ void AdminHttpServer::run() {
                         response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     } else {
                         response.body =
-                            "{\"home_sessions\": +
+                            "{\"home_sessions\":" +
                             std::to_string(hypergrid_sessions_->home_sessions().size()) +
                             ",\"foreign_sessions\":" +
                             std::to_string(hypergrid_sessions_->foreign_sessions().size()) + "}";
