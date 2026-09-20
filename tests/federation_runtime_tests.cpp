@@ -1,6 +1,7 @@
 #include "opengenesis/core/crossing_store.hpp"
 #include "opengenesis/federation/grid_identity.hpp"
 #include "opengenesis/federation/replay_cache.hpp"
+#include "opengenesis/federation/service_grant_store.hpp"
 #include "opengenesis/federation/travel_token.hpp"
 #include "opengenesis/federation/trust_store.hpp"
 #include "opengenesis/scripting/script_runtime.hpp"
@@ -78,6 +79,47 @@ int main() {
                 "first travel nonce accepted");
         require(!replay.consume(issued.claims.nonce, issued.claims.expires_unix),
                 "travel nonce replay rejected");
+
+        const auto grant_path =
+            (root / "federation-service-grants.db").string();
+        std::string grant_token;
+        std::string grant_id;
+        {
+            opengenesis::federation::FederationServiceGrantStore grants(
+                grant_path);
+            const auto grant = grants.issue(
+                "grid-b.example", "alice@grid-a.example",
+                std::chrono::seconds{90},
+                "profile,inventory,assets");
+            grant_token = grant.token;
+            grant_id = grant.grant.id;
+            require(grants.authorize(
+                        grant_id, grant_token, "grid-b.example",
+                        "alice@grid-a.example", "inventory"),
+                    "federation service grant authorizes");
+            require(!grants.authorize(
+                        grant_id, grant_token, "grid-b.example",
+                        "alice@grid-a.example", "presence"),
+                    "federation service scope enforced");
+            require(!grants.authorize(
+                        grant_id, "wrong-token", "grid-b.example",
+                        "alice@grid-a.example", "inventory"),
+                    "federation service token enforced");
+        }
+        {
+            opengenesis::federation::FederationServiceGrantStore grants(
+                grant_path);
+            require(grants.authorize(
+                        grant_id, grant_token, "grid-b.example",
+                        "alice@grid-a.example", "assets"),
+                    "federation grant survives restart");
+            require(grants.revoke(grant_id),
+                    "federation grant revocation persists");
+            require(!grants.authorize(
+                        grant_id, grant_token, "grid-b.example",
+                        "alice@grid-a.example", "assets"),
+                    "revoked federation grant rejected");
+        }
 
         const auto trust_path = (root / "federation.db").string();
         {
