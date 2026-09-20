@@ -1326,8 +1326,9 @@ void RegionRuntime::loop() {
                     body_entities.find(contact.body_b);
                 if (second_body == body_entities.end()) continue;
                 const auto second_entity = second_body->second;
-                const auto pair =
-                    std::minmax(first_entity, second_entity);
+                const std::pair<std::uint64_t, std::uint64_t> pair{
+                    std::min(first_entity, second_entity),
+                    std::max(first_entity, second_entity)};
                 current_collisions.insert(pair);
                 const auto first =
                     !active_collisions_.contains(pair);
