@@ -536,7 +536,7 @@ int main(int argc, char** argv) {
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
                          node_sessions, script_world_actions, object_crossings, scripts,
-                         lease_timeout, world_node_secret]() mutable {
+                         script_host, lease_timeout, world_node_secret]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -675,6 +675,150 @@ int main(int argc, char** argv) {
                                                frame.request_id,
                                                protocol::payload_from_string(
                                                    ok ? "status=ok\n" : "reason=stale-region\n")});
+                        } else if (
+                            frame.type ==
+                            protocol::MessageType::script_scene_events) {
+                            const auto region_id =
+                                field(body, "region");
+                            const auto cursor_text =
+                                field(body, "cursor");
+                            const auto region =
+                                regions->find(region_id);
+                            const bool owns_region =
+                                region &&
+                                region->node_id == node_id &&
+                                region->node_generation ==
+                                    generation;
+                            std::uint64_t cursor = 0;
+                            bool valid_cursor = true;
+                            try {
+                                cursor =
+                                    std::stoull(cursor_text);
+                            } catch (...) {
+                                valid_cursor = false;
+                            }
+                            if (!owns_region || !valid_cursor) {
+                                socket.send_frame({
+                                    protocol::MessageType::
+                                        script_scene_events_ack,
+                                    frame.request_id,
+                                    protocol::payload_from_string(
+                                        "status=rejected\ncursor=0\n")});
+                                continue;
+                            }
+
+                            std::istringstream input(body);
+                            std::string line;
+                            std::size_t event_count = 0U;
+                            while (std::getline(input, line)) {
+                                if (!line.starts_with("event=")) {
+                                    continue;
+                                }
+                                if (++event_count > 128U) {
+                                    break;
+                                }
+                                const auto value =
+                                    line.substr(6U);
+                                std::vector<std::string> parts;
+                                std::size_t start = 0U;
+                                while (true) {
+                                    const auto split =
+                                        value.find('|', start);
+                                    parts.push_back(
+                                        value.substr(
+                                            start,
+                                            split ==
+                                                    std::string::npos
+                                                ? std::string::npos
+                                                : split - start));
+                                    if (split ==
+                                        std::string::npos) {
+                                        break;
+                                    }
+                                    start = split + 1U;
+                                }
+                                if (parts.size() != 7U) {
+                                    continue;
+                                }
+
+                                std::uint64_t entity_id = 0;
+                                try {
+                                    entity_id =
+                                        std::stoull(parts[1]);
+                                } catch (...) {
+                                    continue;
+                                }
+                                if (entity_id == 0U) {
+                                    continue;
+                                }
+                                const auto& event_type =
+                                    parts[2];
+                                const bool collision =
+                                    event_type ==
+                                        "collision_start" ||
+                                    event_type ==
+                                        "collision" ||
+                                    event_type ==
+                                        "collision_end";
+                                const bool land_collision =
+                                    event_type ==
+                                        "land_collision_start" ||
+                                    event_type ==
+                                        "land_collision" ||
+                                    event_type ==
+                                        "land_collision_end";
+                                if (!collision &&
+                                    !land_collision) {
+                                    continue;
+                                }
+
+                                std::string payload;
+                                if (collision) {
+                                    payload = "1";
+                                } else {
+                                    payload =
+                                        "<" + parts[3] +
+                                        ", " + parts[4] +
+                                        ", " + parts[5] +
+                                        ">";
+                                }
+
+                                const auto object_id =
+                                    region_id + "/" +
+                                    std::to_string(entity_id);
+                                for (const auto& script :
+                                     scripts->
+                                         list_for_object(
+                                             object_id)) {
+                                    std::string reason;
+                                    const auto result =
+                                        scripts->execute_event(
+                                            script.id,
+                                            event_type,
+                                            unix_ms(),
+                                            reason,
+                                            {},
+                                            payload);
+                                    if (!result ||
+                                        !result->ok) {
+                                        continue;
+                                    }
+                                    (void)script_host->apply(
+                                        script.owner_user_id,
+                                        script.id,
+                                        result->actions,
+                                        script.object_id);
+                                }
+                            }
+
+                            socket.send_frame({
+                                protocol::MessageType::
+                                    script_scene_events_ack,
+                                frame.request_id,
+                                protocol::payload_from_string(
+                                    "status=ok\ncursor=" +
+                                    std::to_string(cursor) +
+                                    "\n")});
                         } else if (frame.type == protocol::MessageType::script_action_poll) {
                             const auto region_id = field(body, "region");
                             const auto region = regions->find(region_id);
