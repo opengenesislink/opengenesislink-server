@@ -18,7 +18,8 @@ Platform Services Completion milestone.
 - extracted 15.0 Platform API routing from the historical monolithic HTTP dispatcher to preserve MSVC portability
 - added dedicated Platform Services unit coverage and a Core-level end-to-end smoke covering Social policy, Group invites, Wallet/Ledger, Marketplace fulfillment, rollback and persistence-visible results
 - 15.0 does not claim external payment-processor integration, cross-grid economy settlement, a globally distributed ACID transaction across file stores, taxation, auctions, recurring billing or a final stable economy protocol
-- exact tested PR head and squash merge are recorded in the 15.0 wiki handover after acceptance
+- final tested PR head: `e82d137d7ed10494b752cbc4d8b21974a52790ac`
+- squash merge: `1c39990e016d91e4a434210f0295dbaa8286de64`
 
 ## 14.0.0-dev — 2026-09-20
 
