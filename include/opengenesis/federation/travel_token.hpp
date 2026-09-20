@@ -8,7 +8,7 @@
 
 namespace opengenesis::federation {
 
-inline constexpr std::string_view kFederationProtocol = "OGL-FED/1";
+inline constexpr std::string_view kFederationProtocol = "OGL-FED/2";
 
 struct TravelTokenClaims {
     std::string issuer_grid;
@@ -18,6 +18,10 @@ struct TravelTokenClaims {
     std::string origin_region;
     std::string destination_region;
     std::string session_id;
+    std::string home_url;
+    std::string service_grant_id;
+    std::string service_token;
+    std::string service_capabilities;
     std::string nonce;
     std::int64_t issued_unix{0};
     std::int64_t expires_unix{0};

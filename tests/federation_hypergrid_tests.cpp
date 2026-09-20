@@ -4,6 +4,7 @@
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
+#include "opengenesis/federation/service_grant_store.hpp"
 #include "opengenesis/federation/trust_store.hpp"
 
 #include <chrono>
@@ -39,8 +40,12 @@ std::shared_ptr<opengenesis::federation::FederationRuntime> make_runtime(
         (root / (prefix + "-trust.db")).string());
     auto sessions = std::make_shared<opengenesis::federation::FederationSessionStore>(
         (root / (prefix + "-sessions.db")).string());
+    auto grants =
+        std::make_shared<opengenesis::federation::FederationServiceGrantStore>(
+            (root / (prefix + "-grants.db")).string());
     return std::make_shared<opengenesis::federation::FederationRuntime>(
-        std::move(identity), std::move(trust), std::move(sessions));
+        std::move(identity), std::move(trust),
+        std::move(sessions), std::move(grants));
 }
 
 } // namespace
@@ -86,6 +91,30 @@ int main() {
              .lifetime = std::chrono::seconds{90}},
             reason);
         require(issued.has_value(), "travel token issued");
+        require(issued->claims.home_url == "https://grid-a.example",
+                "travel token carries home grid URL");
+        require(!issued->claims.service_grant_id.empty() &&
+                    issued->claims.service_token.size() >= 32U,
+                "travel token carries remote service grant");
+        require(
+            opengenesis::federation::federation_service_capability(
+                issued->claims.service_capabilities, "inventory"),
+            "travel service scopes include inventory");
+        require(grid_a->authorize_remote_service(
+                    issued->claims.service_grant_id,
+                    issued->claims.service_token,
+                    "grid-b.example", "alice", "inventory"),
+                "home grid authorizes audience-bound remote inventory");
+        require(!grid_a->authorize_remote_service(
+                    issued->claims.service_grant_id,
+                    issued->claims.service_token,
+                    "grid-c.example", "alice", "inventory"),
+                "service grant rejects wrong audience");
+        require(!grid_a->authorize_remote_service(
+                    issued->claims.service_grant_id,
+                    issued->claims.service_token,
+                    "grid-b.example", "alice", "admin"),
+                "service grant rejects missing scope");
 
         const auto accepted = grid_b->accept_travel(
             "grid-a.example", issued->token, reason);
@@ -95,6 +124,12 @@ int main() {
                 "foreign session active");
         require(accepted->claims.destination_region == "region-b",
                 "destination preserved");
+        require(accepted->session.home_url == "https://grid-a.example" &&
+                    accepted->session.service_grant_id ==
+                        issued->claims.service_grant_id &&
+                    accepted->session.service_token ==
+                        issued->claims.service_token,
+                "foreign session persists OGL-FED v2 service context");
         require(!grid_b->accept_travel("grid-a.example", issued->token, reason).has_value(),
                 "travel replay rejected");
 
@@ -111,6 +146,14 @@ int main() {
         require(second.has_value(), "second token issued");
         require(!grid_b->accept_travel("grid-a.example", second->token, reason).has_value(),
                 "revoked grid rejected");
+
+        require(grid_a->revoke_peer("grid-b.example"),
+                "grid B revoked on home grid");
+        require(!grid_a->authorize_remote_service(
+                    issued->claims.service_grant_id,
+                    issued->claims.service_token,
+                    "grid-b.example", "alice", "inventory"),
+                "peer revocation invalidates outbound service grants");
 
         auto regions = std::make_shared<opengenesis::core::RegionRegistry>(
             (root / "regions.db").string());

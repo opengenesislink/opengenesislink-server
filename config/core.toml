@@ -66,6 +66,7 @@ script_world_actions = "data/script-world-actions.db"
 federation_identity = "data/federation-identity.db"
 federation_trust = "data/federation-trust.db"
 federation_sessions = "data/federation-sessions.db"
+federation_service_grants = "data/federation-service-grants.db"
 hypergrid_sessions = "data/hypergrid-sessions.db"
 
 [assets]

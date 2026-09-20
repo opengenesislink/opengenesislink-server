@@ -193,10 +193,10 @@ def register(username,display):
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
 _,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='6.0.0'
-for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v2','scene-protocol-v2','viewer-bootstrap-v1','scene-sync-v1','avatar-reconcile-v1','region-metadata-v1','parcel-read-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
+for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v2','scene-protocol-v2','viewer-bootstrap-v1','scene-sync-v1','avatar-reconcile-v1','region-metadata-v1','parcel-read-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','ogl-fed-v2','federation-service-grants-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
     assert cap in info['capabilities'],cap
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
-assert fed['protocol']=='OGL-FED/1' and fed['grid_id']=='local.opengenesislink' and len(fed['public_key'])==64
+assert fed['protocol']=='OGL-FED/2' and fed['grid_id']=='local.opengenesislink' and len(fed['public_key'])==64
 
 alice=register('alice.smoke','Alice Smoke'); bob=register('bob.smoke','Bob Smoke')
 at,auid=alice['token'],alice['user']['id']; bt,buid=bob['token'],bob['user']['id']
@@ -206,7 +206,7 @@ remote_key='11'*32
 st,_,_=api('/v1/federation/trust','POST',{'grid_id':'smoke.remote.example','base_url':'https://smoke.remote.example','public_key':remote_key},admin=True); assert st==201
 _,_,raw=api('/v1/federation/peers',admin=True); assert len(json.loads(raw)['peers'])==1
 st,_,raw=api('/v1/federation/travel/issue','POST',{'audience_grid':'smoke.remote.example','origin_region':'genesis-central','destination_region':'remote-welcome','lifetime_seconds':90},at); assert st==201
-issued=json.loads(raw); assert issued['protocol']=='OGL-FED/1' and issued['audience_grid']=='smoke.remote.example' and len(issued['travel_token'])>100
+issued=json.loads(raw); assert issued['protocol']=='OGL-FED/2' and issued['audience_grid']=='smoke.remote.example' and len(issued['travel_token'])>100
 st,_,_=api('/v1/federation/revoke','POST',{'grid_id':'smoke.remote.example'},admin=True); assert st==200
 # Hypergrid home-travel/session control plane
 _,_,raw=api('/v1/hypergrid/info'); hgi=json.loads(raw); assert hgi['enabled'] is True

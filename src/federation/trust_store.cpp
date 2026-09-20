@@ -65,6 +65,14 @@ bool FederationTrustStore::trust(FederationPeer peer, std::string& reason) {
     peer.updated_unix = unix_now();
 
     std::scoped_lock lock(mutex_);
+    const auto existing = peers_.find(peer.grid_id);
+    if (existing != peers_.end() &&
+        existing->second.trusted &&
+        !existing->second.revoked &&
+        existing->second.public_key_hex != peer.public_key_hex) {
+        reason = "federation-peer-key-change-requires-revocation";
+        return false;
+    }
     peers_[peer.grid_id] = std::move(peer);
     persist_locked();
     reason.clear();

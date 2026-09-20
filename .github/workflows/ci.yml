@@ -39,3 +39,5 @@ jobs:
         run: bash ./scripts/smoke-object-crossing.sh
       - name: Viewer bootstrap and Scene v2 smoke test
         run: bash ./scripts/smoke-viewer-scene-v2.sh
+      - name: OGL-FED v2 remote services smoke test
+        run: bash ./scripts/smoke-federation-v2.sh

@@ -3,6 +3,7 @@
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/replay_cache.hpp"
 #include "opengenesis/federation/session_store.hpp"
+#include "opengenesis/federation/service_grant_store.hpp"
 #include "opengenesis/federation/trust_store.hpp"
 #include "opengenesis/federation/travel_token.hpp"
 
@@ -29,6 +30,8 @@ struct OutboundTravelRequest {
     std::string origin_region;
     std::string destination_region;
     std::chrono::seconds lifetime{120};
+    std::string service_capabilities{
+        kDefaultFederationServiceCapabilities};
 };
 
 struct AcceptedTravel {
@@ -40,7 +43,8 @@ class FederationRuntime final {
 public:
     FederationRuntime(std::shared_ptr<GridIdentityStore> identity,
                       std::shared_ptr<FederationTrustStore> trust,
-                      std::shared_ptr<FederationSessionStore> sessions);
+                      std::shared_ptr<FederationSessionStore> sessions,
+                      std::shared_ptr<FederationServiceGrantStore> grants);
 
     [[nodiscard]] FederationInfo info() const;
     [[nodiscard]] std::optional<IssuedTravelToken> issue_travel(
@@ -57,12 +61,24 @@ public:
     [[nodiscard]] std::vector<ForeignSession> sessions() const;
     [[nodiscard]] bool logout_session(std::string_view session_id);
 
+    [[nodiscard]] bool authorize_remote_service(
+        std::string_view grant_id,
+        std::string_view service_token,
+        std::string_view audience_grid,
+        std::string_view subject_user,
+        std::string_view capability) const;
+    [[nodiscard]] std::vector<FederationServiceGrant>
+    service_grants() const;
+    [[nodiscard]] bool revoke_service_grant(
+        std::string_view grant_id);
+
     std::size_t maintenance(std::int64_t now_unix);
 
 private:
     std::shared_ptr<GridIdentityStore> identity_;
     std::shared_ptr<FederationTrustStore> trust_;
     std::shared_ptr<FederationSessionStore> sessions_;
+    std::shared_ptr<FederationServiceGrantStore> grants_;
     TravelReplayCache replay_;
 };
 

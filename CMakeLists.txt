@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 13.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 14.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -60,6 +60,7 @@ add_library(opengenesis-foundation
     src/federation/replay_cache.cpp
     src/federation/trust_store.cpp
     src/federation/session_store.cpp
+    src/federation/service_grant_store.cpp
     src/federation/runtime.cpp
     src/compat/hypergrid/xmlrpc.cpp
     src/compat/hypergrid/service.cpp
