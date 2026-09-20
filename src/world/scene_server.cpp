@@ -273,7 +273,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
                                "scene_contract=2\nmovement=avatar-reconcile-v1\n"
                                "sync=scene-sync-v1\nmetadata=region-metadata-v1,parcel-read-v1\n"
                                "capabilities=scene-capabilities-v2\n"
-                               "object_runtime=linkset-v2,motion-v1,text-v1,physics-v2,collision-events-v1\n")});
+                               "object_runtime=linkset-v2,motion-v1,text-v1,physics-v3,primitive-shapes-v1,raycast-v1,spring-constraint-v1,character-capsule-v1,collision-events-v1\n")});
 
         const auto join = socket.receive_frame();
         if (join.type != protocol::MessageType::scene_join) throw std::runtime_error("SCENE_JOIN required");
@@ -466,7 +466,10 @@ void handle_client(opengenesis::network::TcpSocket socket,
                     body_state ? body_state->velocity : velocity;
                 response << "\nvx=" << velocity_state.x
                          << "\nvy=" << velocity_state.y
-                         << "\nvz=" << velocity_state.z << '\n';
+                         << "\nvz=" << velocity_state.z
+                         << "\ngrounded="
+                         << (body_state && body_state->grounded ? 1 : 0)
+                         << '\n';
                 socket.send_frame({
                     protocol::MessageType::avatar_reconcile_ack,
                     frame.request_id,
@@ -653,21 +656,29 @@ void handle_client(opengenesis::network::TcpSocket socket,
                         ok ? "status=motion-updated\n"
                            : "reason=physical-object-motion-denied\n")});
             } else if (frame.type == protocol::MessageType::entity_physics) {
+                const auto action = field(request, "action");
+                const auto required_capability =
+                    action == "raycast"
+                        ? std::string_view{"scene.read"}
+                        : (action == "avatar_jump"
+                               ? std::string_view{"scene.avatar.reconcile"}
+                               : std::string_view{
+                                     "scene.object.modify.own"});
                 if (!security::has_scene_capability(
-                        claims, "scene.object.modify.own")) {
+                        claims, required_capability)) {
                     send_capability_error(
-                        socket, frame, "scene.object.modify.own");
+                        socket, frame, required_capability);
                     continue;
                 }
                 const auto id = integer(request, "id");
                 const auto current = region->entity(id);
-                const auto action = field(request, "action");
                 const bool permitted =
                     current && current->kind == EntityKind::object &&
                     can_modify_object(*current, claims);
                 bool ok = false;
                 std::string reason = "physics-operation-denied";
                 std::uint64_t constraint_id = 0;
+                std::string extra_response;
 
                 if (permitted &&
                     (action == "force" || action == "impulse" ||
@@ -697,6 +708,88 @@ void handle_client(opengenesis::network::TcpSocket socket,
                         number(request, "restitution", 0.15),
                         number(request, "friction", 0.6));
                     reason = ok ? "" : "invalid-physics-material";
+                } else if (permitted && action == "shape") {
+                    const auto shape =
+                        physics::parse_collision_shape(
+                            field(request, "shape").c_str());
+                    ok = shape &&
+                         region->set_physics_shape(id, *shape);
+                    reason =
+                        ok ? "" : "invalid-physics-shape";
+                } else if (permitted && action == "spring") {
+                    const auto other_id =
+                        integer(request, "other_id");
+                    const auto other =
+                        region->entity(other_id);
+                    if (other &&
+                        other->kind == EntityKind::object &&
+                        can_modify_object(*other, claims)) {
+                        constraint_id =
+                            region->constrain_spring(
+                                id, other_id,
+                                number(
+                                    request,
+                                    "rest_length",
+                                    1.0),
+                                number(
+                                    request,
+                                    "stiffness",
+                                    20.0),
+                                number(
+                                    request,
+                                    "damping",
+                                    2.0),
+                                reason);
+                        ok = constraint_id != 0;
+                    }
+                } else if (action == "raycast") {
+                    const physics::Vec3 origin{
+                        number(request, "ox", 0.0),
+                        number(request, "oy", 0.0),
+                        number(request, "oz", 0.0)};
+                    const physics::Vec3 direction{
+                        number(request, "dx", 0.0),
+                        number(request, "dy", 0.0),
+                        number(request, "dz", -1.0)};
+                    const auto max_distance =
+                        number(
+                            request,
+                            "max_distance",
+                            256.0);
+                    const auto hit =
+                        region->raycast(
+                            origin,
+                            direction,
+                            max_distance,
+                            id);
+                    std::ostringstream ray;
+                    ray << std::fixed
+                        << std::setprecision(6)
+                        << "hit=" << (hit ? 1 : 0)
+                        << '\n';
+                    if (hit) {
+                        ray << "entity_id="
+                            << hit->entity_id
+                            << "\nground="
+                            << (hit->ground ? 1 : 0)
+                            << "\ndistance="
+                            << hit->distance
+                            << "\nx=" << hit->point.x
+                            << "\ny=" << hit->point.y
+                            << "\nz=" << hit->point.z
+                            << "\nnx=" << hit->normal.x
+                            << "\nny=" << hit->normal.y
+                            << "\nnz=" << hit->normal.z
+                            << '\n';
+                    }
+                    extra_response = ray.str();
+                    ok = true;
+                    reason.clear();
+                } else if (action == "avatar_jump") {
+                    ok = id == avatar_id &&
+                         region->avatar_jump(avatar_id);
+                    reason =
+                        ok ? "" : "avatar-not-grounded";
                 } else if (permitted && action == "constraint") {
                     const auto other_id = integer(request, "other_id");
                     const auto other = region->entity(other_id);
@@ -724,6 +817,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
                         response << "constraint_id="
                                  << constraint_id << '\n';
                     }
+                    response << extra_response;
                 } else {
                     response << "reason="
                              << (reason.empty()
