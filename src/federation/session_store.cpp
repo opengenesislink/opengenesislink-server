@@ -121,6 +121,23 @@ bool FederationSessionStore::logout(const std::string_view id) {
     return true;
 }
 
+std::size_t FederationSessionStore::logout_issuer(
+    const std::string_view issuer_grid) {
+    std::scoped_lock lock(mutex_);
+    const auto now = unix_now();
+    std::size_t changed = 0;
+    for (auto& [_, session] : sessions_) {
+        if (session.state == ForeignSessionState::active &&
+            session.issuer_grid == issuer_grid) {
+            session.state = ForeignSessionState::logged_out;
+            session.ended_unix = now;
+            ++changed;
+        }
+    }
+    if (changed != 0U) persist_locked();
+    return changed;
+}
+
 std::size_t FederationSessionStore::purge_expired(const std::int64_t now_unix) {
     std::scoped_lock lock(mutex_);
     std::size_t changed = 0;
