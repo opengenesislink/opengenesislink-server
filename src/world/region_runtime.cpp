@@ -1132,6 +1132,9 @@ RegionRuntime::export_linkset(const std::uint64_t entity_id) const {
             .angular_damping = 0.04,
             .gravity_scale = 1.0,
             .buoyancy = 0.0,
+            .collision_shape = physics::CollisionShape::sphere,
+            .half_extents = {0.5, 0.5, 0.5},
+            .capsule_half_height = 0.5,
             .physical = entity->physics_body != 0,
             .parent_source_entity_id = entity->parent_entity_id,
             .link_number = entity->link_number,
@@ -1147,6 +1150,9 @@ RegionRuntime::export_linkset(const std::uint64_t entity_id) const {
             snapshot.angular_damping = body.angular_damping;
             snapshot.gravity_scale = body.gravity_scale;
             snapshot.buoyancy = body.buoyancy;
+            snapshot.collision_shape = body.shape;
+            snapshot.half_extents = body.half_extents;
+            snapshot.capsule_half_height = body.capsule_half_height;
         }
         result.members.push_back(std::move(snapshot));
     }
