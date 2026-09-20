@@ -54,6 +54,13 @@ struct ObjectTransferSnapshot {
     Transform transform{};
     physics::Vec3 velocity{};
     physics::Vec3 angular_velocity{};
+    double mass{1.0};
+    double restitution{0.15};
+    double friction{0.6};
+    double linear_damping{0.04};
+    double angular_damping{0.04};
+    double gravity_scale{1.0};
+    double buoyancy{0.0};
     bool physical{false};
     std::uint64_t parent_source_entity_id{0};
     std::uint32_t link_number{1};
@@ -114,7 +121,14 @@ public:
         std::uint32_t link_number = 1,
         std::string floating_text = {},
         physics::Vec3 velocity = {},
-        physics::Vec3 angular_velocity = {});
+        physics::Vec3 angular_velocity = {},
+        double mass = 1.0,
+        double restitution = 0.15,
+        double friction = 0.6,
+        double linear_damping = 0.04,
+        double angular_damping = 0.04,
+        double gravity_scale = 1.0,
+        double buoyancy = 0.0);
 
     bool remove_entity(std::uint64_t id);
     bool remove_linkset(std::uint64_t entity_id);
