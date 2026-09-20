@@ -301,7 +301,7 @@ std::optional<GroupInvite> GroupStore::invite(
     lifetime = std::clamp(
         lifetime,
         std::chrono::seconds{60},
-        std::chrono::hours{24 * 30});
+        std::chrono::seconds{24 * 30 * 60 * 60});
 
     std::scoped_lock lock(mutex_);
     if (!groups_.contains(std::string{group_id})) {
