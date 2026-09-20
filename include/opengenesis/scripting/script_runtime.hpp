@@ -81,6 +81,8 @@ public:
                                                          std::string_view text);
 
     [[nodiscard]] std::optional<ScriptRecord> find(std::string_view script_id) const;
+    [[nodiscard]] std::vector<ScriptRecord> list_for_object(
+        std::string_view object_id) const;
     [[nodiscard]] std::vector<ScriptRecord> list() const;
 
 private:
