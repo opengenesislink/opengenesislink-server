@@ -52,6 +52,9 @@ std::vector<std::string> split_tab(const std::string& line) {
 
 MarketplaceListingState parse_state(
     const std::string_view value) {
+    if (value == "reserved") {
+        return MarketplaceListingState::reserved;
+    }
     if (value == "sold") {
         return MarketplaceListingState::sold;
     }
@@ -68,6 +71,8 @@ std::string_view marketplace_listing_state_name(
     switch (state) {
         case MarketplaceListingState::active:
             return "active";
+        case MarketplaceListingState::reserved:
+            return "reserved";
         case MarketplaceListingState::sold:
             return "sold";
         case MarketplaceListingState::cancelled:
@@ -146,7 +151,7 @@ bool MarketplaceStore::cancel(
     return true;
 }
 
-bool MarketplaceStore::mark_sold(
+bool MarketplaceStore::reserve_purchase(
     const std::string_view listing_id,
     std::string buyer_user_id,
     std::string sale_reference,
@@ -171,9 +176,59 @@ bool MarketplaceStore::mark_sold(
         reason = "cannot-buy-own-listing";
         return false;
     }
-    it->second.state = MarketplaceListingState::sold;
+    it->second.state = MarketplaceListingState::reserved;
     it->second.buyer_user_id = std::move(buyer_user_id);
     it->second.sale_reference = std::move(sale_reference);
+    it->second.updated_unix = unix_now();
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool MarketplaceStore::complete_purchase(
+    const std::string_view listing_id,
+    const std::string_view buyer_user_id,
+    const std::string_view sale_reference,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = listings_.find(std::string{listing_id});
+    if (it == listings_.end()) {
+        reason = "listing-not-found";
+        return false;
+    }
+    if (it->second.state != MarketplaceListingState::reserved ||
+        it->second.buyer_user_id != buyer_user_id ||
+        it->second.sale_reference != sale_reference) {
+        reason = "listing-reservation-mismatch";
+        return false;
+    }
+    it->second.state = MarketplaceListingState::sold;
+    it->second.updated_unix = unix_now();
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
+bool MarketplaceStore::release_purchase(
+    const std::string_view listing_id,
+    const std::string_view buyer_user_id,
+    const std::string_view sale_reference,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = listings_.find(std::string{listing_id});
+    if (it == listings_.end()) {
+        reason = "listing-not-found";
+        return false;
+    }
+    if (it->second.state != MarketplaceListingState::reserved ||
+        it->second.buyer_user_id != buyer_user_id ||
+        it->second.sale_reference != sale_reference) {
+        reason = "listing-reservation-mismatch";
+        return false;
+    }
+    it->second.state = MarketplaceListingState::active;
+    it->second.buyer_user_id.clear();
+    it->second.sale_reference.clear();
     it->second.updated_unix = unix_now();
     persist_locked();
     reason.clear();
@@ -259,7 +314,7 @@ void MarketplaceStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 13U) continue;
+        if (fields.size() != 12U) continue;
         try {
             MarketplaceListing listing{
                 .id = fields[0],
@@ -324,8 +379,7 @@ void MarketplaceStore::persist_locked() const {
                << listing.buyer_user_id << '\t'
                << listing.sale_reference << '\t'
                << listing.created_unix << '\t'
-               << listing.updated_unix << '\t'
-               << "1" << '\n';
+               << listing.updated_unix << '\n';
     }
 
     output.close();
