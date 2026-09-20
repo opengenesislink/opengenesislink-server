@@ -1072,29 +1072,38 @@ std::optional<std::string> evaluate_lsl_builtin(
         if(!require_count(3U)) return std::nullopt;
         const auto source=split_list(arguments[0]);
         const auto test=split_list(arguments[1]);
-        const auto start_value=integer_value(arguments[2]);
-        if(!start_value){
+        const auto instance=integer_value(arguments[2]);
+        if(!instance){
             reason="lsl-builtin-integer-required";
             return std::nullopt;
         }
-        if(test.empty()||source.empty()){
+        if(test.empty()){
             reason.clear();
-            return "-1";
+            return "0";
         }
-        long long start=*start_value;
-        if(start<0) start+=static_cast<long long>(source.size());
-        start=std::max<long long>(0,start);
-        for(std::size_t i=static_cast<std::size_t>(start);
-            i+test.size()<=source.size();++i){
+        std::vector<std::size_t> matches;
+        for(std::size_t i=0;i+test.size()<=source.size();++i){
             if(std::equal(
                     test.begin(),test.end(),
                     source.begin()+static_cast<std::ptrdiff_t>(i))){
-                reason.clear();
-                return std::to_string(i);
+                matches.push_back(i);
             }
         }
+        if(matches.empty()){
+            reason.clear();
+            return "-1";
+        }
+        long long selected=*instance;
+        if(selected<0){
+            selected=static_cast<long long>(matches.size())+selected;
+        }
         reason.clear();
-        return "-1";
+        if(selected<0||
+           selected>=static_cast<long long>(matches.size())){
+            return "-1";
+        }
+        return std::to_string(
+            matches[static_cast<std::size_t>(selected)]);
     }
     if (name == "llList2ListStrided") {
         if(!require_count(4U)) return std::nullopt;
