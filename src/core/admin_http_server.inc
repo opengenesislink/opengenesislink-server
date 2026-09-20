@@ -2115,6 +2115,344 @@ void AdminHttpServer::run() {
                                         ",\"unread_notifications\":" +
                                         std::to_string(notifications_->unread_count(user->id)) + "}";
                     }
+                } else if (method == "GET" && path == "/v1/economy/info") {
+                    response.body =
+                        "{\"currency\":\"" + json_escape(economy_->currency_code()) +
+                        "\",\"accounts\":" + std::to_string(economy_->account_count()) +
+                        ",\"entries\":" + std::to_string(economy_->entry_count()) +
+                        ",\"total_supply_minor\":" +
+                        std::to_string(economy_->total_supply_minor()) + "}";
+                } else if (method == "GET" && path == "/v1/economy/wallet") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        const auto account = economy_->ensure_account(user->id);
+                        response.body = economy_account_json(
+                            account, economy_->currency_code());
+                    }
+                } else if (method == "GET" && path == "/v1/economy/ledger") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body =
+                            "{\"currency\":\"" + json_escape(economy_->currency_code()) +
+                            "\",\"entries\":" +
+                            economy_entries_json(economy_->entries_for(user->id)) + "}";
+                    }
+                } else if (method == "GET" && path == "/v1/economy/escrows") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body =
+                            "{\"escrows\":" +
+                            economy_escrows_json(economy_->escrows_for(user->id)) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/economy/transfer") {
+                    auto [session, user] = auth();
+                    const auto recipient = json_string(request->body, "recipient_id");
+                    const auto amount_value = json_u64(request->body, "amount_minor");
+                    const auto client_reference =
+                        json_string(request->body, "reference");
+                    const auto memo =
+                        json_string(request->body, "memo").value_or("");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!recipient || !amount_value ||
+                               *amount_value == 0U ||
+                               *amount_value > 9000000000000000ULL ||
+                               !identities_->find_by_id(*recipient)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-economy-transfer\"}"};
+                    } else if (social_policies_->blocks(user->id, *recipient) ||
+                               social_policies_->blocks(*recipient, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
+                    } else {
+                        std::string reason;
+                        const auto reference =
+                            client_reference.value_or(
+                                "transfer:" + security::random_hex(16));
+                        const auto entry = economy_->transfer(
+                            user->id, *recipient,
+                            static_cast<std::int64_t>(*amount_value),
+                            reference, memo, reason);
+                        if (!entry) {
+                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                user->id, "economy.transfer", entry->id,
+                                *recipient + ":" + std::to_string(entry->amount_minor));
+                            notifications_->push(
+                                *recipient, "economy_transfer", "Wallet credit",
+                                user->display_name + " transferred funds to you.",
+                                entry->id);
+                            response.status = 201;
+                            response.body = "{\"entry\":" +
+                                            economy_entries_json({*entry}) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/economy/admin/mint") {
+                    const auto target = json_string(request->body, "user_id");
+                    const auto amount_value = json_u64(request->body, "amount_minor");
+                    const auto reference = json_string(request->body, "reference");
+                    const auto memo = json_string(request->body, "memo").value_or("operator mint");
+                    if (!admin_allowed("administrator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
+                    } else if (!target || !amount_value || !reference ||
+                               *amount_value == 0U ||
+                               *amount_value > 9000000000000000ULL ||
+                               !identities_->find_by_id(*target)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-mint-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto entry = economy_->mint(
+                            *target, static_cast<std::int64_t>(*amount_value),
+                            *reference, memo, reason);
+                        if (!entry) {
+                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                admin_actor(), "economy.mint", *target,
+                                std::to_string(entry->amount_minor) + ":" + entry->reference);
+                            response.status = 201;
+                            response.body = "{\"entry\":" +
+                                            economy_entries_json({*entry}) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/economy/admin/burn") {
+                    const auto target = json_string(request->body, "user_id");
+                    const auto amount_value = json_u64(request->body, "amount_minor");
+                    const auto reference = json_string(request->body, "reference");
+                    const auto memo = json_string(request->body, "memo").value_or("operator burn");
+                    if (!admin_allowed("administrator")) {
+                        response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
+                    } else if (!target || !amount_value || !reference ||
+                               *amount_value == 0U ||
+                               *amount_value > 9000000000000000ULL ||
+                               !identities_->find_by_id(*target)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-burn-fields\"}"};
+                    } else {
+                        std::string reason;
+                        const auto entry = economy_->burn(
+                            *target, static_cast<std::int64_t>(*amount_value),
+                            *reference, memo, reason);
+                        if (!entry) {
+                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(
+                                admin_actor(), "economy.burn", *target,
+                                std::to_string(entry->amount_minor) + ":" + entry->reference);
+                            response.status = 201;
+                            response.body = "{\"entry\":" +
+                                            economy_entries_json({*entry}) + "}";
+                        }
+                    }
+                } else if (method == "GET" && path == "/v1/marketplace/listings") {
+                    response.body = "{\"currency\":\"" +
+                                    json_escape(economy_->currency_code()) +
+                                    "\",\"listings\":" +
+                                    marketplace_listings_json(marketplace_->active()) + "}";
+                } else if (method == "GET" && path == "/v1/marketplace/mine") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body = "{\"listings\":" +
+                                        marketplace_listings_json(
+                                            marketplace_->for_seller(user->id)) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/marketplace/listings") {
+                    auto [session, user] = auth();
+                    const auto asset_id = json_string(request->body, "asset_id");
+                    const auto title = json_string(request->body, "title");
+                    const auto description =
+                        json_string(request->body, "description").value_or("");
+                    const auto price_value = json_u64(request->body, "price_minor");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!asset_id || !title || !price_value ||
+                               *price_value == 0U ||
+                               *price_value > 9000000000000000ULL) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-marketplace-listing\"}"};
+                    } else {
+                        const auto asset = assets_->find(*asset_id);
+                        const auto required =
+                            static_cast<PermissionMask>(perm_copy | perm_transfer);
+                        if (!asset || asset->owner_user_id != user->id) {
+                            response = {.status = 404, .body = "{\"error\":\"asset-not-owned\"}"};
+                        } else if (!has_permission(asset->permissions, required)) {
+                            response = {.status = 403, .body = "{\"error\":\"asset-not-saleable\"}"};
+                        } else {
+                            std::string reason;
+                            const auto listing = marketplace_->create(
+                                user->id, *asset_id, *title, description,
+                                static_cast<std::int64_t>(*price_value),
+                                economy_->currency_code(), reason);
+                            if (!listing) {
+                                response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                            } else {
+                                audit_->append(
+                                    user->id, "marketplace.list", listing->id,
+                                    listing->asset_id + ":" + std::to_string(listing->price_minor));
+                                response.status = 201;
+                                response.body = marketplace_listing_json(*listing);
+                            }
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/marketplace/cancel") {
+                    auto [session, user] = auth();
+                    const auto listing_id = json_string(request->body, "listing_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!listing_id) {
+                        response = {.status = 400, .body = "{\"error\":\"missing-listing-id\"}"};
+                    } else {
+                        std::string reason;
+                        if (!marketplace_->cancel(user->id, *listing_id, reason)) {
+                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "marketplace.cancel", *listing_id);
+                            response.body = "{\"status\":\"cancelled\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/marketplace/purchase") {
+                    auto [session, user] = auth();
+                    const auto listing_id = json_string(request->body, "listing_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!listing_id) {
+                        response = {.status = 400, .body = "{\"error\":\"missing-listing-id\"}"};
+                    } else {
+                        const auto listing = marketplace_->find(*listing_id);
+                        if (!listing) {
+                            response = {.status = 404, .body = "{\"error\":\"listing-not-found\"}"};
+                        } else if (listing->state != MarketplaceListingState::active) {
+                            response = {.status = 409, .body = "{\"error\":\"listing-not-active\"}"};
+                        } else if (listing->seller_user_id == user->id) {
+                            response = {.status = 409, .body = "{\"error\":\"cannot-buy-own-listing\"}"};
+                        } else if (listing->currency_code != economy_->currency_code()) {
+                            response = {.status = 409, .body = "{\"error\":\"listing-currency-mismatch\"}"};
+                        } else if (social_policies_->blocks(
+                                       user->id, listing->seller_user_id) ||
+                                   social_policies_->blocks(
+                                       listing->seller_user_id, user->id)) {
+                            response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
+                        } else {
+                            const auto asset = assets_->find(listing->asset_id);
+                            const auto required =
+                                static_cast<PermissionMask>(perm_copy | perm_transfer);
+                            if (!asset ||
+                                asset->owner_user_id != listing->seller_user_id ||
+                                !has_permission(asset->permissions, required)) {
+                                response = {.status = 409, .body = "{\"error\":\"listing-asset-unavailable\"}"};
+                            } else {
+                                const auto sale_reference =
+                                    "market:" + listing->id + ":" +
+                                    security::random_hex(12);
+                                std::string reason;
+                                if (!marketplace_->reserve_purchase(
+                                        listing->id, user->id,
+                                        sale_reference, reason)) {
+                                    response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                                } else {
+                                    const auto escrow = economy_->reserve(
+                                        user->id, listing->seller_user_id,
+                                        listing->price_minor,
+                                        sale_reference, reason);
+                                    if (!escrow) {
+                                        std::string release_reason;
+                                        (void)marketplace_->release_purchase(
+                                            listing->id, user->id,
+                                            sale_reference, release_reason);
+                                        response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                                    } else {
+                                        const auto delivered = assets_->transfer(
+                                            listing->asset_id,
+                                            listing->seller_user_id,
+                                            user->id, true, reason);
+                                        if (!delivered) {
+                                            std::string rollback_reason;
+                                            (void)economy_->release_escrow(
+                                                escrow->id, rollback_reason);
+                                            (void)marketplace_->release_purchase(
+                                                listing->id, user->id,
+                                                sale_reference, rollback_reason);
+                                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                                        } else {
+                                            const auto root =
+                                                inventory_->ensure_root(user->id);
+                                            const auto item =
+                                                inventory_->create_item(
+                                                    user->id, root.id,
+                                                    delivered->id,
+                                                    delivered->name, reason);
+                                            if (!item) {
+                                                (void)assets_->remove_owned(
+                                                    delivered->id, user->id);
+                                                std::string rollback_reason;
+                                                (void)economy_->release_escrow(
+                                                    escrow->id, rollback_reason);
+                                                (void)marketplace_->release_purchase(
+                                                    listing->id, user->id,
+                                                    sale_reference, rollback_reason);
+                                                response = {.status = 503, .body = "{\"error\":\"marketplace-fulfillment-failed\"}"};
+                                            } else if (!marketplace_->complete_purchase(
+                                                           listing->id, user->id,
+                                                           sale_reference, reason)) {
+                                                (void)inventory_->delete_item(
+                                                    user->id, item->id, reason);
+                                                (void)assets_->remove_owned(
+                                                    delivered->id, user->id);
+                                                std::string rollback_reason;
+                                                (void)economy_->release_escrow(
+                                                    escrow->id, rollback_reason);
+                                                (void)marketplace_->rollback_purchase(
+                                                    listing->id, user->id,
+                                                    sale_reference, rollback_reason);
+                                                response = {.status = 503, .body = "{\"error\":\"marketplace-finalize-failed\"}"};
+                                            } else if (!economy_->commit_escrow(
+                                                           escrow->id, reason)) {
+                                                std::string rollback_reason;
+                                                (void)inventory_->delete_item(
+                                                    user->id, item->id, rollback_reason);
+                                                (void)assets_->remove_owned(
+                                                    delivered->id, user->id);
+                                                (void)economy_->release_escrow(
+                                                    escrow->id, rollback_reason);
+                                                (void)marketplace_->rollback_purchase(
+                                                    listing->id, user->id,
+                                                    sale_reference, rollback_reason);
+                                                response = {.status = 503, .body = "{\"error\":\"marketplace-payment-finalize-failed\"}"};
+                                            } else {
+                                                audit_->append(
+                                                    user->id, "marketplace.purchase",
+                                                    listing->id, sale_reference);
+                                                notifications_->push(
+                                                    listing->seller_user_id,
+                                                    "marketplace_sale",
+                                                    "Marketplace sale",
+                                                    "An item was purchased from your listing.",
+                                                    listing->id);
+                                                response.status = 201;
+                                                response.body =
+                                                    "{\"status\":\"purchased\",\"listing_id\":\"" +
+                                                    json_escape(listing->id) +
+                                                    "\",\"asset\":" +
+                                                    asset_json(*delivered) +
+                                                    ",\"inventory_item_id\":\"" +
+                                                    json_escape(item->id) +
+                                                    "\",\"escrow_id\":\"" +
+                                                    json_escape(escrow->id) +
+                                                    "\",\"sale_reference\":\"" +
+                                                    json_escape(sale_reference) + "\"}";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else if (method == "POST" && path == "/v1/assets/transfer") {
                     auto [session, user] = auth();
                     const auto asset_id = json_string(request->body, "asset_id");
