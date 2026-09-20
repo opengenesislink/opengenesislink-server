@@ -52,6 +52,9 @@ Current development version: **11.0.0-dev**.
 - multi-language OGL ScriptEngine with a shared sandboxed IR/runtime for legacy scripts, LSL compatibility scripts and native OGL scripts
 - persistent Script language selection (`legacy`, `lsl`, `ogl`) with state-specific handlers, event parameter binding and restart-safe VM state
 - native OGL language v1 with state/event declarations, variables, increments, World/Social actions and durable World queries
+- OGL v2 control flow with bounded `if/else`, `while`, `for`, reusable parameterless functions and typed declarations on the shared sandboxed VM
+- OGL command/feature matrix is 31/31 implemented for the defined OGL v2 contract
+- LSL deterministic builtin coverage expanded to 56 strictly implemented functions plus 24 partial functions; the full 523-function catalog remains tracked without claiming full semantic compatibility
 - LSL compatibility frontend with real `default`/named-state syntax, typed event parameter names, state changes, executable deterministic built-ins and a machine-readable canonical function/event status catalog
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions

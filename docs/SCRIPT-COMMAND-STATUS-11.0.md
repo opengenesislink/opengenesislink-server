@@ -6,7 +6,7 @@ Diese Datei wird aus den in 11.0 gepflegten ScriptEngine-Katalogen abgeleitet. S
 
 | Status | Bedeutung |
 |---|---|
-| ✅ `implemented` | Im 9.0-Vertrag ausführbar und für den dokumentierten Umfang implementiert. |
+| ✅ `implemented` | Im 11.0-Vertrag ausführbar und für den dokumentierten Umfang implementiert. |
 | 🟡 `partial` | Ausführbar, aber Semantik/Fidelity ist gegenüber vollständigem LSL bewusst eingeschränkt. |
 | 🔵 `recognized` | Katalog-/Parserwissen vorhanden, aber die eigentliche Server-Semantik ist noch nicht ausführbar. |
 | ⛔ `unsupported` | Derzeit absichtlich nicht unterstützt, veraltet oder nicht sicher/geeignet für den aktuellen Engine-Vertrag. |
