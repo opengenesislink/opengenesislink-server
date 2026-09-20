@@ -453,6 +453,27 @@ bool RegionRuntime::apply_impulse(
     return ok;
 }
 
+bool RegionRuntime::apply_angular_impulse(
+    const std::uint64_t id, const physics::Vec3 impulse) {
+    if (!finite_vec(impulse)) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.apply_angular_impulse(
+            it->second.physics_body, impulse);
+    if (ok) {
+        append_event_locked(
+            "physics_angular_impulse", id, it->second.transform,
+            std::to_string(impulse.x) + "," +
+                std::to_string(impulse.y) + "," +
+                std::to_string(impulse.z));
+    }
+    return ok;
+}
+
 bool RegionRuntime::apply_torque(
     const std::uint64_t id, const physics::Vec3 torque) {
     if (!finite_vec(torque)) return false;
