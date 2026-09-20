@@ -68,6 +68,12 @@ public:
         std::string_view sale_reference,
         std::string& reason);
 
+    [[nodiscard]] bool rollback_purchase(
+        std::string_view listing_id,
+        std::string_view buyer_user_id,
+        std::string_view sale_reference,
+        std::string& reason);
+
     [[nodiscard]] std::optional<MarketplaceListing> find(
         std::string_view listing_id) const;
 
