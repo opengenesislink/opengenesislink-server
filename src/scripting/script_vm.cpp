@@ -198,6 +198,14 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         } else if(op=="physics"){
             ins.opcode=ScriptOpcode::physics; parts>>ins.a;
             if(ins.a!="0"&&ins.a!="1"){reason="invalid-physics";return std::nullopt;}
+        } else if(op=="shape"){
+            ins.opcode=ScriptOpcode::shape;
+            parts>>ins.a;
+            std::string extra; parts>>extra;
+            if((ins.a!="sphere"&&ins.a!="box"&&ins.a!="capsule")||
+               !extra.empty()){
+                reason="invalid-physics-shape";return std::nullopt;
+            }
         } else if(op=="text"){
             ins.opcode=ScriptOpcode::text; std::getline(parts,ins.a); ins.a=trim(ins.a);
             if(ins.a.size()>512){reason="invalid-object-text";return std::nullopt;}
@@ -224,6 +232,17 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             if(!atom(ins.a,64)||!radius||*radius<1||*radius>96||!extra.empty()){
                 reason="invalid-nearby-query";return std::nullopt;
             }
+        } else if(op=="raycast"){
+            ins.opcode=ScriptOpcode::raycast;
+            std::string dy,dz,distance,extra;
+            parts>>ins.a>>ins.b>>dy>>dz>>distance>>extra;
+            if(!atom(ins.a,64)||ins.b.empty()||dy.empty()||dz.empty()||
+               distance.empty()||!extra.empty()||
+               ins.b.size()>128||dy.size()>128||dz.size()>128||
+               distance.size()>128){
+                reason="invalid-raycast-query";return std::nullopt;
+            }
+            ins.c=dy+"\x1f"+dz+"\x1f"+distance;
         } else if(op=="builtin"){
             ins.opcode=ScriptOpcode::builtin_set;
             parts>>ins.a>>ins.b;
@@ -396,6 +415,9 @@ ScriptVmResult execute_script_event(
         } else if(ins.opcode==ScriptOpcode::physics){
             result.actions.push_back({.type=ScriptActionType::world_physics,
                                       .value=ins.a,.number=0});
+        } else if(ins.opcode==ScriptOpcode::shape){
+            result.actions.push_back({.type=ScriptActionType::world_shape,
+                                      .value=ins.a,.number=0});
         } else if(ins.opcode==ScriptOpcode::text){
             result.actions.push_back({.type=ScriptActionType::world_text,
                                       .value=resolve(ins.a,result.state),.number=0});
@@ -420,6 +442,27 @@ ScriptVmResult execute_script_event(
         } else if(ins.opcode==ScriptOpcode::nearby_avatars){
             result.actions.push_back({.type=ScriptActionType::world_query_nearby,
                                       .value=ins.a+"|"+ins.b,.number=0});
+        } else if(ins.opcode==ScriptOpcode::raycast){
+            const auto first=ins.c.find('\x1f');
+            const auto second=
+                first==std::string::npos
+                    ? std::string::npos
+                    : ins.c.find('\x1f',first+1U);
+            if(first==std::string::npos||second==std::string::npos){
+                result.error="invalid-raycast-query";
+                return result;
+            }
+            const auto dy=ins.c.substr(0,first);
+            const auto dz=ins.c.substr(first+1U,second-first-1U);
+            const auto distance=ins.c.substr(second+1U);
+            result.actions.push_back({
+                .type=ScriptActionType::world_query_raycast,
+                .value=ins.a+"|"+
+                       resolve(ins.b,result.state)+" "+
+                       resolve(dy,result.state)+" "+
+                       resolve(dz,result.state)+"|"+
+                       resolve(distance,result.state),
+                .number=0});
         } else if(ins.opcode==ScriptOpcode::builtin_set){
             std::vector<std::string> arguments;
             std::size_t start=0;
