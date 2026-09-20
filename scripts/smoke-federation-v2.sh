@@ -140,6 +140,7 @@ _,info=api('/v1',expect=200)
 for cap in (
     'ogl-fed-v2','federation-service-grants-v1',
     'federation-remote-profile-v1',
+    'federation-remote-appearance-v1',
     'federation-remote-inventory-v1',
     'federation-remote-assets-v1',
     'federation-remote-social-v1',
@@ -213,6 +214,12 @@ auth={
 _,profile=api('/v1/federation/service/profile','POST',auth,expect=200)
 assert profile['user']['id']==aid,profile
 assert any(w['asset_id']==asset_id for w in profile['appearance']['wearables']),profile
+
+_,remote_appearance=api(
+    '/v1/federation/service/appearance','POST',auth,expect=200)
+assert remote_appearance['user_id']==aid,remote_appearance
+assert any(w['asset_id']==asset_id
+           for w in remote_appearance['wearables']),remote_appearance
 
 _,remote_inv=api('/v1/federation/service/inventory','POST',auth,expect=200)
 assert any(x['asset_id']==asset_id for x in remote_inv['items']),remote_inv
