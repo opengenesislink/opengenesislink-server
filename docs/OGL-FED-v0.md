@@ -1,5 +1,7 @@
 # OGL-FED Foundation v0
 
+> Historical contract notice: this document describes the OGL-FED/1 foundation. The current native federation contract is **OGL-FED/2** in `docs/OGL-FED-v2.md`.
+
 OGL-FED is the native OpenGenesisLINK federation path. It is separate from the OpenSimulator Hypergrid compatibility bridge.
 
 Protocol identifier: `OGL-FED/1`.
