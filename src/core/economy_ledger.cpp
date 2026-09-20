@@ -164,10 +164,17 @@ std::optional<EconomyAccount> EconomyLedger::account(
 
 bool EconomyLedger::reference_exists_locked(
     const std::string_view reference) const {
+    if (std::any_of(
+            entries_.begin(), entries_.end(),
+            [&](const EconomyEntry& entry) {
+                return entry.reference == reference;
+            })) {
+        return true;
+    }
     return std::any_of(
-        entries_.begin(), entries_.end(),
-        [&](const EconomyEntry& entry) {
-            return entry.reference == reference;
+        escrows_.begin(), escrows_.end(),
+        [&](const auto& item) {
+            return item.second.reference == reference;
         });
 }
 
@@ -331,12 +338,7 @@ std::optional<EconomyEscrow> EconomyLedger::reserve(
     }
 
     std::scoped_lock lock(mutex_);
-    if (reference_exists_locked(reference) ||
-        std::any_of(
-            escrows_.begin(), escrows_.end(),
-            [&](const auto& item) {
-                return item.second.reference == reference;
-            })) {
+    if (reference_exists_locked(reference)) {
         reason = "duplicate-reference";
         return std::nullopt;
     }
