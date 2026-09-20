@@ -14,10 +14,10 @@ enum class ScriptOpcode {
     set, add, emit, state, timer, listen, notify, message,
     move, rotate, scale, velocity, angular_velocity,
     force, impulse, angular_impulse, torque, buoyancy, material,
-    physics, text,
+    physics, shape, text,
     say, whisper, shout,
     object_info, region_info, terrain_height, water_level, world_time,
-    nearby_avatars, builtin_set, jump, jump_if_false, stop
+    nearby_avatars, raycast, builtin_set, jump, jump_if_false, stop
 };
 
 struct ScriptInstruction {
@@ -63,6 +63,7 @@ enum class ScriptActionType {
     world_buoyancy,
     world_material,
     world_physics,
+    world_shape,
     world_text,
     world_chat_say,
     world_chat_whisper,
@@ -72,7 +73,8 @@ enum class ScriptActionType {
     world_query_terrain,
     world_query_water,
     world_query_time,
-    world_query_nearby
+    world_query_nearby,
+    world_query_raycast
 };
 
 struct ScriptAction {
