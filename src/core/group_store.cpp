@@ -162,9 +162,11 @@ std::optional<GroupInfo> GroupStore::create(
         .founder_user_id = founder,
         .created_unix = unix_now()};
     groups_[group.id] = group;
-    members_[member_key(group.id, founder)] = {
+    const auto owner_key =
+        member_key(group.id, group.founder_user_id);
+    members_[owner_key] = {
         .group_id = group.id,
-        .user_id = std::move(founder),
+        .user_id = group.founder_user_id,
         .role = "owner",
         .powers = group_power_all,
         .joined_unix = group.created_unix};
