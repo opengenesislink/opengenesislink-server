@@ -153,15 +153,15 @@ assert caps['engine']=='OGL ScriptEngine',caps
 assert set(caps['languages'])=={'legacy','lsl','ogl'},caps
 assert len(caps['lsl_functions'])==523,caps
 assert len(caps['lsl_events'])==44,caps
-assert len(caps['ogl'])==31,caps
+assert len(caps['ogl'])==37,caps
 summary=caps['summary']
 assert summary['lsl_functions']['implemented']==56,summary
-assert summary['lsl_functions']['partial']==24,summary
+assert summary['lsl_functions']['partial']==29,summary
 assert summary['lsl_functions']['implemented_percent']==10.71,summary
-assert summary['lsl_functions']['executable_percent']==15.30,summary
+assert summary['lsl_functions']['executable_percent']==16.25,summary
 assert summary['lsl_events']['implemented']==1,summary
 assert summary['lsl_events']['partial']==3,summary
-assert summary['ogl']['implemented']==31,summary
+assert summary['ogl']['implemented']==37,summary
 assert summary['ogl']['implemented_percent']==100.00,summary
 
 status,user=api('/v1/auth/register','POST',{
@@ -207,6 +207,10 @@ ogl=(
     'call bump\n'
     'endwhile\n'
     'if count == 3\n'
+    'world.physics 1\n'
+    'world.material 3 0.4 0.7\n'
+    'world.buoyancy 1\n'
+    'world.impulse 0 0 0\n'
     'world.move 140 141 31\n'
     'else\n'
     'stop\n'
@@ -231,7 +235,7 @@ status,ogl_run=api('/v1/scripts/event','POST',{
     'event':'touch'},token)
 assert status==200,ogl_run
 assert ogl_run['state']=='active',ogl_run
-assert ogl_run['host_applied']==2,ogl_run
+assert ogl_run['host_applied']==6,ogl_run
 assert ogl_run['host_errors']==[],ogl_run
 
 time.sleep(1.0)
@@ -242,8 +246,37 @@ line=next(
     x for x in snapshot.splitlines()
     if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
 parts=line.split('|')
-assert parts[3]=='140.000' and parts[4]=='141.000' and parts[5]=='31.000',parts
+assert parts[3]=='140.000' and parts[4]=='141.000',parts
+z=float(parts[5])
+assert 21.5 <= z <= 31.1,parts
 assert parts[20]=='OGL online',parts
+assert len(parts)>=31,parts
+assert parts[27]=='3.000',parts
+assert parts[28]=='0.400',parts
+assert parts[29]=='0.700',parts
+assert parts[30]=='1.000',parts
+
+# Exercise the authenticated Scene Physics v2 wire contract directly.
+send(scene,126,29,
+     f'id={entity}\n'
+     'action=material\n'
+     'mass=4\n'
+     'restitution=0.2\n'
+     'friction=0.5\n')
+msg,_,physics_ack=recv(scene)
+assert msg==127,physics_ack
+assert 'status=updated' in physics_ack,physics_ack
+
+send(scene,102,30,'')
+msg,_,physics_snapshot=recv(scene)
+assert msg==103
+physics_line=next(
+    x for x in physics_snapshot.splitlines()
+    if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
+physics_parts=physics_line.split('|')
+assert physics_parts[27]=='4.000',physics_parts
+assert physics_parts[28]=='0.200',physics_parts
+assert physics_parts[29]=='0.500',physics_parts
 
 lsl=(
     'default {\n'
@@ -314,12 +347,14 @@ for attempt in range(8):
         x for x in snapshot.splitlines()
         if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
     parts=line.split('|')
-    assert parts[3]=='150.000' and parts[4]=='151.000' and parts[5]=='32.000',parts
+    assert parts[3]=='150.000' and parts[4]=='151.000',parts
+    z=float(parts[5])
+    assert 21.5 <= z <= 32.1,parts
     if parts[20]=='LSL active':
         break
 assert parts is not None and parts[20]=='LSL active',parts
 
 send(scene,42,20,'')
 scene.close()
-print('OpenGenesisLINK 11.0 OGL/LSL ScriptEngine end-to-end smoke: PASS')
+print('OpenGenesisLINK 12.0 OGL/LSL Physics ScriptEngine end-to-end smoke: PASS')
 PY

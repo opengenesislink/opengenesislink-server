@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **11.0.0-dev**.
+Current development version: **12.0.0-dev**.
 
-`11.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`12.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -14,6 +14,10 @@ Current development version: **11.0.0-dev**.
 - 256×256 terrain runtime with persistence
 - persistent Scene objects, authenticated Avatar Presence and local chat/events
 - native OpenGenesis Physics foundation
+- Physics v2 with body-vs-body and terrain contacts, restitution/friction, force/impulse/torque, damping, buoyancy and distance constraints
+- collision start/stay/end and land-collision events emitted by Region Runtime
+- rigid root rotation/translation propagation for linked object children
+- Scene Persistence v6 and Object Crossing preserve Physics v2 material state
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
 - production relational storage layer for SQLite, PostgreSQL and MariaDB with prepared parameters, bounded connection pools and transactions
 - cross-database schema migrations with SQL-authoritative Identity, Auth Session, World Registry, Region Registry, Audit, Moderation and Admin Role stores
@@ -47,18 +51,18 @@ Current development version: **11.0.0-dev**.
 - linkset transfer preserves ownership, permissions, topology, transforms, physical state, linear/angular velocity and floating text with deterministic destination entity mapping
 - Script bindings are atomically rebound from source `region/entity` IDs to destination IDs only after source removal is acknowledged
 - expired/exported transactions reconcile destination cleanup before rollback, covering lost destination-import acknowledgements
-- Scene object persistence v5 preserves linkset topology, linear/angular motion and floating text while remaining readable from v1-v4 scene records
-- native Object Runtime v1 adds link/unlink topology, root-driven linked movement, floating text, configurable water height and angular PhysicsWorld state
+- Scene Persistence v6 preserves linkset topology, linear/angular motion, floating text and Physics v2 material state while retaining loaders for earlier record layouts
+- native Object Runtime v2 adds rigid linked-child translation/rotation following, Physics v2 state, collision events and distance constraints
 - multi-language OGL ScriptEngine with a shared sandboxed IR/runtime for legacy scripts, LSL compatibility scripts and native OGL scripts
 - persistent Script language selection (`legacy`, `lsl`, `ogl`) with state-specific handlers, event parameter binding and restart-safe VM state
 - native OGL language v1 with state/event declarations, variables, increments, World/Social actions and durable World queries
 - OGL v2 control flow with bounded `if/else`, `while`, `for`, reusable parameterless functions and typed declarations on the shared sandboxed VM
-- OGL command/feature matrix is 31/31 implemented for the defined OGL v2 contract
-- LSL deterministic builtin coverage expanded to 56 strictly implemented functions plus 24 partial functions; the full 523-function catalog remains tracked without claiming full semantic compatibility
+- OGL v2 language core remains 31/31 implemented; the 12.0 catalog is 37/37 including six native Physics v2 commands
+- LSL coverage is 56 strictly implemented functions plus 29 partial functions (85/523 executable including partial); the full 523-function catalog remains tracked without claiming full semantic compatibility
 - LSL compatibility frontend with real `default`/named-state syntax, typed event parameter names, state changes, executable deterministic built-ins and a machine-readable canonical function/event status catalog
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions
-- durable Core-to-World Script action routing for object move/rotate/scale, velocity/angular velocity, physics, floating text and local say/whisper/shout with leases, ACK/NACK, retry, expiry and World-side owner validation
+- durable Core-to-World Script action routing for transforms, velocity/angular velocity, force/impulse/angular impulse/torque, buoyancy/material/physics, floating text and local say/whisper/shout with leases, ACK/NACK, retry, expiry and World-side owner validation
 - asynchronous Script World v3 queries for richer object/linkset state, Region runtime information, terrain height, water level, world time and nearby Avatars with results persisted back into VM variables
 - persistent Script Runtime with source hashing, restart-safe VM state and automatic timer execution through the same ScriptHost policy layer
 - reusable runtime Rate Limiter and storage Schema Version guard

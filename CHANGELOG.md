@@ -1,5 +1,28 @@
 # Changelog
 
+## 12.0.0-dev — 2026-09-20
+
+World Runtime & Physics v2 milestone.
+
+- promoted the native OpenGenesis physics layer to Physics v2
+- added deterministic body-vs-body sphere collision resolution with penetration correction, restitution and friction impulses
+- added terrain contact reporting with start/stay/end lifecycle
+- added force, linear impulse, angular impulse and torque application
+- added mass, restitution, friction, linear/angular damping, gravity scale and buoyancy body state
+- added bounded distance constraints with automatic cleanup when referenced bodies are removed
+- added Region Runtime collision metrics and Scene events: `collision_start`, `collision`, `collision_end`, `land_collision_start`, `land_collision`, `land_collision_end`
+- upgraded linked-object motion so children follow root translation and rotation as rigid offsets
+- introduced authenticated Scene Physics v2 mutation messages for material, force, impulse, angular impulse, torque, buoyancy and distance constraints
+- added Physics v2 state to object inspection and Scene snapshots
+- added six native OGL Physics v2 commands: `world.force`, `world.impulse`, `world.angular_impulse`, `world.torque`, `world.buoyancy`, `world.material`
+- OGL 12.0 catalog is 37/37 implemented while retaining the completed 31/31 OGL-v2 language core
+- added partial executable LSL mappings for `llApplyImpulse`, `llApplyRotationalImpulse`, `llSetForce`, `llSetTorque` and `llSetBuoyancy`
+- LSL function status is 56 implemented, 29 partial, 413 recognized and 25 unsupported out of 523; executable including partial is 16.25%
+- upgraded Scene Persistence to v6 and preserved Physics v2 material/motion state across persistence and Object Crossing
+- retained backward loading of earlier Scene persistence layouts
+- expanded unit, authenticated Scene, ScriptEngine and crossing coverage for Physics v2
+- 12.0 does not claim final mesh/convex collision, continuous collision detection, final avatar character controller, full vehicle semantics or complete LSL compatibility
+
 ## 11.0.0-dev — 2026-09-20
 
 Script Runtime Completion milestone.

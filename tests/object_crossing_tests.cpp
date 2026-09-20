@@ -53,6 +53,10 @@ int main() {
                 "source velocity set");
         require(source.set_angular_velocity(source_id, {0.0, 0.0, 12.5}),
                 "source angular velocity set");
+        require(source.set_physics_material(source_id, 7.0, 0.35, 0.8),
+                "source physics material set");
+        require(source.set_buoyancy(source_id, 0.45),
+                "source buoyancy set");
         require(source.set_floating_text(source_id, "Crossing Runtime v2"),
                 "source floating text set");
 
@@ -62,6 +66,10 @@ int main() {
                     snapshot->transform.rotation.z == 45.0 &&
                     snapshot->velocity.x == 3.5 &&
                     snapshot->angular_velocity.z == 12.5 &&
+                    snapshot->mass == 7.0 &&
+                    snapshot->restitution == 0.35 &&
+                    snapshot->friction == 0.8 &&
+                    snapshot->buoyancy == 0.45 &&
                     snapshot->floating_text == "Crossing Runtime v2" &&
                     snapshot->physical,
                 "object export captures rich runtime state");
@@ -125,6 +133,10 @@ int main() {
             require(imported_snapshot &&
                         imported_snapshot->velocity.x == 3.5 &&
                         imported_snapshot->angular_velocity.z == 12.5 &&
+                        imported_snapshot->mass == 7.0 &&
+                        imported_snapshot->restitution == 0.35 &&
+                        imported_snapshot->friction == 0.8 &&
+                        imported_snapshot->buoyancy == 0.45 &&
                         imported_snapshot->floating_text ==
                             "Crossing Runtime v2",
                     "destination restores linear/angular motion and text");
@@ -330,8 +342,12 @@ int main() {
                         restored->velocity.y == 0.5 &&
                         restored->velocity.z == 1.25 &&
                         restored->angular_velocity.z == 12.5 &&
+                        restored->mass == 7.0 &&
+                        restored->restitution == 0.35 &&
+                        restored->friction == 0.8 &&
+                        restored->buoyancy == 0.45 &&
                         restored->floating_text == "Crossing Runtime v2",
-                    "scene persistence v5 preserves rich crossed object state");
+                    "scene persistence v6 preserves physics v2 crossed object state");
             const auto restored_child =
                 restored_destination.entity(linkset_destination_child);
             require(restored_child &&

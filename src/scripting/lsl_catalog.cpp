@@ -135,6 +135,8 @@ ScriptFeatureStatus status_for(std::string_view name) {
         "llSetTimerEvent", "llListen", "llSetPos", "llSetRegionPos",
         "llSetScale", "llSetVelocity", "llSetAngularVelocity", "llSetText",
         "llSetStatus", "llResetScript",
+        "llApplyImpulse", "llApplyRotationalImpulse",
+        "llSetForce", "llSetTorque", "llSetBuoyancy",
         // Executable pure builtins with deliberately conservative fidelity
         // status because edge behavior/Unicode still differs from SL LSL.
         "llChar", "llOrd", "llDeleteSubString", "llGetSubString",

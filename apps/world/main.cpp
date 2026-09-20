@@ -121,6 +121,13 @@ std::string serialize_object_snapshot(
         << "avx=" << snapshot.angular_velocity.x << '\n'
         << "avy=" << snapshot.angular_velocity.y << '\n'
         << "avz=" << snapshot.angular_velocity.z << '\n'
+        << "mass=" << snapshot.mass << '\n'
+        << "restitution=" << snapshot.restitution << '\n'
+        << "friction=" << snapshot.friction << '\n'
+        << "linear_damping=" << snapshot.linear_damping << '\n'
+        << "angular_damping=" << snapshot.angular_damping << '\n'
+        << "gravity_scale=" << snapshot.gravity_scale << '\n'
+        << "buoyancy=" << snapshot.buoyancy << '\n'
         << "physical=" << (snapshot.physical ? 1 : 0) << '\n'
         << "parent_source=" << snapshot.parent_source_entity_id << '\n'
         << "link_number=" << snapshot.link_number << '\n'
@@ -172,6 +179,26 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
             snapshot.angular_velocity = {
                 std::stod(avx), std::stod(avy), std::stod(avz)};
         }
+        const auto mass = field(encoded, "mass");
+        const auto restitution = field(encoded, "restitution");
+        const auto friction = field(encoded, "friction");
+        const auto linear_damping = field(encoded, "linear_damping");
+        const auto angular_damping = field(encoded, "angular_damping");
+        const auto gravity_scale = field(encoded, "gravity_scale");
+        const auto buoyancy = field(encoded, "buoyancy");
+        if (!mass.empty()) snapshot.mass = std::stod(mass);
+        if (!restitution.empty()) snapshot.restitution = std::stod(restitution);
+        if (!friction.empty()) snapshot.friction = std::stod(friction);
+        if (!linear_damping.empty()) {
+            snapshot.linear_damping = std::stod(linear_damping);
+        }
+        if (!angular_damping.empty()) {
+            snapshot.angular_damping = std::stod(angular_damping);
+        }
+        if (!gravity_scale.empty()) {
+            snapshot.gravity_scale = std::stod(gravity_scale);
+        }
+        if (!buoyancy.empty()) snapshot.buoyancy = std::stod(buoyancy);
         snapshot.physical = field(encoded, "physical") == "1";
         const auto parent = field(encoded, "parent_source");
         if (!parent.empty()) snapshot.parent_source_entity_id = std::stoull(parent);
@@ -432,6 +459,8 @@ ScriptActionApplyResult apply_script_action(
             transfer ? transfer->velocity : opengenesis::physics::Vec3{};
         const opengenesis::physics::Vec3 angular =
             transfer ? transfer->angular_velocity : opengenesis::physics::Vec3{};
+        const auto body_state =
+            (*runtime)->physics_body_state(entity_id);
         std::ostringstream out;
         out << std::fixed << std::setprecision(3)
             << "name=" << clean_wire_field(entity->name) << '\n'
@@ -451,7 +480,11 @@ ScriptActionApplyResult apply_script_action(
             << "group=" << clean_wire_field(entity->group_id) << '\n'
             << "owner_permissions=" << entity->owner_permissions << '\n'
             << "group_permissions=" << entity->group_permissions << '\n'
-            << "everyone_permissions=" << entity->everyone_permissions << '\n';
+            << "everyone_permissions=" << entity->everyone_permissions << '\n'
+            << "mass=" << (body_state ? body_state->mass : 0.0) << '\n'
+            << "restitution=" << (body_state ? body_state->restitution : 0.0) << '\n'
+            << "friction=" << (body_state ? body_state->friction : 0.0) << '\n'
+            << "buoyancy=" << (body_state ? body_state->buoyancy : 0.0) << '\n';
         return {.ok = true, .result = out.str()};
     }
 
@@ -550,6 +583,9 @@ ScriptActionApplyResult apply_script_action(
     const bool modifies_object =
         type == "move" || type == "rotate" || type == "scale" ||
         type == "velocity" || type == "angular_velocity" ||
+        type == "force" || type == "impulse" ||
+        type == "angular_impulse" || type == "torque" ||
+        type == "buoyancy" || type == "material" ||
         type == "physics" || type == "text";
     if (modifies_object &&
         !opengenesis::core::has_permission(
@@ -583,23 +619,79 @@ ScriptActionApplyResult apply_script_action(
                    : ScriptActionApplyResult{.error = "chat-failed"};
     }
 
-    opengenesis::physics::Vec3 vector;
-    if (!vector3(payload, vector) ||
-        !std::isfinite(vector.x) || !std::isfinite(vector.y) ||
-        !std::isfinite(vector.z)) {
-        return {.error = "invalid-world-vector"};
-    }
-    if (type == "velocity" || type == "angular_velocity") {
+    if (type == "buoyancy") {
+        double value = 0.0;
+        try {
+            value = std::stod(payload);
+        } catch (...) {
+            return {.error = "invalid-buoyancy"};
+        }
+        if (!std::isfinite(value)) return {.error = "invalid-buoyancy"};
         parcels.reload();
         if (!parcels.can_build(
                 (*runtime)->id(), entity->transform.position.x,
                 entity->transform.position.y, owner, {})) {
             return {.error = "parcel-build-denied"};
         }
-        const bool ok =
-            type == "velocity"
-                ? (*runtime)->set_velocity(entity_id, vector)
-                : (*runtime)->set_angular_velocity(entity_id, vector);
+        return (*runtime)->set_buoyancy(entity_id, value)
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{.error = "physical-object-required"};
+    }
+
+    if (type == "material") {
+        std::istringstream input(payload);
+        double mass = 0.0;
+        double restitution = 0.0;
+        double friction = 0.0;
+        std::string extra;
+        if (!(input >> mass >> restitution >> friction) ||
+            (input >> extra) ||
+            !std::isfinite(mass) ||
+            !std::isfinite(restitution) ||
+            !std::isfinite(friction)) {
+            return {.error = "invalid-physics-material"};
+        }
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(), entity->transform.position.x,
+                entity->transform.position.y, owner, {})) {
+            return {.error = "parcel-build-denied"};
+        }
+        return (*runtime)->set_physics_material(
+                   entity_id, mass, restitution, friction)
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{.error = "physics-material-update-failed"};
+    }
+
+    opengenesis::physics::Vec3 vector;
+    if (!vector3(payload, vector) ||
+        !std::isfinite(vector.x) || !std::isfinite(vector.y) ||
+        !std::isfinite(vector.z)) {
+        return {.error = "invalid-world-vector"};
+    }
+    if (type == "velocity" || type == "angular_velocity" ||
+        type == "force" || type == "impulse" ||
+        type == "angular_impulse" || type == "torque") {
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(), entity->transform.position.x,
+                entity->transform.position.y, owner, {})) {
+            return {.error = "parcel-build-denied"};
+        }
+        bool ok = false;
+        if (type == "velocity") {
+            ok = (*runtime)->set_velocity(entity_id, vector);
+        } else if (type == "angular_velocity") {
+            ok = (*runtime)->set_angular_velocity(entity_id, vector);
+        } else if (type == "force") {
+            ok = (*runtime)->apply_force(entity_id, vector);
+        } else if (type == "impulse") {
+            ok = (*runtime)->apply_impulse(entity_id, vector);
+        } else if (type == "angular_impulse") {
+            ok = (*runtime)->apply_angular_impulse(entity_id, vector);
+        } else {
+            ok = (*runtime)->apply_torque(entity_id, vector);
+        }
         return ok ? ScriptActionApplyResult{.ok = true}
                   : ScriptActionApplyResult{.error = "physical-object-motion-update-failed"};
     }

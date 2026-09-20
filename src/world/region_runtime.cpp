@@ -23,6 +23,89 @@ bool finite_vec(const physics::Vec3& value) {
            std::isfinite(value.z);
 }
 
+double normalized_degrees(double value) {
+    if (!std::isfinite(value)) return 0.0;
+    value = std::fmod(value, 360.0);
+    if (value < 0.0) value += 360.0;
+    return value;
+}
+
+double radians(const double degrees) {
+    return degrees * 3.14159265358979323846 / 180.0;
+}
+
+physics::Vec3 rotate_x(physics::Vec3 value, const double angle) {
+    const auto cosine = std::cos(angle);
+    const auto sine = std::sin(angle);
+    return {
+        value.x,
+        value.y * cosine - value.z * sine,
+        value.y * sine + value.z * cosine};
+}
+
+physics::Vec3 rotate_y(physics::Vec3 value, const double angle) {
+    const auto cosine = std::cos(angle);
+    const auto sine = std::sin(angle);
+    return {
+        value.x * cosine + value.z * sine,
+        value.y,
+        -value.x * sine + value.z * cosine};
+}
+
+physics::Vec3 rotate_z(physics::Vec3 value, const double angle) {
+    const auto cosine = std::cos(angle);
+    const auto sine = std::sin(angle);
+    return {
+        value.x * cosine - value.y * sine,
+        value.x * sine + value.y * cosine,
+        value.z};
+}
+
+physics::Vec3 rotate_euler(
+    physics::Vec3 value, const physics::Vec3& rotation) {
+    value = rotate_x(value, radians(rotation.x));
+    value = rotate_y(value, radians(rotation.y));
+    value = rotate_z(value, radians(rotation.z));
+    return value;
+}
+
+physics::Vec3 inverse_rotate_euler(
+    physics::Vec3 value, const physics::Vec3& rotation) {
+    value = rotate_z(value, -radians(rotation.z));
+    value = rotate_y(value, -radians(rotation.y));
+    value = rotate_x(value, -radians(rotation.x));
+    return value;
+}
+
+physics::Vec3 subtract(
+    const physics::Vec3& left, const physics::Vec3& right) {
+    return {
+        left.x - right.x,
+        left.y - right.y,
+        left.z - right.z};
+}
+
+physics::Vec3 add(
+    const physics::Vec3& left, const physics::Vec3& right) {
+    return {
+        left.x + right.x,
+        left.y + right.y,
+        left.z + right.z};
+}
+
+physics::Vec3 rotation_delta(
+    const physics::Vec3& next, const physics::Vec3& previous) {
+    auto delta_axis = [](double value) {
+        value = std::fmod(value + 180.0, 360.0);
+        if (value < 0.0) value += 360.0;
+        return value - 180.0;
+    };
+    return {
+        delta_axis(next.x - previous.x),
+        delta_axis(next.y - previous.y),
+        delta_axis(next.z - previous.z)};
+}
+
 std::uint64_t transfer_member_id(const std::uint64_t destination_root,
                                  const std::uint64_t source_entity,
                                  const std::uint32_t link_number) {
@@ -102,12 +185,23 @@ bool RegionRuntime::restore_object(
     const std::uint32_t link_number,
     std::string floating_text,
     const physics::Vec3 velocity,
-    const physics::Vec3 angular_velocity) {
+    const physics::Vec3 angular_velocity,
+    const double mass,
+    const double restitution,
+    const double friction,
+    const double linear_damping,
+    const double angular_damping,
+    const double gravity_scale,
+    const double buoyancy) {
     if (id == 0 || name.size() > 256U || owner_user_id.size() > 256U ||
         group_id.size() > 256U || floating_text.size() > 512U ||
         !finite_vec(transform.position) || !finite_vec(transform.rotation) ||
         !finite_vec(transform.scale) || !finite_vec(velocity) ||
-        !finite_vec(angular_velocity)) {
+        !finite_vec(angular_velocity) ||
+        !std::isfinite(mass) || !std::isfinite(restitution) ||
+        !std::isfinite(friction) || !std::isfinite(linear_damping) ||
+        !std::isfinite(angular_damping) || !std::isfinite(gravity_scale) ||
+        !std::isfinite(buoyancy)) {
         return false;
     }
 
@@ -138,7 +232,14 @@ bool RegionRuntime::restore_object(
              .velocity = velocity,
              .rotation = transform.rotation,
              .angular_velocity = angular_velocity,
-             .radius = radius});
+             .mass = mass,
+             .restitution = restitution,
+             .friction = friction,
+             .radius = radius,
+             .linear_damping = linear_damping,
+             .angular_damping = angular_damping,
+             .gravity_scale = gravity_scale,
+             .buoyancy = buoyancy});
     }
 
     entities_[id] = entity;
@@ -272,17 +373,34 @@ bool RegionRuntime::update_transform(
 
     if (it->second.kind == EntityKind::object &&
         it->second.parent_entity_id == 0) {
-        const physics::Vec3 delta{
-            transform.position.x - previous.position.x,
-            transform.position.y - previous.position.y,
-            transform.position.z - previous.position.z};
-        if (delta_squared(delta, {}) > 0.000001) {
+        const bool position_changed =
+            delta_squared(transform.position, previous.position) > 0.000001;
+        const bool rotation_changed =
+            delta_squared(transform.rotation, previous.rotation) > 0.000001;
+        if (position_changed || rotation_changed) {
+            const auto rotation_change =
+                rotation_delta(transform.rotation, previous.rotation);
             for (auto& [child_id, child] : entities_) {
                 if (child.parent_entity_id != id) continue;
-                child.transform.position += delta;
+                const auto previous_offset =
+                    subtract(child.transform.position, previous.position);
+                const auto local_offset =
+                    inverse_rotate_euler(previous_offset, previous.rotation);
+                child.transform.position =
+                    add(transform.position,
+                        rotate_euler(local_offset, transform.rotation));
+                child.transform.rotation = {
+                    normalized_degrees(
+                        child.transform.rotation.x + rotation_change.x),
+                    normalized_degrees(
+                        child.transform.rotation.y + rotation_change.y),
+                    normalized_degrees(
+                        child.transform.rotation.z + rotation_change.z)};
                 if (child.physics_body != 0) {
                     (void)physics_.set_body_position(
                         child.physics_body, child.transform.position);
+                    (void)physics_.set_body_rotation(
+                        child.physics_body, child.transform.rotation);
                 }
                 append_event_locked(
                     "entity_updated", child_id, child.transform);
@@ -311,6 +429,156 @@ bool RegionRuntime::set_angular_velocity(
     if (it == entities_.end() || it->second.physics_body == 0) return false;
     return physics_.set_body_angular_velocity(
         it->second.physics_body, angular_velocity);
+}
+
+bool RegionRuntime::apply_force(
+    const std::uint64_t id, const physics::Vec3 force) {
+    if (!finite_vec(force)) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.apply_force(it->second.physics_body, force);
+    if (ok) {
+        append_event_locked(
+            "physics_force", id, it->second.transform,
+            std::to_string(force.x) + "," +
+                std::to_string(force.y) + "," +
+                std::to_string(force.z));
+    }
+    return ok;
+}
+
+bool RegionRuntime::apply_impulse(
+    const std::uint64_t id, const physics::Vec3 impulse) {
+    if (!finite_vec(impulse)) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.apply_impulse(it->second.physics_body, impulse);
+    if (ok) {
+        append_event_locked(
+            "physics_impulse", id, it->second.transform,
+            std::to_string(impulse.x) + "," +
+                std::to_string(impulse.y) + "," +
+                std::to_string(impulse.z));
+    }
+    return ok;
+}
+
+bool RegionRuntime::apply_angular_impulse(
+    const std::uint64_t id, const physics::Vec3 impulse) {
+    if (!finite_vec(impulse)) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.apply_angular_impulse(
+            it->second.physics_body, impulse);
+    if (ok) {
+        append_event_locked(
+            "physics_angular_impulse", id, it->second.transform,
+            std::to_string(impulse.x) + "," +
+                std::to_string(impulse.y) + "," +
+                std::to_string(impulse.z));
+    }
+    return ok;
+}
+
+bool RegionRuntime::apply_torque(
+    const std::uint64_t id, const physics::Vec3 torque) {
+    if (!finite_vec(torque)) return false;
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.apply_torque(it->second.physics_body, torque);
+    if (ok) {
+        append_event_locked(
+            "physics_torque", id, it->second.transform,
+            std::to_string(torque.x) + "," +
+                std::to_string(torque.y) + "," +
+                std::to_string(torque.z));
+    }
+    return ok;
+}
+
+bool RegionRuntime::set_physics_material(
+    const std::uint64_t id, const double mass,
+    const double restitution, const double friction) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok = physics_.set_body_material(
+        it->second.physics_body, mass, restitution, friction);
+    if (ok) {
+        append_event_locked(
+            "physics_material", id, it->second.transform);
+    }
+    return ok;
+}
+
+bool RegionRuntime::set_buoyancy(
+    const std::uint64_t id, const double buoyancy) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return false;
+    }
+    const bool ok =
+        physics_.set_body_buoyancy(it->second.physics_body, buoyancy);
+    if (ok) {
+        append_event_locked(
+            "physics_buoyancy", id, it->second.transform,
+            std::to_string(buoyancy));
+    }
+    return ok;
+}
+
+std::uint64_t RegionRuntime::constrain_distance(
+    const std::uint64_t entity_a,
+    const std::uint64_t entity_b,
+    const double rest_length,
+    const double stiffness,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto a = entities_.find(entity_a);
+    const auto b = entities_.find(entity_b);
+    if (a == entities_.end() || b == entities_.end() ||
+        a->second.physics_body == 0 ||
+        b->second.physics_body == 0) {
+        reason = "constraint-physical-entity-required";
+        return 0;
+    }
+    const auto constraint = physics_.add_distance_constraint(
+        a->second.physics_body, b->second.physics_body,
+        rest_length, stiffness);
+    if (constraint == 0) {
+        reason = "constraint-rejected";
+        return 0;
+    }
+    append_event_locked(
+        "physics_constraint", entity_a, a->second.transform,
+        std::to_string(constraint) + "," +
+            std::to_string(entity_b));
+    reason.clear();
+    return constraint;
+}
+
+bool RegionRuntime::remove_constraint(
+    const std::uint64_t constraint_id) {
+    return physics_.remove_constraint(constraint_id);
 }
 
 bool RegionRuntime::set_physical(
@@ -532,6 +800,13 @@ std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
         .transform = it->second.transform,
         .velocity = {},
         .angular_velocity = {},
+        .mass = 1.0,
+        .restitution = 0.15,
+        .friction = 0.6,
+        .linear_damping = 0.04,
+        .angular_damping = 0.04,
+        .gravity_scale = 1.0,
+        .buoyancy = 0.0,
         .physical = it->second.physics_body != 0,
         .parent_source_entity_id = it->second.parent_entity_id,
         .link_number = it->second.link_number,
@@ -541,6 +816,13 @@ std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
         const auto body = physics_.body(it->second.physics_body);
         snapshot.velocity = body.velocity;
         snapshot.angular_velocity = body.angular_velocity;
+        snapshot.mass = body.mass;
+        snapshot.restitution = body.restitution;
+        snapshot.friction = body.friction;
+        snapshot.linear_damping = body.linear_damping;
+        snapshot.angular_damping = body.angular_damping;
+        snapshot.gravity_scale = body.gravity_scale;
+        snapshot.buoyancy = body.buoyancy;
     }
     return snapshot;
 }
@@ -601,6 +883,13 @@ RegionRuntime::export_linkset(const std::uint64_t entity_id) const {
             .transform = entity->transform,
             .velocity = {},
             .angular_velocity = {},
+            .mass = 1.0,
+            .restitution = 0.15,
+            .friction = 0.6,
+            .linear_damping = 0.04,
+            .angular_damping = 0.04,
+            .gravity_scale = 1.0,
+            .buoyancy = 0.0,
             .physical = entity->physics_body != 0,
             .parent_source_entity_id = entity->parent_entity_id,
             .link_number = entity->link_number,
@@ -609,6 +898,13 @@ RegionRuntime::export_linkset(const std::uint64_t entity_id) const {
             const auto body = physics_.body(entity->physics_body);
             snapshot.velocity = body.velocity;
             snapshot.angular_velocity = body.angular_velocity;
+            snapshot.mass = body.mass;
+            snapshot.restitution = body.restitution;
+            snapshot.friction = body.friction;
+            snapshot.linear_damping = body.linear_damping;
+            snapshot.angular_damping = body.angular_damping;
+            snapshot.gravity_scale = body.gravity_scale;
+            snapshot.buoyancy = body.buoyancy;
         }
         result.members.push_back(std::move(snapshot));
     }
@@ -628,7 +924,14 @@ bool RegionRuntime::import_object(
         snapshot.floating_text.size() > 512U ||
         !finite_vec(destination_position) ||
         !finite_vec(snapshot.velocity) ||
-        !finite_vec(snapshot.angular_velocity)) {
+        !finite_vec(snapshot.angular_velocity) ||
+        !std::isfinite(snapshot.mass) ||
+        !std::isfinite(snapshot.restitution) ||
+        !std::isfinite(snapshot.friction) ||
+        !std::isfinite(snapshot.linear_damping) ||
+        !std::isfinite(snapshot.angular_damping) ||
+        !std::isfinite(snapshot.gravity_scale) ||
+        !std::isfinite(snapshot.buoyancy)) {
         reason = "invalid-object-transfer-snapshot";
         return false;
     }
@@ -676,7 +979,10 @@ bool RegionRuntime::import_object(
             snapshot.owner_permissions, snapshot.group_permissions,
             snapshot.everyone_permissions, 0, 1,
             snapshot.floating_text, snapshot.velocity,
-            snapshot.angular_velocity)) {
+            snapshot.angular_velocity,
+            snapshot.mass, snapshot.restitution, snapshot.friction,
+            snapshot.linear_damping, snapshot.angular_damping,
+            snapshot.gravity_scale, snapshot.buoyancy)) {
         reason = "destination-object-restore-failed";
         return false;
     }
@@ -729,7 +1035,14 @@ bool RegionRuntime::import_linkset(
             !finite_vec(member.transform.rotation) ||
             !finite_vec(member.transform.scale) ||
             !finite_vec(member.velocity) ||
-            !finite_vec(member.angular_velocity)) {
+            !finite_vec(member.angular_velocity) ||
+            !std::isfinite(member.mass) ||
+            !std::isfinite(member.restitution) ||
+            !std::isfinite(member.friction) ||
+            !std::isfinite(member.linear_damping) ||
+            !std::isfinite(member.angular_damping) ||
+            !std::isfinite(member.gravity_scale) ||
+            !std::isfinite(member.buoyancy)) {
             reason = "invalid-linkset-member";
             return false;
         }
@@ -885,7 +1198,10 @@ bool RegionRuntime::import_linkset(
                 member.everyone_permissions, destination_parent,
                 destination_parent == 0 ? 1U : member.link_number,
                 member.floating_text, member.velocity,
-                member.angular_velocity)) {
+                member.angular_velocity,
+                member.mass, member.restitution, member.friction,
+                member.linear_damping, member.angular_damping,
+                member.gravity_scale, member.buoyancy)) {
             for (auto it = created.rbegin(); it != created.rend(); ++it) {
                 (void)remove_entity(*it);
             }
@@ -906,6 +1222,16 @@ std::optional<Entity> RegionRuntime::entity(
     const auto it = entities_.find(id);
     if (it == entities_.end()) return std::nullopt;
     return it->second;
+}
+
+std::optional<physics::Body> RegionRuntime::physics_body_state(
+    const std::uint64_t id) const {
+    std::scoped_lock lock(mutex_);
+    const auto it = entities_.find(id);
+    if (it == entities_.end() || it->second.physics_body == 0) {
+        return std::nullopt;
+    }
+    return physics_.body(it->second.physics_body);
 }
 
 std::vector<Entity> RegionRuntime::linkset_members(
@@ -1000,6 +1326,8 @@ RuntimeMetrics RegionRuntime::metrics() const {
         .physics_bodies = physics_.body_count(),
         .scene_events = next_event_ - 1,
         .terrain_revision = terrain_.revision(),
+        .collision_contacts = collision_contacts_.load(),
+        .physics_constraints = physics_.constraints().size(),
         .sim_fps = sim_fps_.load()};
 }
 
@@ -1038,6 +1366,112 @@ void RegionRuntime::loop() {
         const auto tick = ticks_.fetch_add(1) + 1;
         ++fps_ticks;
 
+        const auto contacts = physics_.collisions();
+        collision_contacts_.store(contacts.size());
+        {
+            std::scoped_lock lock(mutex_);
+            std::unordered_map<std::uint64_t, std::uint64_t> body_entities;
+            body_entities.reserve(entities_.size());
+            for (const auto& [entity_id, entity] : entities_) {
+                if (entity.physics_body != 0) {
+                    body_entities.emplace(
+                        entity.physics_body, entity_id);
+                }
+            }
+
+            std::set<std::pair<std::uint64_t, std::uint64_t>>
+                current_collisions;
+            std::set<std::uint64_t> current_ground_contacts;
+
+            for (const auto& contact : contacts) {
+                const auto first_body =
+                    body_entities.find(contact.body_a);
+                if (first_body == body_entities.end()) continue;
+                const auto first_entity = first_body->second;
+
+                if (contact.ground || contact.body_b == 0) {
+                    current_ground_contacts.insert(first_entity);
+                    const auto first = !active_ground_contacts_.contains(
+                        first_entity);
+                    if (first || tick % kMovementEventStride == 0) {
+                        const auto entity_it =
+                            entities_.find(first_entity);
+                        if (entity_it != entities_.end()) {
+                            append_event_locked(
+                                first ? "land_collision_start"
+                                      : "land_collision",
+                                first_entity,
+                                entity_it->second.transform,
+                                "impulse=" +
+                                    std::to_string(contact.impulse));
+                        }
+                    }
+                    continue;
+                }
+
+                const auto second_body =
+                    body_entities.find(contact.body_b);
+                if (second_body == body_entities.end()) continue;
+                const auto second_entity = second_body->second;
+                const std::pair<std::uint64_t, std::uint64_t> pair{
+                    std::min(first_entity, second_entity),
+                    std::max(first_entity, second_entity)};
+                current_collisions.insert(pair);
+                const auto first =
+                    !active_collisions_.contains(pair);
+                if (first || tick % kMovementEventStride == 0) {
+                    const auto left = entities_.find(first_entity);
+                    const auto right = entities_.find(second_entity);
+                    if (left != entities_.end()) {
+                        append_event_locked(
+                            first ? "collision_start" : "collision",
+                            first_entity, left->second.transform,
+                            std::to_string(second_entity) +
+                                ",impulse=" +
+                                std::to_string(contact.impulse));
+                    }
+                    if (right != entities_.end()) {
+                        append_event_locked(
+                            first ? "collision_start" : "collision",
+                            second_entity, right->second.transform,
+                            std::to_string(first_entity) +
+                                ",impulse=" +
+                                std::to_string(contact.impulse));
+                    }
+                }
+            }
+
+            for (const auto entity_id : active_ground_contacts_) {
+                if (current_ground_contacts.contains(entity_id)) continue;
+                const auto entity_it = entities_.find(entity_id);
+                if (entity_it != entities_.end()) {
+                    append_event_locked(
+                        "land_collision_end", entity_id,
+                        entity_it->second.transform);
+                }
+            }
+            for (const auto& pair : active_collisions_) {
+                if (current_collisions.contains(pair)) continue;
+                const auto left = entities_.find(pair.first);
+                const auto right = entities_.find(pair.second);
+                if (left != entities_.end()) {
+                    append_event_locked(
+                        "collision_end", pair.first,
+                        left->second.transform,
+                        std::to_string(pair.second));
+                }
+                if (right != entities_.end()) {
+                    append_event_locked(
+                        "collision_end", pair.second,
+                        right->second.transform,
+                        std::to_string(pair.first));
+                }
+            }
+            active_collisions_ = std::move(current_collisions);
+            active_ground_contacts_ =
+                std::move(current_ground_contacts);
+        }
+
         if (tick % kMovementEventStride == 0) {
             std::scoped_lock lock(mutex_);
             for (auto& [id, entity] : entities_) {
@@ -1054,21 +1488,44 @@ void RegionRuntime::loop() {
                         entity.transform.rotation) > 0.000001;
                 if (!position_changed && !rotation_changed) continue;
 
-                const auto previous_position =
-                    entity.transform.position;
+                const auto previous_transform =
+                    entity.transform;
                 entity.transform.position = body.position;
                 entity.transform.rotation = body.rotation;
 
                 if (entity.kind == EntityKind::object &&
                     entity.parent_entity_id == 0 &&
-                    position_changed) {
-                    const physics::Vec3 delta{
-                        entity.transform.position.x - previous_position.x,
-                        entity.transform.position.y - previous_position.y,
-                        entity.transform.position.z - previous_position.z};
+                    (position_changed || rotation_changed)) {
+                    const auto rotation_change =
+                        rotation_delta(
+                            entity.transform.rotation,
+                            previous_transform.rotation);
                     for (auto& [child_id, child] : entities_) {
                         if (child.parent_entity_id != id) continue;
-                        child.transform.position += delta;
+                        const auto previous_offset =
+                            subtract(
+                                child.transform.position,
+                                previous_transform.position);
+                        const auto local_offset =
+                            inverse_rotate_euler(
+                                previous_offset,
+                                previous_transform.rotation);
+                        child.transform.position =
+                            add(
+                                entity.transform.position,
+                                rotate_euler(
+                                    local_offset,
+                                    entity.transform.rotation));
+                        child.transform.rotation = {
+                            normalized_degrees(
+                                child.transform.rotation.x +
+                                rotation_change.x),
+                            normalized_degrees(
+                                child.transform.rotation.y +
+                                rotation_change.y),
+                            normalized_degrees(
+                                child.transform.rotation.z +
+                                rotation_change.z)};
                         append_event_locked(
                             "entity_updated",
                             child_id,

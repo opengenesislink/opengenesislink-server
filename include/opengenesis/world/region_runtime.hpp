@@ -10,6 +10,7 @@
 #include <deque>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -53,6 +54,13 @@ struct ObjectTransferSnapshot {
     Transform transform{};
     physics::Vec3 velocity{};
     physics::Vec3 angular_velocity{};
+    double mass{1.0};
+    double restitution{0.15};
+    double friction{0.6};
+    double linear_damping{0.04};
+    double angular_damping{0.04};
+    double gravity_scale{1.0};
+    double buoyancy{0.0};
     bool physical{false};
     std::uint64_t parent_source_entity_id{0};
     std::uint32_t link_number{1};
@@ -79,6 +87,8 @@ struct RuntimeMetrics {
     std::uint64_t physics_bodies{0};
     std::uint64_t scene_events{0};
     std::uint64_t terrain_revision{0};
+    std::uint64_t collision_contacts{0};
+    std::uint64_t physics_constraints{0};
     double sim_fps{0.0};
 };
 
@@ -111,7 +121,14 @@ public:
         std::uint32_t link_number = 1,
         std::string floating_text = {},
         physics::Vec3 velocity = {},
-        physics::Vec3 angular_velocity = {});
+        physics::Vec3 angular_velocity = {},
+        double mass = 1.0,
+        double restitution = 0.15,
+        double friction = 0.6,
+        double linear_damping = 0.04,
+        double angular_damping = 0.04,
+        double gravity_scale = 1.0,
+        double buoyancy = 0.0);
 
     bool remove_entity(std::uint64_t id);
     bool remove_linkset(std::uint64_t entity_id);
@@ -119,7 +136,20 @@ public:
     bool set_velocity(std::uint64_t id, physics::Vec3 velocity);
     bool set_angular_velocity(std::uint64_t id,
                               physics::Vec3 angular_velocity);
+    bool apply_force(std::uint64_t id, physics::Vec3 force);
+    bool apply_impulse(std::uint64_t id, physics::Vec3 impulse);
+    bool apply_angular_impulse(std::uint64_t id, physics::Vec3 impulse);
+    bool apply_torque(std::uint64_t id, physics::Vec3 torque);
+    bool set_physics_material(std::uint64_t id, double mass,
+                              double restitution, double friction);
+    bool set_buoyancy(std::uint64_t id, double buoyancy);
     bool set_physical(std::uint64_t id, bool enabled);
+    std::uint64_t constrain_distance(std::uint64_t entity_a,
+                                     std::uint64_t entity_b,
+                                     double rest_length,
+                                     double stiffness,
+                                     std::string& reason);
+    bool remove_constraint(std::uint64_t constraint_id);
     bool set_floating_text(std::uint64_t id, std::string text);
     bool link_objects(std::uint64_t root_id, std::uint64_t child_id,
                       std::string& reason);
@@ -149,6 +179,8 @@ public:
         bool preserve_source_ids = false);
 
     [[nodiscard]] std::optional<Entity> entity(std::uint64_t id) const;
+    [[nodiscard]] std::optional<physics::Body> physics_body_state(
+        std::uint64_t id) const;
     [[nodiscard]] std::vector<Entity> linkset_members(
         std::uint64_t entity_id) const;
     [[nodiscard]] std::vector<Entity> snapshot_entities() const;
@@ -188,7 +220,10 @@ private:
     std::uint64_t next_event_{1};
     std::atomic<std::uint64_t> ticks_{0};
     std::atomic<double> sim_fps_{0};
+    std::atomic<std::uint64_t> collision_contacts_{0};
     physics::PhysicsWorld physics_;
+    std::set<std::pair<std::uint64_t, std::uint64_t>> active_collisions_;
+    std::set<std::uint64_t> active_ground_contacts_;
 };
 
 [[nodiscard]] const char* entity_kind_name(EntityKind kind);

@@ -175,6 +175,11 @@ bool zero_channel(const std::string& value) {
     return trim(value) == "0" || trim(value) == "PUBLIC_CHANNEL";
 }
 
+bool false_constant(const std::string& value) {
+    const auto normalized = trim(value);
+    return normalized == "0" || normalized == "FALSE";
+}
+
 std::optional<std::string> translate_call(
     const std::string& name,
     const std::vector<std::string>& args,
@@ -260,6 +265,42 @@ std::optional<std::string> translate_call(
             (name == "llSetVelocity" ? "velocity " :
              (name == "llSetAngularVelocity" ? "angular_velocity " : "move "));
         return command + *value;
+    }
+    if (name == "llApplyImpulse" ||
+        name == "llApplyRotationalImpulse" ||
+        name == "llSetForce" ||
+        name == "llSetTorque") {
+        if (args.size() != 2U || !false_constant(args[1])) {
+            reason = "lsl-world-space-physics-only";
+            return std::nullopt;
+        }
+        const auto value = vector3(args[0]);
+        if (!value) {
+            reason = "lsl-vector-constant-required";
+            return std::nullopt;
+        }
+        const auto command =
+            name == "llApplyImpulse" ? "impulse " :
+            (name == "llApplyRotationalImpulse" ? "angular_impulse " :
+             (name == "llSetForce" ? "force " : "torque "));
+        return command + *value;
+    }
+    if (name == "llSetBuoyancy") {
+        if (args.size() != 1U) {
+            reason = "lsl-invalid-buoyancy";
+            return std::nullopt;
+        }
+        try {
+            const auto value = std::stod(trim(args[0]));
+            if (!std::isfinite(value)) {
+                reason = "lsl-invalid-buoyancy";
+                return std::nullopt;
+            }
+            return "buoyancy " + trim(args[0]);
+        } catch (...) {
+            reason = "lsl-buoyancy-constant-required";
+            return std::nullopt;
+        }
     }
     if (name == "llSetText") {
         if (args.size() != 3U) {

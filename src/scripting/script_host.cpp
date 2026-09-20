@@ -34,6 +34,13 @@ std::optional<ScriptWorldActionType> world_action_type(const ScriptActionType ty
         case ScriptActionType::world_velocity: return ScriptWorldActionType::velocity;
         case ScriptActionType::world_angular_velocity:
             return ScriptWorldActionType::angular_velocity;
+        case ScriptActionType::world_force: return ScriptWorldActionType::force;
+        case ScriptActionType::world_impulse: return ScriptWorldActionType::impulse;
+        case ScriptActionType::world_angular_impulse:
+            return ScriptWorldActionType::angular_impulse;
+        case ScriptActionType::world_torque: return ScriptWorldActionType::torque;
+        case ScriptActionType::world_buoyancy: return ScriptWorldActionType::buoyancy;
+        case ScriptActionType::world_material: return ScriptWorldActionType::material;
         case ScriptActionType::world_physics: return ScriptWorldActionType::physics;
         case ScriptActionType::world_text: return ScriptWorldActionType::text;
         case ScriptActionType::world_chat_say: return ScriptWorldActionType::chat_say;
