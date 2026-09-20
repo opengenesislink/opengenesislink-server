@@ -630,17 +630,97 @@ ScriptActionApplyResult apply_script_action(
         return {.ok = true, .result = out.str()};
     }
 
+    if (type == "query_raycast") {
+        const auto first = payload.find('|');
+        const auto second =
+            first == std::string::npos
+                ? std::string::npos
+                : payload.find('|', first + 1U);
+        if (first == std::string::npos ||
+            second == std::string::npos ||
+            second + 1U >= payload.size()) {
+            return {.error = "invalid-raycast-query"};
+        }
+        opengenesis::physics::Vec3 direction;
+        if (!vector3(
+                payload.substr(
+                    first + 1U,
+                    second - first - 1U),
+                direction)) {
+            return {.error = "invalid-raycast-direction"};
+        }
+        double distance = 0.0;
+        try {
+            distance =
+                std::stod(payload.substr(second + 1U));
+        } catch (...) {
+            return {.error = "invalid-raycast-distance"};
+        }
+        if (!std::isfinite(distance) ||
+            distance <= 0.0 || distance > 4096.0) {
+            return {.error = "invalid-raycast-distance"};
+        }
+
+        const auto hit = (*runtime)->raycast(
+            entity->transform.position,
+            direction,
+            distance,
+            entity_id);
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(6);
+        if (!hit) {
+            out << "hit=0\n"
+                << "entity_id=0\n"
+                << "ground=0\n"
+                << "distance=" << distance << '\n';
+        } else {
+            out << "hit=1\n"
+                << "entity_id=" << hit->entity_id << '\n'
+                << "ground=" << (hit->ground ? 1 : 0) << '\n'
+                << "distance=" << hit->distance << '\n'
+                << "point=" << hit->point.x << ' '
+                << hit->point.y << ' ' << hit->point.z << '\n'
+                << "normal=" << hit->normal.x << ' '
+                << hit->normal.y << ' ' << hit->normal.z << '\n';
+        }
+        return {.ok = true, .result = out.str()};
+    }
+
     const bool modifies_object =
         type == "move" || type == "rotate" || type == "scale" ||
         type == "velocity" || type == "angular_velocity" ||
         type == "force" || type == "impulse" ||
         type == "angular_impulse" || type == "torque" ||
         type == "buoyancy" || type == "material" ||
-        type == "physics" || type == "text";
+        type == "physics" || type == "shape" ||
+        type == "text";
     if (modifies_object &&
         !opengenesis::core::has_permission(
             entity->owner_permissions, opengenesis::core::perm_modify)) {
         return {.error = "object-modify-permission-denied"};
+    }
+
+    if (type == "shape") {
+        const auto shape =
+            opengenesis::physics::parse_collision_shape(
+                payload.c_str());
+        if (!shape) {
+            return {.error = "invalid-physics-shape"};
+        }
+        parcels.reload();
+        if (!parcels.can_build(
+                (*runtime)->id(),
+                entity->transform.position.x,
+                entity->transform.position.y,
+                owner, {})) {
+            return {.error = "parcel-build-denied"};
+        }
+        return (*runtime)->set_physics_shape(
+                   entity_id, *shape)
+                   ? ScriptActionApplyResult{.ok = true}
+                   : ScriptActionApplyResult{
+                         .error =
+                             "physics-shape-update-failed"};
     }
 
     if (type == "physics") {
