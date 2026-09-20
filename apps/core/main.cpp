@@ -29,6 +29,7 @@
 #include "opengenesis/federation/grid_identity_store.hpp"
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/federation/session_store.hpp"
+#include "opengenesis/federation/service_grant_store.hpp"
 #include "opengenesis/federation/trust_store.hpp"
 #include "opengenesis/compat/hypergrid/home_verifier.hpp"
 #include "opengenesis/compat/hypergrid/friends_adapter.hpp"
@@ -382,8 +383,14 @@ int main(int argc, char** argv) {
             config.get_string("storage.federation_trust", "data/federation-trust.db"));
         auto federation_sessions = std::make_shared<opengenesis::federation::FederationSessionStore>(
             config.get_string("storage.federation_sessions", "data/federation-sessions.db"));
+        auto federation_grants =
+            std::make_shared<opengenesis::federation::FederationServiceGrantStore>(
+                config.get_string(
+                    "storage.federation_service_grants",
+                    "data/federation-service-grants.db"));
         auto federation_runtime = std::make_shared<opengenesis::federation::FederationRuntime>(
-            federation_identity, federation_trust, federation_sessions);
+            federation_identity, federation_trust,
+            federation_sessions, federation_grants);
 
         const auto hypergrid_port_value = config.get_int("hypergrid.port", 18081);
         const auto hypergrid_http_port_value = config.get_int("hypergrid.region_http_port", 19100);
