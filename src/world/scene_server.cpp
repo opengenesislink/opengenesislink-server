@@ -756,13 +756,18 @@ void handle_client(opengenesis::network::TcpSocket socket,
                             request,
                             "max_distance",
                             256.0);
-                    const auto hit =
-                        region->raycast(
-                            origin,
-                            direction,
-                            max_distance,
-                            id);
-                    std::ostringstream ray;
+                    if (!std::isfinite(max_distance) ||
+                        max_distance <= 0.0 ||
+                        max_distance > 4096.0) {
+                        reason = "invalid-raycast-distance";
+                    } else {
+                        const auto hit =
+                            region->raycast(
+                                origin,
+                                direction,
+                                max_distance,
+                                id);
+                        std::ostringstream ray;
                     ray << std::fixed
                         << std::setprecision(6)
                         << "hit=" << (hit ? 1 : 0)
@@ -782,9 +787,10 @@ void handle_client(opengenesis::network::TcpSocket socket,
                             << "\nnz=" << hit->normal.z
                             << '\n';
                     }
-                    extra_response = ray.str();
-                    ok = true;
-                    reason.clear();
+                        extra_response = ray.str();
+                        ok = true;
+                        reason.clear();
+                    }
                 } else if (action == "avatar_jump") {
                     ok = id == avatar_id &&
                          region->avatar_jump(avatar_id);
