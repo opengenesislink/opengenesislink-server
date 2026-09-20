@@ -19,6 +19,8 @@ Federation Completion milestone.
 - added dedicated OGL-FED/2 remote-services smoke coverage on Linux x86_64 and ARM64
 - added canonical `docs/OGL-FED-v2.md` and updated Hypergrid compatibility documentation
 - 14.0 does not claim global federation PKI, cross-grid content mutation, economy settlement, a stable 1.0 federation wire format or a completed OpenSimulator legacy data plane
+- final tested PR head: `f1e4f5d2d47d9a0901d8677249e3b9be3367eee1`
+- squash merge: `de66c4290fe9ab7dcc3fe06068b96dc6fe1f71ad`
 
 ## 13.0.0-dev — 2026-09-20
 
