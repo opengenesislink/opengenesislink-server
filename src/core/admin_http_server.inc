@@ -2666,7 +2666,12 @@ void AdminHttpServer::run() {
                            path == "/v1/world/object-crossings/rollback" ||
                            path == "/v1/groups" || path == "/v1/groups/members" ||
                            path == "/v1/groups/role" || path == "/v1/groups/remove" ||
+                           path == "/v1/groups/invites" ||
+                           path == "/v1/groups/invites/accept" ||
+                           path == "/v1/groups/invites/revoke" ||
                            path == "/v1/parcels" || path == "/v1/parcels/policy" ||
+                           path == "/v1/parcels/access" ||
+                           path == "/v1/parcels/access/remove" ||
                            path == "/v1/estates" || path == "/v1/estates/managers" ||
                            path == "/v1/estates/regions" || path == "/v1/estates/regions/policy" ||
                            path == "/v1/landmarks" || path == "/v1/landmarks/remove" ||
@@ -2676,6 +2681,13 @@ void AdminHttpServer::run() {
                            path == "/v1/admin/moderation/unban" || path == "/v1/social/friends/request" ||
                            path == "/v1/social/friends/accept" || path == "/v1/social/friends/remove" ||
                            path == "/v1/social/messages" || path == "/v1/social/messages/read" ||
+                           path == "/v1/social/block" || path == "/v1/social/mute" ||
+                           path == "/v1/economy/transfer" ||
+                           path == "/v1/economy/admin/mint" ||
+                           path == "/v1/economy/admin/burn" ||
+                           path == "/v1/marketplace/listings" ||
+                           path == "/v1/marketplace/cancel" ||
+                           path == "/v1/marketplace/purchase" ||
                            path == "/v1/assets" || path == "/v1/inventory/folders" ||
                            path == "/v1/inventory/items" ||
                            path == "/v1/federation/travel/issue" ||
