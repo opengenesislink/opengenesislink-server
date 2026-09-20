@@ -1043,6 +1043,9 @@ std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
         .angular_damping = 0.04,
         .gravity_scale = 1.0,
         .buoyancy = 0.0,
+        .collision_shape = physics::CollisionShape::sphere,
+        .half_extents = {0.5, 0.5, 0.5},
+        .capsule_half_height = 0.5,
         .physical = it->second.physics_body != 0,
         .parent_source_entity_id = it->second.parent_entity_id,
         .link_number = it->second.link_number,
@@ -1059,6 +1062,9 @@ std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
         snapshot.angular_damping = body.angular_damping;
         snapshot.gravity_scale = body.gravity_scale;
         snapshot.buoyancy = body.buoyancy;
+        snapshot.collision_shape = body.shape;
+        snapshot.half_extents = body.half_extents;
+        snapshot.capsule_half_height = body.capsule_half_height;
     }
     return snapshot;
 }
@@ -1167,7 +1173,13 @@ bool RegionRuntime::import_object(
         !std::isfinite(snapshot.linear_damping) ||
         !std::isfinite(snapshot.angular_damping) ||
         !std::isfinite(snapshot.gravity_scale) ||
-        !std::isfinite(snapshot.buoyancy)) {
+        !std::isfinite(snapshot.buoyancy) ||
+        !finite_vec(snapshot.half_extents) ||
+        snapshot.half_extents.x <= 0.0 ||
+        snapshot.half_extents.y <= 0.0 ||
+        snapshot.half_extents.z <= 0.0 ||
+        !std::isfinite(snapshot.capsule_half_height) ||
+        snapshot.capsule_half_height < 0.0) {
         reason = "invalid-object-transfer-snapshot";
         return false;
     }
@@ -1218,7 +1230,9 @@ bool RegionRuntime::import_object(
             snapshot.angular_velocity,
             snapshot.mass, snapshot.restitution, snapshot.friction,
             snapshot.linear_damping, snapshot.angular_damping,
-            snapshot.gravity_scale, snapshot.buoyancy)) {
+            snapshot.gravity_scale, snapshot.buoyancy,
+            snapshot.collision_shape, snapshot.half_extents,
+            snapshot.capsule_half_height)) {
         reason = "destination-object-restore-failed";
         return false;
     }
@@ -1278,7 +1292,13 @@ bool RegionRuntime::import_linkset(
             !std::isfinite(member.linear_damping) ||
             !std::isfinite(member.angular_damping) ||
             !std::isfinite(member.gravity_scale) ||
-            !std::isfinite(member.buoyancy)) {
+            !std::isfinite(member.buoyancy) ||
+            !finite_vec(member.half_extents) ||
+            member.half_extents.x <= 0.0 ||
+            member.half_extents.y <= 0.0 ||
+            member.half_extents.z <= 0.0 ||
+            !std::isfinite(member.capsule_half_height) ||
+            member.capsule_half_height < 0.0) {
             reason = "invalid-linkset-member";
             return false;
         }
@@ -1437,7 +1457,9 @@ bool RegionRuntime::import_linkset(
                 member.angular_velocity,
                 member.mass, member.restitution, member.friction,
                 member.linear_damping, member.angular_damping,
-                member.gravity_scale, member.buoyancy)) {
+                member.gravity_scale, member.buoyancy,
+                member.collision_shape, member.half_extents,
+                member.capsule_half_height)) {
             for (auto it = created.rbegin(); it != created.rend(); ++it) {
                 (void)remove_entity(*it);
             }
