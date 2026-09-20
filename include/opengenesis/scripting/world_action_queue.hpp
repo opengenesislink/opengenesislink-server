@@ -23,6 +23,7 @@ enum class ScriptWorldActionType {
     buoyancy,
     material,
     physics,
+    shape,
     text,
     chat_say,
     chat_whisper,
@@ -32,7 +33,8 @@ enum class ScriptWorldActionType {
     query_terrain,
     query_water,
     query_time,
-    query_nearby
+    query_nearby,
+    query_raycast
 };
 
 struct ScriptWorldAction {
