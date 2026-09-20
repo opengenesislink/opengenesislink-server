@@ -152,6 +152,7 @@ std::optional<std::string> translate_command(
         {"world.buoyancy", "buoyancy"},
         {"world.material", "material"},
         {"world.physics", "physics"},
+        {"world.shape", "shape"},
         {"world.text", "text"},
         {"world.say", "say"},
         {"world.whisper", "whisper"},
@@ -162,6 +163,7 @@ std::optional<std::string> translate_command(
         {"world.water", "water_level"},
         {"world.time", "world_time"},
         {"world.nearby", "nearby_avatars"},
+        {"world.raycast", "raycast"},
         {"stop", "stop"}
     };
 
@@ -686,6 +688,7 @@ const std::vector<ScriptFeature>& ogl_feature_catalog() {
         {"world.buoyancy", "physics", ScriptFeatureStatus::implemented},
         {"world.material", "physics", ScriptFeatureStatus::implemented},
         {"world.physics", "world", ScriptFeatureStatus::implemented},
+        {"world.shape", "physics", ScriptFeatureStatus::implemented},
         {"world.text", "world", ScriptFeatureStatus::implemented},
         {"world.say", "world", ScriptFeatureStatus::implemented},
         {"world.whisper", "world", ScriptFeatureStatus::implemented},
@@ -696,6 +699,7 @@ const std::vector<ScriptFeature>& ogl_feature_catalog() {
         {"world.water", "query", ScriptFeatureStatus::implemented},
         {"world.time", "query", ScriptFeatureStatus::implemented},
         {"world.nearby", "query", ScriptFeatureStatus::implemented},
+        {"world.raycast", "physics", ScriptFeatureStatus::implemented},
         {"stop", "runtime", ScriptFeatureStatus::implemented},
         {"if/else", "language", ScriptFeatureStatus::implemented},
         {"while/for", "language", ScriptFeatureStatus::implemented},
