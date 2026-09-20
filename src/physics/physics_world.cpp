@@ -46,12 +46,6 @@ double length(const Vec3& value) {
     return std::sqrt(length_squared(value));
 }
 
-Vec3 normalized(const Vec3& value, const Vec3 fallback = {1.0, 0.0, 0.0}) {
-    const auto magnitude = length(value);
-    if (magnitude <= 1e-12) return fallback;
-    return scale(value, 1.0 / magnitude);
-}
-
 void add_scaled(Vec3& target, const Vec3& value, const double factor) {
     target.x += value.x * factor;
     target.y += value.y * factor;
