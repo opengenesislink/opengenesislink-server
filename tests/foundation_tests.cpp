@@ -380,6 +380,71 @@ void physics_test() {
     expect(physics.body(id).position.z >= 5.5, "terrain ground contact");
     expect(physics.set_body_position(id, {2, 3, 12}), "set body position");
     expect(physics.set_body_velocity(id, {1, 0, 0}), "set body velocity");
+
+    opengenesis::physics::PhysicsWorld solver;
+    solver.set_gravity({0, 0, 0});
+    solver.set_ground_height(-100.0);
+    const auto left = solver.add_body({
+        .position = {0, 0, 10},
+        .velocity = {1, 0, 0},
+        .mass = 2.0,
+        .restitution = 1.0,
+        .friction = 0.0,
+        .radius = 1.0});
+    const auto right = solver.add_body({
+        .position = {1.5, 0, 10},
+        .velocity = {-1, 0, 0},
+        .mass = 2.0,
+        .restitution = 1.0,
+        .friction = 0.0,
+        .radius = 1.0});
+    solver.step(0.01);
+    expect(!solver.collisions().empty(), "body collision detected");
+    expect(solver.body(left).velocity.x < 0.0 &&
+               solver.body(right).velocity.x > 0.0,
+           "collision impulse resolves closing velocity");
+
+    expect(solver.set_body_material(left, 4.0, 0.25, 0.8),
+           "physics material update");
+    expect(solver.set_body_buoyancy(left, 0.5), "body buoyancy update");
+    expect(solver.apply_impulse(left, {4.0, 0.0, 0.0}),
+           "linear impulse applied");
+    expect(solver.apply_angular_impulse(left, {0.0, 0.0, 8.0}),
+           "angular impulse applied");
+    expect(solver.apply_force(left, {8.0, 0.0, 0.0}),
+           "force accumulator applied");
+    expect(solver.apply_torque(left, {0.0, 0.0, 4.0}),
+           "torque accumulator applied");
+    const auto before = solver.body(left);
+    solver.step(0.05);
+    const auto after = solver.body(left);
+    expect(after.angular_velocity.z > before.angular_velocity.z,
+           "torque integrates angular velocity");
+    expect(after.mass == 4.0 && after.restitution == 0.25 &&
+               after.friction == 0.8 && after.buoyancy == 0.5,
+           "physics material state retained");
+
+    expect(solver.set_body_position(left, {10.0, 0.0, 10.0}),
+           "constraint left position");
+    expect(solver.set_body_position(right, {15.0, 0.0, 10.0}),
+           "constraint right position");
+    expect(solver.set_body_velocity(left, {}) &&
+               solver.set_body_velocity(right, {}),
+           "constraint bodies stopped");
+    const auto constraint =
+        solver.add_distance_constraint(left, right, 2.0, 1.0);
+    expect(constraint != 0 && solver.constraints().size() == 1,
+           "distance constraint created");
+    solver.step(0.02);
+    const auto constrained_left = solver.body(left);
+    const auto constrained_right = solver.body(right);
+    expect(std::abs(
+               (constrained_right.position.x -
+                constrained_left.position.x) -
+               2.0) < 0.05,
+           "distance constraint solved");
+    expect(solver.remove_constraint(constraint),
+           "distance constraint removed");
 }
 
 void runtime_test() {
@@ -426,6 +491,110 @@ void runtime_test() {
     expect(!events.empty(), "scene events available");
     expect(runtime.remove_entity(object), "object removal");
 }
+
+void runtime_physics_v2_test() {
+    opengenesis::world::RegionRuntime runtime(
+        "physics-v2", 90.0, 0.0, -10.0);
+    std::string reason;
+
+    opengenesis::world::Transform root_transform;
+    root_transform.position = {20.0, 20.0, 10.0};
+    const auto root = runtime.spawn_object(
+        "Rigid Root", root_transform, true, "user-physics");
+    auto child_transform = root_transform;
+    child_transform.position.x = 22.0;
+    const auto child = runtime.spawn_object(
+        "Rigid Child", child_transform, false, "user-physics");
+    expect(runtime.link_objects(root, child, reason),
+           "physics v2 linkset created");
+
+    auto rotated = root_transform;
+    rotated.rotation.z = 90.0;
+    expect(runtime.update_transform(root, rotated),
+           "linkset root rotation update");
+    const auto child_after_rotation = runtime.entity(child);
+    expect(child_after_rotation.has_value() &&
+               std::abs(child_after_rotation->transform.position.x - 20.0) <
+                   0.01 &&
+               std::abs(child_after_rotation->transform.position.y - 22.0) <
+                   0.01,
+           "root rotation propagates rigid child transform");
+
+    opengenesis::world::Transform left_transform;
+    left_transform.position = {40.0, 40.0, 10.0};
+    opengenesis::world::Transform right_transform = left_transform;
+    right_transform.position.x = 40.6;
+    const auto left = runtime.spawn_object(
+        "Collider A", left_transform, true, "user-physics");
+    const auto right = runtime.spawn_object(
+        "Collider B", right_transform, true, "user-physics");
+
+    expect(runtime.set_physics_material(left, 3.0, 0.4, 0.7),
+           "runtime physics material");
+    expect(runtime.set_buoyancy(left, 0.25),
+           "runtime buoyancy");
+    expect(runtime.apply_impulse(left, {2.0, 0.0, 0.0}),
+           "runtime linear impulse");
+    expect(runtime.apply_angular_impulse(left, {0.0, 0.0, 3.0}),
+           "runtime angular impulse");
+    expect(runtime.apply_force(left, {1.0, 0.0, 0.0}),
+           "runtime force");
+    expect(runtime.apply_torque(left, {0.0, 0.0, 1.0}),
+           "runtime torque");
+
+    const auto body = runtime.physics_body_state(left);
+    expect(body.has_value() && body->mass == 3.0 &&
+               body->restitution == 0.4 &&
+               body->friction == 0.7 &&
+               body->buoyancy == 0.25,
+           "runtime exposes physics body state");
+
+    const auto before = runtime.latest_sequence();
+    runtime.start();
+    std::this_thread::sleep_for(std::chrono::milliseconds{120});
+
+    const auto collision_events = runtime.events_since(before);
+    expect(std::any_of(
+               collision_events.begin(), collision_events.end(),
+               [&](const auto& event) {
+                   return event.type == "collision_start" &&
+                          (event.entity_id == left ||
+                           event.entity_id == right);
+               }),
+           "runtime emits collision_start events");
+
+    auto left_entity = runtime.entity(left);
+    auto right_entity = runtime.entity(right);
+    expect(left_entity && right_entity, "constraint entities available");
+    auto left_moved = left_entity->transform;
+    auto right_moved = right_entity->transform;
+    left_moved.position = {60.0, 60.0, 10.0};
+    right_moved.position = {65.0, 60.0, 10.0};
+    expect(runtime.update_transform(left, left_moved) &&
+               runtime.update_transform(right, right_moved),
+           "constraint entities repositioned");
+    expect(runtime.set_velocity(left, {}) &&
+               runtime.set_velocity(right, {}),
+           "constraint entities stopped");
+    const auto constraint = runtime.constrain_distance(
+        left, right, 2.0, 1.0, reason);
+    expect(constraint != 0, "runtime distance constraint created");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds{80});
+    runtime.stop();
+    const auto constrained_left = runtime.entity(left);
+    const auto constrained_right = runtime.entity(right);
+    expect(constrained_left && constrained_right &&
+               std::abs(
+                   (constrained_right->transform.position.x -
+                    constrained_left->transform.position.x) -
+                   2.0) < 0.15,
+           "runtime distance constraint affects scene transforms");
+    expect(runtime.metrics().physics_constraints == 1,
+           "constraint metric exposed");
+    expect(runtime.remove_constraint(constraint),
+           "runtime distance constraint removed");
+}
 } // namespace
 
 int main() {
@@ -443,7 +612,8 @@ int main() {
         terrain_test();
         physics_test();
         runtime_test();
-        std::cout << "OpenGenesisLINK 2.0.0 foundation tests: PASS\n";
+        runtime_physics_v2_test();
+        std::cout << "OpenGenesisLINK 12.0.0 foundation tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
