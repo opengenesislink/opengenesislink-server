@@ -19,12 +19,11 @@ std::int64_t now() {
 
 std::string clean(std::string value) {
     for (char& c : value) {
-        if (c == '	' || c == '
-' || c == '') c = ' ';
+        if (c == '\t' || c == '\n' || c == '\r') c = ' ';
     }
     if (value.size() > 512U) value.resize(512U);
     return value;
-}
+
 
 std::optional<std::string> cell(
     const storage::DatabaseRow& row,
@@ -111,8 +110,7 @@ void AuditStore::append(
            << event.actor << '	'
            << event.action << '	'
            << event.target << '	'
-           << event.detail << '
-';
+           << event.detail << '\n';
     output.close();
     if (!output) {
         throw std::runtime_error("cannot flush audit store");
