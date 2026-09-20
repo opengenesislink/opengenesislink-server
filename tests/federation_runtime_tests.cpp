@@ -135,7 +135,31 @@ int main() {
                     "peer trust succeeds");
             require(trust.is_trusted("grid-a.example", keys.public_key_hex),
                     "trusted key matches");
+            const auto replacement =
+                opengenesis::federation::generate_grid_key_pair();
+            require(!trust.trust(
+                        {.grid_id = "grid-a.example",
+                         .base_url = "https://grid-a.example",
+                         .public_key_hex = replacement.public_key_hex,
+                         .trusted = true,
+                         .revoked = false,
+                         .updated_unix = 0},
+                        reason) &&
+                        reason ==
+                            "federation-peer-key-change-requires-revocation",
+                    "trusted peer key is pinned until revocation");
             require(trust.revoke("grid-a.example"), "peer revocation succeeds");
+            require(trust.trust(
+                        {.grid_id = "grid-a.example",
+                         .base_url = "https://grid-a.example",
+                         .public_key_hex = replacement.public_key_hex,
+                         .trusted = true,
+                         .revoked = false,
+                         .updated_unix = 0},
+                        reason),
+                    "peer key rotation allowed after revocation");
+            require(trust.revoke("grid-a.example"),
+                    "rotated peer can be revoked");
             require(!trust.is_trusted("grid-a.example", keys.public_key_hex),
                     "revoked peer rejected");
         }
