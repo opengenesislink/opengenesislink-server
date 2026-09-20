@@ -349,6 +349,7 @@ void AdminHttpServer::run() {
                         << "opengenesis_group_posts " << group_channels_->count() << "\n"
                         << "opengenesis_assets " << assets_->count() << "\n"
                         << "opengenesis_federation_peers " << federation_runtime_->peers().size() << "\n"
+                        << "opengenesis_federation_service_grants " << federation_runtime_->service_grants().size() << "\n"
                         << "opengenesis_foreign_sessions " << federation_runtime_->sessions().size() << "\n"
                         << "opengenesis_hypergrid_home_sessions " << hypergrid_sessions_->home_sessions().size() << "\n"
                         << "opengenesis_hypergrid_foreign_sessions " << hypergrid_sessions_->foreign_sessions().size() << "\n"
@@ -407,6 +408,7 @@ void AdminHttpServer::run() {
                                     ",\"inventory_folders\":" + std::to_string(inventory_->folder_count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) +
                                     ",\"federation_peers\":" + std::to_string(federation_runtime_->peers().size()) +
+                                    ",\"federation_service_grants\":" + std::to_string(federation_runtime_->service_grants().size()) +
                                     ",\"foreign_sessions\":" + std::to_string(federation_runtime_->sessions().size()) +
                                     ",\"hypergrid_home_sessions\":" + std::to_string(hypergrid_sessions_->home_sessions().size()) +
                                     ",\"hypergrid_foreign_sessions\":" + std::to_string(hypergrid_sessions_->foreign_sessions().size()) + "}";
