@@ -185,12 +185,23 @@ bool RegionRuntime::restore_object(
     const std::uint32_t link_number,
     std::string floating_text,
     const physics::Vec3 velocity,
-    const physics::Vec3 angular_velocity) {
+    const physics::Vec3 angular_velocity,
+    const double mass,
+    const double restitution,
+    const double friction,
+    const double linear_damping,
+    const double angular_damping,
+    const double gravity_scale,
+    const double buoyancy) {
     if (id == 0 || name.size() > 256U || owner_user_id.size() > 256U ||
         group_id.size() > 256U || floating_text.size() > 512U ||
         !finite_vec(transform.position) || !finite_vec(transform.rotation) ||
         !finite_vec(transform.scale) || !finite_vec(velocity) ||
-        !finite_vec(angular_velocity)) {
+        !finite_vec(angular_velocity) ||
+        !std::isfinite(mass) || !std::isfinite(restitution) ||
+        !std::isfinite(friction) || !std::isfinite(linear_damping) ||
+        !std::isfinite(angular_damping) || !std::isfinite(gravity_scale) ||
+        !std::isfinite(buoyancy)) {
         return false;
     }
 
@@ -221,7 +232,14 @@ bool RegionRuntime::restore_object(
              .velocity = velocity,
              .rotation = transform.rotation,
              .angular_velocity = angular_velocity,
-             .radius = radius});
+             .mass = mass,
+             .restitution = restitution,
+             .friction = friction,
+             .radius = radius,
+             .linear_damping = linear_damping,
+             .angular_damping = angular_damping,
+             .gravity_scale = gravity_scale,
+             .buoyancy = buoyancy});
     }
 
     entities_[id] = entity;
@@ -782,6 +800,13 @@ std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
         .transform = it->second.transform,
         .velocity = {},
         .angular_velocity = {},
+        .mass = 1.0,
+        .restitution = 0.15,
+        .friction = 0.6,
+        .linear_damping = 0.04,
+        .angular_damping = 0.04,
+        .gravity_scale = 1.0,
+        .buoyancy = 0.0,
         .physical = it->second.physics_body != 0,
         .parent_source_entity_id = it->second.parent_entity_id,
         .link_number = it->second.link_number,
@@ -791,6 +816,13 @@ std::optional<ObjectTransferSnapshot> RegionRuntime::export_object(
         const auto body = physics_.body(it->second.physics_body);
         snapshot.velocity = body.velocity;
         snapshot.angular_velocity = body.angular_velocity;
+        snapshot.mass = body.mass;
+        snapshot.restitution = body.restitution;
+        snapshot.friction = body.friction;
+        snapshot.linear_damping = body.linear_damping;
+        snapshot.angular_damping = body.angular_damping;
+        snapshot.gravity_scale = body.gravity_scale;
+        snapshot.buoyancy = body.buoyancy;
     }
     return snapshot;
 }
@@ -851,6 +883,13 @@ RegionRuntime::export_linkset(const std::uint64_t entity_id) const {
             .transform = entity->transform,
             .velocity = {},
             .angular_velocity = {},
+            .mass = 1.0,
+            .restitution = 0.15,
+            .friction = 0.6,
+            .linear_damping = 0.04,
+            .angular_damping = 0.04,
+            .gravity_scale = 1.0,
+            .buoyancy = 0.0,
             .physical = entity->physics_body != 0,
             .parent_source_entity_id = entity->parent_entity_id,
             .link_number = entity->link_number,
@@ -859,6 +898,13 @@ RegionRuntime::export_linkset(const std::uint64_t entity_id) const {
             const auto body = physics_.body(entity->physics_body);
             snapshot.velocity = body.velocity;
             snapshot.angular_velocity = body.angular_velocity;
+            snapshot.mass = body.mass;
+            snapshot.restitution = body.restitution;
+            snapshot.friction = body.friction;
+            snapshot.linear_damping = body.linear_damping;
+            snapshot.angular_damping = body.angular_damping;
+            snapshot.gravity_scale = body.gravity_scale;
+            snapshot.buoyancy = body.buoyancy;
         }
         result.members.push_back(std::move(snapshot));
     }
@@ -926,7 +972,10 @@ bool RegionRuntime::import_object(
             snapshot.owner_permissions, snapshot.group_permissions,
             snapshot.everyone_permissions, 0, 1,
             snapshot.floating_text, snapshot.velocity,
-            snapshot.angular_velocity)) {
+            snapshot.angular_velocity,
+            snapshot.mass, snapshot.restitution, snapshot.friction,
+            snapshot.linear_damping, snapshot.angular_damping,
+            snapshot.gravity_scale, snapshot.buoyancy)) {
         reason = "destination-object-restore-failed";
         return false;
     }
@@ -1135,7 +1184,10 @@ bool RegionRuntime::import_linkset(
                 member.everyone_permissions, destination_parent,
                 destination_parent == 0 ? 1U : member.link_number,
                 member.floating_text, member.velocity,
-                member.angular_velocity)) {
+                member.angular_velocity,
+                member.mass, member.restitution, member.friction,
+                member.linear_damping, member.angular_damping,
+                member.gravity_scale, member.buoyancy)) {
             for (auto it = created.rbegin(); it != created.rend(); ++it) {
                 (void)remove_entity(*it);
             }
