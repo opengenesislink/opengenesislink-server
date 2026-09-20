@@ -128,6 +128,14 @@ std::string serialize_object_snapshot(
         << "angular_damping=" << snapshot.angular_damping << '\n'
         << "gravity_scale=" << snapshot.gravity_scale << '\n'
         << "buoyancy=" << snapshot.buoyancy << '\n'
+        << "collision_shape="
+        << opengenesis::physics::collision_shape_name(
+               snapshot.collision_shape) << '\n'
+        << "half_extent_x=" << snapshot.half_extents.x << '\n'
+        << "half_extent_y=" << snapshot.half_extents.y << '\n'
+        << "half_extent_z=" << snapshot.half_extents.z << '\n'
+        << "capsule_half_height="
+        << snapshot.capsule_half_height << '\n'
         << "physical=" << (snapshot.physical ? 1 : 0) << '\n'
         << "parent_source=" << snapshot.parent_source_entity_id << '\n'
         << "link_number=" << snapshot.link_number << '\n'
@@ -186,6 +194,16 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
         const auto angular_damping = field(encoded, "angular_damping");
         const auto gravity_scale = field(encoded, "gravity_scale");
         const auto buoyancy = field(encoded, "buoyancy");
+        const auto collision_shape =
+            field(encoded, "collision_shape");
+        const auto half_extent_x =
+            field(encoded, "half_extent_x");
+        const auto half_extent_y =
+            field(encoded, "half_extent_y");
+        const auto half_extent_z =
+            field(encoded, "half_extent_z");
+        const auto capsule_half_height =
+            field(encoded, "capsule_half_height");
         if (!mass.empty()) snapshot.mass = std::stod(mass);
         if (!restitution.empty()) snapshot.restitution = std::stod(restitution);
         if (!friction.empty()) snapshot.friction = std::stod(friction);
@@ -199,6 +217,28 @@ std::optional<world::ObjectTransferSnapshot> deserialize_object_snapshot(
             snapshot.gravity_scale = std::stod(gravity_scale);
         }
         if (!buoyancy.empty()) snapshot.buoyancy = std::stod(buoyancy);
+        if (!collision_shape.empty()) {
+            const auto parsed =
+                opengenesis::physics::parse_collision_shape(
+                    collision_shape.c_str());
+            if (!parsed) {
+                reason = "invalid-object-transfer-shape";
+                return std::nullopt;
+            }
+            snapshot.collision_shape = *parsed;
+        }
+        if (!half_extent_x.empty() &&
+            !half_extent_y.empty() &&
+            !half_extent_z.empty()) {
+            snapshot.half_extents = {
+                std::stod(half_extent_x),
+                std::stod(half_extent_y),
+                std::stod(half_extent_z)};
+        }
+        if (!capsule_half_height.empty()) {
+            snapshot.capsule_half_height =
+                std::stod(capsule_half_height);
+        }
         snapshot.physical = field(encoded, "physical") == "1";
         const auto parent = field(encoded, "parent_source");
         if (!parent.empty()) snapshot.parent_source_entity_id = std::stoull(parent);
@@ -484,7 +524,16 @@ ScriptActionApplyResult apply_script_action(
             << "mass=" << (body_state ? body_state->mass : 0.0) << '\n'
             << "restitution=" << (body_state ? body_state->restitution : 0.0) << '\n'
             << "friction=" << (body_state ? body_state->friction : 0.0) << '\n'
-            << "buoyancy=" << (body_state ? body_state->buoyancy : 0.0) << '\n';
+            << "buoyancy=" << (body_state ? body_state->buoyancy : 0.0) << '\n'
+            << "collision_shape="
+            << (body_state
+                    ? opengenesis::physics::collision_shape_name(
+                          body_state->shape)
+                    : "none")
+            << '\n'
+            << "grounded="
+            << (body_state && body_state->grounded ? 1 : 0)
+            << '\n';
         return {.ok = true, .result = out.str()};
     }
 
