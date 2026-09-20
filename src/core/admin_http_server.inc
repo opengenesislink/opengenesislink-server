@@ -1721,6 +1721,81 @@ void AdminHttpServer::run() {
                     if (!session || !user) response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     else if (!group_id || !member_id || !groups_->remove_member(user->id, *group_id, *member_id, reason)) response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                     else { audit_->append(user->id, "group.member.remove", *group_id, *member_id); response.body = "{\"status\":\"removed\"}"; }
+                } else if (method == "GET" && path == "/v1/groups/invites") {
+                    auto [session, user] = auth();
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else {
+                        response.body = "{\"invites\":" +
+                                        group_invites_json(groups_->invites_for_user(user->id)) + "}";
+                    }
+                } else if (method == "POST" && path == "/v1/groups/invites") {
+                    auto [session, user] = auth();
+                    const auto group_id = json_string(request->body, "group_id");
+                    const auto invited_user = json_string(request->body, "user_id");
+                    const auto role = json_string(request->body, "role").value_or("member");
+                    const auto lifetime = static_cast<std::int64_t>(
+                        std::clamp(
+                            json_number(request->body, "lifetime_seconds").value_or(604800.0),
+                            60.0, 2592000.0));
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!group_id || !invited_user ||
+                               !identities_->find_by_id(*invited_user)) {
+                        response = {.status = 400, .body = "{\"error\":\"invalid-group-invite\"}"};
+                    } else if (social_policies_->blocks(*invited_user, user->id) ||
+                               social_policies_->blocks(user->id, *invited_user)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
+                    } else {
+                        std::string reason;
+                        const auto invite = groups_->invite(
+                            user->id, *group_id, *invited_user, role,
+                            std::chrono::seconds{lifetime}, reason);
+                        if (!invite) {
+                            response = {.status = 403, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            notifications_->push(
+                                *invited_user, "group_invite", "Group invitation",
+                                user->display_name + " invited you to a group.", invite->id);
+                            audit_->append(user->id, "group.invite", *group_id, invite->id + ":" + *invited_user);
+                            response.status = 201;
+                            response.body = "{\"invite\":" +
+                                            group_invites_json({*invite}) + "}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/groups/invites/accept") {
+                    auto [session, user] = auth();
+                    const auto invite_id = json_string(request->body, "invite_id");
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!invite_id) {
+                        response = {.status = 400, .body = "{\"error\":\"missing-invite-id\"}"};
+                    } else {
+                        std::string reason;
+                        const auto member = groups_->accept_invite(
+                            user->id, *invite_id, reason);
+                        if (!member) {
+                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            audit_->append(user->id, "group.invite.accept", member->group_id, *invite_id);
+                            response.body = "{\"status\":\"accepted\",\"group_id\":\"" +
+                                            json_escape(member->group_id) + "\"}";
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/groups/invites/revoke") {
+                    auto [session, user] = auth();
+                    const auto invite_id = json_string(request->body, "invite_id");
+                    std::string reason;
+                    if (!session || !user) {
+                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!invite_id ||
+                               !groups_->revoke_invite(user->id, *invite_id, reason)) {
+                        response = {.status = 403, .body = "{\"error\":\"" +
+                                                json_escape(reason.empty() ? "invalid-invite" : reason) + "\"}"};
+                    } else {
+                        audit_->append(user->id, "group.invite.revoke", *invite_id);
+                        response.body = "{\"status\":\"revoked\"}";
+                    }
                 } else if (method == "POST" && path == "/v1/parcels") {
                     auto [session, user] = auth();
                     const auto region_id = json_string(request->body, "region_id");
