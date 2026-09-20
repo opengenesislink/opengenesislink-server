@@ -320,7 +320,10 @@ std::optional<std::vector<std::string>> compile_commands(
                 condition->right + " 0");
             blocks.push_back({
                 .kind = BlockKind::if_block,
-                .condition_index = index});
+                .condition_index = index,
+                .exit_jump = std::nullopt,
+                .variable = {},
+                .step = {}});
             continue;
         }
 
@@ -369,7 +372,10 @@ std::optional<std::vector<std::string>> compile_commands(
                 condition->right + " 0");
             blocks.push_back({
                 .kind = BlockKind::while_block,
-                .condition_index = index});
+                .condition_index = index,
+                .exit_jump = std::nullopt,
+                .variable = {},
+                .step = {}});
             continue;
         }
 
