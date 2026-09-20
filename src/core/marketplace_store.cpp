@@ -235,6 +235,33 @@ bool MarketplaceStore::release_purchase(
     return true;
 }
 
+bool MarketplaceStore::rollback_purchase(
+    const std::string_view listing_id,
+    const std::string_view buyer_user_id,
+    const std::string_view sale_reference,
+    std::string& reason) {
+    std::scoped_lock lock(mutex_);
+    const auto it = listings_.find(std::string{listing_id});
+    if (it == listings_.end()) {
+        reason = "listing-not-found";
+        return false;
+    }
+    if ((it->second.state != MarketplaceListingState::reserved &&
+         it->second.state != MarketplaceListingState::sold) ||
+        it->second.buyer_user_id != buyer_user_id ||
+        it->second.sale_reference != sale_reference) {
+        reason = "listing-reservation-mismatch";
+        return false;
+    }
+    it->second.state = MarketplaceListingState::active;
+    it->second.buyer_user_id.clear();
+    it->second.sale_reference.clear();
+    it->second.updated_unix = unix_now();
+    persist_locked();
+    reason.clear();
+    return true;
+}
+
 std::optional<MarketplaceListing> MarketplaceStore::find(
     const std::string_view listing_id) const {
     std::scoped_lock lock(mutex_);
