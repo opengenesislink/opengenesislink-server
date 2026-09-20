@@ -205,6 +205,17 @@ bool HypergridSessionStore::upsert_foreign(ForeignVisitorSession session,
         return false;
     }
     std::scoped_lock lock(mutex_);
+    const auto existing = foreign_.find(session.session_id);
+    if (existing != foreign_.end()) {
+        const auto& current = existing->second;
+        if (current.agent_id != session.agent_id ||
+            current.home_uri != session.home_uri ||
+            current.service_token != session.service_token) {
+            reason = "foreign-session-collision";
+            return false;
+        }
+        session.created_unix = current.created_unix;
+    }
     foreign_[session.session_id] = std::move(session);
     persist_locked();
     reason.clear();
