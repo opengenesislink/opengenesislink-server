@@ -12,6 +12,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <cstdint>
@@ -410,13 +411,20 @@ public:
         std::vector<unsigned long> lengths(columns, 0UL);
         std::vector<MariaBool> nulls(columns);
         std::vector<MariaBool> errors(columns);
-        std::vector<char> scratch(columns, '\0');
+        // MariaDB reports unreliable converted lengths for some numeric
+        // result types when MYSQL_TYPE_STRING is initially bound to a
+        // one-byte buffer. Give scalar values enough room so the length
+        // metadata reflects the complete textual representation. Larger
+        // text values still use mysql_stmt_fetch_column() below.
+        constexpr std::size_t result_scratch_size = 256U;
+        std::vector<std::array<char, result_scratch_size>> scratch(columns);
 
         for (std::size_t index = 0; index < columns; ++index) {
             bindings[index] = MYSQL_BIND{};
             bindings[index].buffer_type = MYSQL_TYPE_STRING;
-            bindings[index].buffer = &scratch[index];
-            bindings[index].buffer_length = 1UL;
+            bindings[index].buffer = scratch[index].data();
+            bindings[index].buffer_length =
+                static_cast<unsigned long>(scratch[index].size());
             bindings[index].length = &lengths[index];
             bindings[index].is_null = &nulls[index];
             bindings[index].error = &errors[index];
