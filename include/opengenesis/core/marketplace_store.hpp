@@ -12,6 +12,7 @@ namespace opengenesis::core {
 
 enum class MarketplaceListingState {
     active,
+    reserved,
     sold,
     cancelled
 };
@@ -49,10 +50,22 @@ public:
         std::string_view listing_id,
         std::string& reason);
 
-    [[nodiscard]] bool mark_sold(
+    [[nodiscard]] bool reserve_purchase(
         std::string_view listing_id,
         std::string buyer_user_id,
         std::string sale_reference,
+        std::string& reason);
+
+    [[nodiscard]] bool complete_purchase(
+        std::string_view listing_id,
+        std::string_view buyer_user_id,
+        std::string_view sale_reference,
+        std::string& reason);
+
+    [[nodiscard]] bool release_purchase(
+        std::string_view listing_id,
+        std::string_view buyer_user_id,
+        std::string_view sale_reference,
         std::string& reason);
 
     [[nodiscard]] std::optional<MarketplaceListing> find(
