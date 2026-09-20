@@ -438,7 +438,7 @@ int main() {
         const auto world_actions_path = (root / "script-world-actions.db").string();
         auto world_actions =
             std::make_shared<opengenesis::scripting::ScriptWorldActionQueue>(
-                world_actions_path, 16, 3, 500, 60000);
+                world_actions_path, 32, 3, 500, 60000);
         opengenesis::scripting::ScriptHost host(
             identities, friends, messages, notifications, world_actions);
 
@@ -474,14 +474,14 @@ int main() {
         require(host_compiled.has_value(), "Script host program compiles");
         const auto host_vm = opengenesis::scripting::execute_script_event(
             *host_compiled, "touch", {});
-        require(host_vm.ok && host_vm.actions.size() == 18,
-                "Script host and World v3 actions emitted");
+        require(host_vm.ok && host_vm.actions.size() == 24,
+                "Script host and World physics actions emitted");
         const auto host_result = host.apply(
             alice->id, "host-script", host_vm.actions, "region-a/42");
-        require(host_result.applied == 18 && host_result.errors.empty(),
-                "Script host and World v3 actions applied");
-        require(world_actions->size() == 16,
-                "Script World v3 Actions queued");
+        require(host_result.applied == 24 && host_result.errors.empty(),
+                "Script host and World physics actions applied");
+        require(world_actions->size() == 22,
+                "Script World physics Actions queued");
 
         const auto queue_now = unix_now() * 1000;
         const auto move_action = world_actions->lease("region-a", queue_now);
@@ -495,7 +495,7 @@ int main() {
                 "Script World Action lease preserves binding and payload");
 
         opengenesis::scripting::ScriptWorldActionQueue restored_actions(
-            world_actions_path, 16, 3, 500, 60000);
+            world_actions_path, 32, 3, 500, 60000);
         const auto restored_move = restored_actions.find(move_action->id);
         require(restored_move && restored_move->attempts == 1 &&
                     restored_move->lease_until_unix_ms > queue_now,
@@ -512,7 +512,7 @@ int main() {
                     rotate_action->id, "temporary-world-error", queue_now + 1000),
                 "Script World Action NACK schedules retry");
 
-        for (int index = 0; index < 14; ++index) {
+        for (int index = 0; index < 20; ++index) {
             const auto action = restored_actions.lease("region-a", queue_now);
             require(action.has_value(), "other Script World Action leased");
             require(restored_actions.ack(action->id),
