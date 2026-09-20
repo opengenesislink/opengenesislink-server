@@ -613,6 +613,177 @@ void runtime_physics_v2_test() {
     expect(runtime.remove_constraint(constraint),
            "runtime distance constraint removed");
 }
+
+void physics_v3_test() {
+    using opengenesis::physics::Body;
+    using opengenesis::physics::CollisionShape;
+    using opengenesis::physics::PhysicsWorld;
+
+    {
+        PhysicsWorld world;
+        world.set_gravity({0.0, 0.0, 0.0});
+        world.set_ground_height(-100.0);
+        const auto static_box = world.add_body(
+            {.position = {5.0, 0.0, 5.0},
+             .half_extents = {1.0, 1.0, 1.0},
+             .shape = CollisionShape::box,
+             .dynamic = false});
+        const auto moving_box = world.add_body(
+            {.position = {6.5, 0.0, 5.0},
+             .half_extents = {1.0, 1.0, 1.0},
+             .shape = CollisionShape::box,
+             .dynamic = true});
+        world.step(1.0 / 60.0);
+        const auto contacts = world.collisions();
+        expect(
+            std::any_of(
+                contacts.begin(), contacts.end(),
+                [&](const auto& contact) {
+                    return !contact.ground &&
+                           ((contact.body_a == static_box &&
+                             contact.body_b == moving_box) ||
+                            (contact.body_a == moving_box &&
+                             contact.body_b == static_box));
+                }),
+            "physics v3 box collision");
+
+        const auto hit = world.raycast(
+            {0.0, 0.0, 5.0},
+            {1.0, 0.0, 0.0},
+            20.0);
+        expect(hit && hit->body_id == static_box &&
+                   std::abs(hit->distance - 4.0) < 0.05,
+               "physics v3 box raycast");
+    }
+
+    {
+        PhysicsWorld world;
+        world.set_ground_height(0.0);
+        const auto character = world.add_body(
+            {.position = {0.0, 0.0, 0.9},
+             .radius = 0.45,
+             .half_extents = {0.45, 0.45, 0.9},
+             .capsule_half_height = 0.45,
+             .shape = CollisionShape::capsule,
+             .character = true});
+        expect(
+            world.set_character_controller(
+                character, 50.0, 0.45, 6.0),
+            "physics v3 character controller configured");
+        world.step(1.0 / 30.0);
+        const auto grounded = world.body(character);
+        expect(grounded.grounded,
+               "physics v3 capsule character grounded");
+        expect(world.character_jump(character),
+               "physics v3 grounded character jump");
+        expect(world.body(character).velocity.z >= 5.9,
+               "physics v3 character jump velocity");
+    }
+
+    {
+        PhysicsWorld world;
+        world.set_gravity({0.0, 0.0, 0.0});
+        world.set_ground_height(-100.0);
+        const auto anchor = world.add_body(
+            {.position = {0.0, 0.0, 5.0},
+             .shape = CollisionShape::sphere,
+             .dynamic = false});
+        const auto bob = world.add_body(
+            {.position = {6.0, 0.0, 5.0},
+             .shape = CollisionShape::sphere,
+             .dynamic = true});
+        const auto spring = world.add_spring_constraint(
+            anchor, bob, 2.0, 25.0, 2.0);
+        expect(spring != 0,
+               "physics v3 spring constraint created");
+        world.step(0.05);
+        expect(world.body(bob).velocity.x < 0.0,
+               "physics v3 spring pulls body toward rest length");
+        expect(world.spring_constraints().size() == 1U,
+               "physics v3 spring introspection");
+        expect(world.remove_constraint(spring),
+               "physics v3 spring constraint removed");
+    }
+
+    {
+        opengenesis::world::RegionRuntime runtime(
+            "physics-v3", 90.0, 0.0, -10.0);
+        opengenesis::world::Transform transform;
+        transform.position = {20.0, 20.0, 10.0};
+        transform.scale = {2.0, 4.0, 6.0};
+        const auto object = runtime.spawn_object(
+            "Physics v3 box", transform, true, "user-v3");
+        const auto body = runtime.physics_body_state(object);
+        expect(body && body->shape == CollisionShape::box &&
+                   std::abs(body->half_extents.x - 1.0) < 0.001 &&
+                   std::abs(body->half_extents.y - 2.0) < 0.001 &&
+                   std::abs(body->half_extents.z - 3.0) < 0.001,
+               "runtime creates scale-aware box collider");
+
+        expect(
+            runtime.set_physics_shape(
+                object, CollisionShape::capsule),
+            "runtime changes collision shape");
+        const auto capsule =
+            runtime.physics_body_state(object);
+        expect(capsule &&
+                   capsule->shape == CollisionShape::capsule,
+               "runtime exposes changed collision shape");
+
+        const auto hit = runtime.raycast(
+            {20.0, 20.0, 20.0},
+            {0.0, 0.0, -1.0},
+            30.0);
+        expect(hit && hit->entity_id == object,
+               "runtime raycast maps body to entity");
+    }
+
+    {
+        const auto root =
+            std::filesystem::temp_directory_path() /
+            "ogl-tests-physics-v3-persistence";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root);
+        const auto scene_path = root / "region";
+
+        {
+            opengenesis::world::RegionRuntime runtime(
+                "persist-v3", 45.0, 0.0, -10.0);
+            opengenesis::world::Transform transform;
+            transform.position = {30.0, 30.0, 10.0};
+            transform.scale = {4.0, 2.0, 3.0};
+            const auto object = runtime.spawn_object(
+                "Persistent v3 box",
+                transform, true, "user-v3");
+            expect(
+                runtime.set_physics_shape(
+                    object, CollisionShape::box),
+                "persistence v3 box shape set");
+            opengenesis::world::RegionPersistence persistence(
+                scene_path);
+            persistence.save(runtime, true);
+        }
+
+        {
+            opengenesis::world::RegionRuntime runtime(
+                "persist-v3", 45.0, 0.0, -10.0);
+            opengenesis::world::RegionPersistence persistence(
+                scene_path);
+            persistence.load(runtime);
+            const auto entities = runtime.snapshot_entities();
+            expect(entities.size() == 1U,
+                   "scene persistence v7 restores object");
+            const auto body =
+                runtime.physics_body_state(entities.front().id);
+            expect(body && body->shape == CollisionShape::box &&
+                       std::abs(body->half_extents.x - 2.0) < 0.001 &&
+                       std::abs(body->half_extents.y - 1.0) < 0.001 &&
+                       std::abs(body->half_extents.z - 1.5) < 0.001,
+                   "scene persistence v7 restores shape extents");
+        }
+        std::filesystem::remove_all(root);
+    }
+}
 } // namespace
 
 int main() {
@@ -631,7 +802,8 @@ int main() {
         physics_test();
         runtime_test();
         runtime_physics_v2_test();
-        std::cout << "OpenGenesisLINK 12.0.0 foundation tests: PASS\n";
+        physics_v3_test();
+        std::cout << "OpenGenesisLINK 16.0.0 foundation tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
