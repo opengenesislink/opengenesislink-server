@@ -6,6 +6,8 @@ OpenGenesisLINK Server 14.0.0-dev is the **Federation Completion** milestone.
 
 - repository: `opengenesislink/opengenesislink-server`
 - pull request: #19
+- final tested PR head: `f1e4f5d2d47d9a0901d8677249e3b9be3367eee1`
+- squash merge: `de66c4290fe9ab7dcc3fe06068b96dc6fe1f71ad`
 - version: `14.0.0-dev`
 - implementation: C++23
 - license: MPL 2.0
@@ -218,6 +220,30 @@ The final PR head must pass:
 - MariaDB integration
 
 The dedicated Federation smoke verifies trust, v2 travel context, all remote read services, wrong-audience rejection, grant revocation and peer-revocation invalidation.
+
+## Acceptance result
+
+All required gates passed on final PR head `f1e4f5d2d47d9a0901d8677249e3b9be3367eee1`:
+
+- Linux x86_64: PASS
+- Linux ARM64/aarch64: PASS
+- Windows x86_64/MSVC: PASS
+- unit tests: PASS
+- World/Social/Handoff smoke: PASS
+- Script World query/ACK smoke: PASS
+- OGL/LSL ScriptEngine smoke: PASS
+- Crossing v3 smoke: PASS
+- Object Crossing smoke: PASS
+- Viewer Bootstrap/Scene v2 smoke: PASS
+- OGL-FED/2 Remote Services smoke: PASS on x86_64 and ARM64
+- SQLite integration: PASS
+- PostgreSQL integration: PASS
+- MariaDB integration: PASS
+
+Canonical 14.0 squash merge:
+
+`de66c4290fe9ab7dcc3fe06068b96dc6fe1f71ad`
+
 
 ## Explicit non-claims
 
