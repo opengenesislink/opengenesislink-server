@@ -142,6 +142,29 @@ void AdminHttpServer::run() {
                                ? user->id
                                : std::string{"unknown-admin"};
                 };
+                const auto federation_service_subject =
+                    [&](const std::string_view capability)
+                        -> std::optional<std::string> {
+                        const auto grant_id =
+                            json_string(request->body, "grant_id");
+                        const auto service_token =
+                            json_string(request->body, "service_token");
+                        const auto audience_grid =
+                            json_string(request->body, "audience_grid");
+                        const auto subject_user =
+                            json_string(request->body, "subject_user");
+                        if (!grant_id || !service_token ||
+                            !audience_grid || !subject_user) {
+                            return std::nullopt;
+                        }
+                        if (!federation_runtime_->authorize_remote_service(
+                                *grant_id, *service_token,
+                                *audience_grid, *subject_user,
+                                capability)) {
+                            return std::nullopt;
+                        }
+                        return *subject_user;
+                    };
                 const auto estate_entry_error = [&](const UserInfo& user, const RegionInfo& region) -> std::string {
                     const auto policy = estates_->policy_for_region(region.id);
                     if (!policy) return {};
@@ -357,7 +380,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-persistence-v5","scene-persistence-v6","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","ogl-fed-v2","federation-service-grants-v1","federation-remote-profile-v1","federation-remote-inventory-v1","federation-remote-assets-v1","federation-remote-social-v1","federation-remote-presence-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-persistence-v5","scene-persistence-v6","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","federation_service_profile":"POST /v1/federation/service/profile","federation_service_inventory":"POST /v1/federation/service/inventory","federation_service_asset":"POST /v1/federation/service/asset","federation_service_social":"POST /v1/federation/service/social","federation_service_presence":"POST /v1/federation/service/presence","federation_service_grants":"GET /v1/federation/service-grants","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -604,7 +627,8 @@ void AdminHttpServer::run() {
                     response.body = "{\"protocol\":\"" + json_escape(info.protocol) +
                                     "\",\"grid_id\":\"" + json_escape(info.grid_id) +
                                     "\",\"base_url\":\"" + json_escape(info.base_url) +
-                                    "\",\"public_key\":\"" + json_escape(info.public_key_hex) + "\"}";
+                                    "\",\"public_key\":\"" + json_escape(info.public_key_hex) +
+                                    "\",\"remote_services\":\"profile,appearance,inventory,assets,social,presence\"}";
                 } else if (method == "GET" && path == "/v1/federation/peers") {
                     if (!admin_allowed("operator")) {
                         response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
@@ -679,12 +703,19 @@ void AdminHttpServer::run() {
                                         .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         } else {
                             response.status = 201;
-                            response.body = "{\"protocol\":\"OGL-FED/1\",\"travel_token\":\"" +
+                            response.body = "{\"protocol\":\"" +
+                                            json_escape(
+                                                federation_runtime_->info().protocol) +
+                                            "\",\"travel_token\":\"" +
                                             json_escape(issued->token) +
                                             "\",\"audience_grid\":\"" +
                                             json_escape(issued->claims.audience_grid) +
                                             "\",\"destination_region\":\"" +
                                             json_escape(issued->claims.destination_region) +
+                                            "\",\"service_grant_id\":\"" +
+                                            json_escape(issued->claims.service_grant_id) +
+                                            "\",\"service_capabilities\":\"" +
+                                            json_escape(issued->claims.service_capabilities) +
                                             "\",\"expires_unix\":" +
                                             std::to_string(issued->claims.expires_unix) + "}";
                         }
@@ -737,10 +768,194 @@ void AdminHttpServer::run() {
                                                 json_escape(ticket.token) +
                                                 "\",\"destination_region\":\"" +
                                                 json_escape(region->id) +
+                                                "\",\"home_url\":\"" +
+                                                json_escape(accepted->claims.home_url) +
+                                                "\",\"service_grant_id\":\"" +
+                                                json_escape(accepted->claims.service_grant_id) +
+                                                "\",\"service_token\":\"" +
+                                                json_escape(accepted->claims.service_token) +
+                                                "\",\"service_capabilities\":\"" +
+                                                json_escape(accepted->claims.service_capabilities) +
                                                 "\",\"expires_unix\":" +
                                                 std::to_string(ticket.claims.expires_unix) + "}";
                             }
                         }
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/federation/service/profile") {
+                    const auto subject =
+                        federation_service_subject("profile");
+                    if (!subject) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"federation-service-denied\"}"};
+                    } else {
+                        const auto user = identities_->find_by_id(*subject);
+                        if (!user) {
+                            response = {
+                                .status = 404,
+                                .body = "{\"error\":\"federation-subject-not-found\"}"};
+                        } else {
+                            const auto avatar =
+                                appearance_->ensure(*subject);
+                            response.body =
+                                "{\"user\":{\"id\":\"" +
+                                json_escape(user->id) +
+                                "\",\"display_name\":\"" +
+                                json_escape(user->display_name) +
+                                "\"},\"appearance\":" +
+                                appearance_json(avatar) + "}";
+                        }
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/federation/service/inventory") {
+                    const auto subject =
+                        federation_service_subject("inventory");
+                    if (!subject) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"federation-service-denied\"}"};
+                    } else if (!identities_->find_by_id(*subject)) {
+                        response = {
+                            .status = 404,
+                            .body = "{\"error\":\"federation-subject-not-found\"}"};
+                    } else {
+                        response.body =
+                            inventory_json(inventory_->list(*subject));
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/federation/service/asset") {
+                    const auto subject =
+                        federation_service_subject("assets");
+                    const auto asset_id =
+                        json_string(request->body, "asset_id");
+                    if (!subject) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"federation-service-denied\"}"};
+                    } else if (!asset_id) {
+                        response = {
+                            .status = 400,
+                            .body = "{\"error\":\"missing-asset-id\"}"};
+                    } else {
+                        const auto asset = assets_->find(*asset_id);
+                        const auto data =
+                            asset &&
+                                    asset->owner_user_id == *subject
+                                ? assets_->read_exportable(*asset_id)
+                                : std::nullopt;
+                        if (!asset || !data) {
+                            response = {
+                                .status = 404,
+                                .body = "{\"error\":\"exportable-asset-not-found\"}"};
+                        } else {
+                            response.body =
+                                "{\"asset\":" + asset_json(*asset) +
+                                ",\"data_base64\":\"" +
+                                security::base64_encode(*data) + "\"}";
+                        }
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/federation/service/social") {
+                    const auto subject =
+                        federation_service_subject("social");
+                    if (!subject) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"federation-service-denied\"}"};
+                    } else if (!identities_->find_by_id(*subject)) {
+                        response = {
+                            .status = 404,
+                            .body = "{\"error\":\"federation-subject-not-found\"}"};
+                    } else {
+                        response.body =
+                            "{\"friends\":" +
+                            friends_json(
+                                friends_->list_for_user(*subject),
+                                *subject) +
+                            "}";
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/federation/service/presence") {
+                    const auto subject =
+                        federation_service_subject("presence");
+                    if (!subject) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"federation-service-denied\"}"};
+                    } else {
+                        const auto presence =
+                            presences_->find_user(*subject);
+                        if (!presence) {
+                            response.body =
+                                "{\"online\":false}";
+                        } else {
+                            std::ostringstream out;
+                            out << "{\"online\":true,"
+                                << "\"user_id\":\""
+                                << json_escape(presence->user_id)
+                                << "\",\"display_name\":\""
+                                << json_escape(presence->display_name)
+                                << "\",\"region_id\":\""
+                                << json_escape(presence->region_id)
+                                << "\",\"x\":" << presence->x
+                                << ",\"y\":" << presence->y
+                                << ",\"z\":" << presence->z
+                                << ",\"updated_unix\":"
+                                << presence->updated_unix << "}";
+                            response.body = out.str();
+                        }
+                    }
+                } else if (method == "GET" &&
+                           path == "/v1/federation/service-grants") {
+                    if (!admin_allowed("operator")) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"admin-authorization-required\"}"};
+                    } else {
+                        response.body =
+                            "{\"grants\":" +
+                            federation_service_grants_json(
+                                federation_runtime_->service_grants()) +
+                            "}";
+                    }
+                } else if (method == "POST" &&
+                           path == "/v1/federation/service-grants/revoke") {
+                    const auto grant_id =
+                        json_string(request->body, "grant_id");
+                    auto [session, user] = auth();
+                    bool owner_allowed = false;
+                    if (session && user && grant_id) {
+                        for (const auto& grant :
+                             federation_runtime_->service_grants()) {
+                            if (grant.id == *grant_id &&
+                                grant.subject_user == user->id) {
+                                owner_allowed = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!admin_allowed("operator") &&
+                        !owner_allowed) {
+                        response = {
+                            .status = 403,
+                            .body = "{\"error\":\"federation-grant-revoke-denied\"}"};
+                    } else if (
+                        !grant_id ||
+                        !federation_runtime_->revoke_service_grant(
+                            *grant_id)) {
+                        response = {
+                            .status = 404,
+                            .body = "{\"error\":\"federation-grant-not-found\"}"};
+                    } else {
+                        audit_->append(
+                            owner_allowed && user
+                                ? user->id
+                                : admin_actor(),
+                            "federation.service-grant.revoke",
+                            *grant_id);
+                        response.body =
+                            "{\"status\":\"revoked\"}";
                     }
                 } else if (method == "GET" && path == "/v1/federation/sessions") {
                     if (!admin_allowed("operator")) {
@@ -1883,7 +2098,18 @@ void AdminHttpServer::run() {
                            path == "/v1/social/friends/accept" || path == "/v1/social/friends/remove" ||
                            path == "/v1/social/messages" || path == "/v1/social/messages/read" ||
                            path == "/v1/assets" || path == "/v1/inventory/folders" ||
-                           path == "/v1/inventory/items") {
+                           path == "/v1/inventory/items" ||
+                           path == "/v1/federation/travel/issue" ||
+                           path == "/v1/federation/travel/accept" ||
+                           path == "/v1/federation/trust" ||
+                           path == "/v1/federation/revoke" ||
+                           path == "/v1/federation/sessions/logout" ||
+                           path == "/v1/federation/service/profile" ||
+                           path == "/v1/federation/service/inventory" ||
+                           path == "/v1/federation/service/asset" ||
+                           path == "/v1/federation/service/social" ||
+                           path == "/v1/federation/service/presence" ||
+                           path == "/v1/federation/service-grants/revoke") {
                     response = {.status = 405, .body = "{\"error\":\"method-not-allowed\"}"};
                 } else {
                     response = {.status = 404, .body = "{\"error\":\"not-found\"}"};
