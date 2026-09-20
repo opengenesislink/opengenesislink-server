@@ -342,7 +342,11 @@ std::optional<EconomyEscrow> EconomyLedger::reserve(
     }
 
     auto& buyer = ensure_account_locked(buyer_user);
-    (void)ensure_account_locked(seller_user);
+    auto& seller = ensure_account_locked(seller_user);
+    if (add_overflows(seller.balance_minor, amount_minor)) {
+        reason = "balance-overflow";
+        return std::nullopt;
+    }
     if (buyer.balance_minor < amount_minor) {
         reason = "insufficient-funds";
         return std::nullopt;
