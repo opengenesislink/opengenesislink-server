@@ -1,26 +1,330 @@
 #include "opengenesis/core/moderation_store.hpp"
 #include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
+#include "opengenesis/storage/database.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
-namespace opengenesis::core { namespace {
-std::int64_t now(){return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();}
-std::string hex(std::string_view v){constexpr char h[]="0123456789abcdef";std::string o(v.size()*2,'0');for(size_t i=0;i<v.size();++i){auto c=(unsigned char)v[i];o[i*2]=h[c>>4];o[i*2+1]=h[c&15];}return o;}
-unsigned char nib(char c){if(c>='0'&&c<='9')return static_cast<unsigned char>(c-'0');if(c>='a'&&c<='f')return static_cast<unsigned char>(c-'a'+10);if(c>='A'&&c<='F')return static_cast<unsigned char>(c-'A'+10);throw std::runtime_error("hex");}
-std::string unhex(std::string_view v){if(v.size()%2)throw std::runtime_error("hex");std::string o(v.size()/2,'\0');for(size_t i=0;i<o.size();++i)o[i]=(char)((nib(v[i*2])<<4)|nib(v[i*2+1]));return o;}
-std::vector<std::string> tabs(const std::string& l){std::vector<std::string>f;size_t s=0;for(;;){auto e=l.find('\t',s);f.push_back(l.substr(s,e==std::string::npos?e:e-s));if(e==std::string::npos)break;s=e+1;}return f;}
+
+namespace opengenesis::core {
+namespace {
+
+std::int64_t now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
 }
-ModerationStore::ModerationStore(std::string path):path_(std::move(path)){reload();}
-void ModerationStore::reload(){std::scoped_lock l(mutex_);load_locked();}
-std::optional<BanRecord> ModerationStore::ban(std::string actor,std::string user,std::string scope,std::string scope_id,std::string reason,std::int64_t expires,std::string& error){if(user.empty()||(scope!="global"&&scope!="region")||(scope=="region"&&scope_id.empty())){error="invalid-ban";return std::nullopt;}BanRecord b{.id=security::random_hex(16),.user_id=std::move(user),.scope=std::move(scope),.scope_id=std::move(scope_id),.reason=std::move(reason),.created_by=std::move(actor),.created_unix=now(),.expires_unix=expires};std::scoped_lock l(mutex_);bans_[b.id]=b;persist_locked();error.clear();return b;}
-bool ModerationStore::unban(std::string_view id){std::scoped_lock l(mutex_);if(!bans_.erase(std::string{id}))return false;persist_locked();return true;}
-bool ModerationStore::is_banned(std::string_view u,std::string_view region)const{auto t=now();std::scoped_lock l(mutex_);for(auto&[_,b]:bans_)if(b.user_id==u&&(b.expires_unix==0||b.expires_unix>t)&&(b.scope=="global"||(b.scope=="region"&&b.scope_id==region)))return true;return false;}
-std::vector<BanRecord> ModerationStore::list()const{std::scoped_lock l(mutex_);std::vector<BanRecord>r;for(auto&[_,b]:bans_)r.push_back(b);std::sort(r.begin(),r.end(),[](auto&a,auto&b){return a.created_unix>b.created_unix;});return r;}
-std::size_t ModerationStore::active_count()const{auto t=now();std::scoped_lock l(mutex_);return static_cast<std::size_t>(std::count_if(bans_.begin(),bans_.end(),[&](auto&e){return e.second.expires_unix==0||e.second.expires_unix>t;}));}
-void ModerationStore::load_locked(){bans_.clear();std::ifstream in(path_);if(!in)return;std::string line;while(std::getline(in,line)){if(line.empty()||line[0]=='#')continue;auto f=tabs(line);if(f.size()!=8 && f.size()!=9)continue;try{BanRecord b{.id=f[0],.user_id=f[1],.scope=f[2],.scope_id=f[3],.reason=unhex(f[4]),.created_by=f[5],.created_unix=std::stoll(f[6]),.expires_unix=std::stoll(f[7])};bans_[b.id]=b;}catch(...){}}}
-void ModerationStore::persist_locked()const{std::filesystem::path p(path_);if(p.has_parent_path())std::filesystem::create_directories(p.parent_path());auto t=p.string()+".tmp";std::ofstream out(t,std::ios::trunc);if(!out)throw std::runtime_error("cannot write moderation");out<<"# OpenGenesisLINK moderation v1\n";for(auto&[_,b]:bans_)out<<b.id<<'\t'<<b.user_id<<'\t'<<b.scope<<'\t'<<b.scope_id<<'\t'<<hex(b.reason)<<'\t'<<b.created_by<<'\t'<<b.created_unix<<'\t'<<b.expires_unix<<'\n';out.close();if(!out)throw std::runtime_error("cannot flush moderation");opengenesis::platform::replace_file(t,p);}
+
+std::string hex(std::string_view value) {
+    constexpr char digits[] = "0123456789abcdef";
+    std::string output(value.size() * 2U, '0');
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        const auto c =
+            static_cast<unsigned char>(value[index]);
+        output[index * 2U] = digits[c >> 4U];
+        output[index * 2U + 1U] = digits[c & 15U];
+    }
+    return output;
 }
+
+unsigned char nib(const char c) {
+    if (c >= '0' && c <= '9') {
+        return static_cast<unsigned char>(c - '0');
+    }
+    if (c >= 'a' && c <= 'f') {
+        return static_cast<unsigned char>(c - 'a' + 10);
+    }
+    if (c >= 'A' && c <= 'F') {
+        return static_cast<unsigned char>(c - 'A' + 10);
+    }
+    throw std::runtime_error("hex");
+}
+
+std::string unhex(std::string_view value) {
+    if (value.size() % 2U != 0U) {
+        throw std::runtime_error("hex");
+    }
+    std::string output(value.size() / 2U, '\0');
+    for (std::size_t index = 0; index < output.size(); ++index) {
+        output[index] = static_cast<char>(
+            (nib(value[index * 2U]) << 4U) |
+            nib(value[index * 2U + 1U]));
+    }
+    return output;
+}
+
+std::vector<std::string> tabs(const std::string& line) {
+    std::vector<std::string> fields;
+    std::size_t start = 0;
+    for (;;) {
+        const auto end = line.find('	', start);
+        fields.push_back(
+            line.substr(
+                start,
+                end == std::string::npos
+                    ? end
+                    : end - start));
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return fields;
+}
+
+std::optional<std::string> cell(
+    const storage::DatabaseRow& row,
+    const std::string& name) {
+    const auto it = row.find(name);
+    if (it == row.end()) return std::nullopt;
+    return it->second;
+}
+
+BanRecord row_to_ban(const storage::DatabaseRow& row) {
+    return {
+        .id = cell(row, "id").value_or(""),
+        .user_id = cell(row, "user_id").value_or(""),
+        .scope = cell(row, "scope").value_or(""),
+        .scope_id = cell(row, "scope_id").value_or(""),
+        .reason = cell(row, "reason").value_or(""),
+        .created_by = cell(row, "created_by").value_or(""),
+        .created_unix =
+            std::stoll(cell(row, "created_unix").value_or("0")),
+        .expires_unix =
+            std::stoll(cell(row, "expires_unix").value_or("0"))};
+}
+
+} // namespace
+
+ModerationStore::ModerationStore(std::string path)
+    : path_(std::move(path)) {
+    reload();
+}
+
+ModerationStore::ModerationStore(
+    std::shared_ptr<storage::DatabasePool> database)
+    : database_(std::move(database)) {
+    if (!database_) {
+        throw std::invalid_argument("moderation database is required");
+    }
+}
+
+void ModerationStore::reload() {
+    if (database_) return;
+    std::scoped_lock lock(mutex_);
+    load_locked();
+}
+
+std::optional<BanRecord> ModerationStore::ban(
+    std::string actor,
+    std::string user,
+    std::string scope,
+    std::string scope_id,
+    std::string reason,
+    const std::int64_t expires,
+    std::string& error) {
+    if (user.empty() ||
+        (scope != "global" && scope != "region") ||
+        (scope == "region" && scope_id.empty())) {
+        error = "invalid-ban";
+        return std::nullopt;
+    }
+
+    BanRecord record{
+        .id = security::random_hex(16),
+        .user_id = std::move(user),
+        .scope = std::move(scope),
+        .scope_id = std::move(scope_id),
+        .reason = std::move(reason),
+        .created_by = std::move(actor),
+        .created_unix = now(),
+        .expires_unix = expires};
+
+    if (database_) {
+        database_->execute(
+            "INSERT INTO ogl_moderation_bans"
+            "(id,user_id,scope,scope_id,reason,created_by,"
+            "created_unix,expires_unix)"
+            " VALUES(?,?,?,?,?,?,?,?)",
+            {record.id, record.user_id, record.scope,
+             record.scope_id, record.reason, record.created_by,
+             std::to_string(record.created_unix),
+             std::to_string(record.expires_unix)});
+        error.clear();
+        return record;
+    }
+
+    std::scoped_lock lock(mutex_);
+    bans_[record.id] = record;
+    persist_locked();
+    error.clear();
+    return record;
+}
+
+bool ModerationStore::unban(const std::string_view id) {
+    if (database_) {
+        const auto rows = database_->query(
+            "SELECT id FROM ogl_moderation_bans WHERE id=?",
+            {std::string{id}});
+        if (rows.empty()) return false;
+        database_->execute(
+            "DELETE FROM ogl_moderation_bans WHERE id=?",
+            {std::string{id}});
+        return true;
+    }
+
+    std::scoped_lock lock(mutex_);
+    if (!bans_.erase(std::string{id})) return false;
+    persist_locked();
+    return true;
+}
+
+bool ModerationStore::is_banned(
+    const std::string_view user,
+    const std::string_view region) const {
+    const auto current = now();
+
+    if (database_) {
+        const auto rows = database_->query(
+            "SELECT id FROM ogl_moderation_bans "
+            "WHERE user_id=? AND "
+            "(expires_unix=0 OR expires_unix>?) AND "
+            "(scope=? OR (scope=? AND scope_id=?))",
+            {std::string{user},
+             std::to_string(current),
+             std::string{"global"},
+             std::string{"region"},
+             std::string{region}});
+        return !rows.empty();
+    }
+
+    std::scoped_lock lock(mutex_);
+    for (const auto& [_, ban] : bans_) {
+        if (ban.user_id == user &&
+            (ban.expires_unix == 0 ||
+             ban.expires_unix > current) &&
+            (ban.scope == "global" ||
+             (ban.scope == "region" &&
+              ban.scope_id == region))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<BanRecord> ModerationStore::list() const {
+    if (database_) {
+        const auto rows = database_->query(
+            "SELECT id,user_id,scope,scope_id,reason,created_by,"
+            "created_unix,expires_unix "
+            "FROM ogl_moderation_bans "
+            "ORDER BY created_unix DESC,id");
+        std::vector<BanRecord> result;
+        result.reserve(rows.size());
+        for (const auto& row : rows) {
+            result.push_back(row_to_ban(row));
+        }
+        return result;
+    }
+
+    std::scoped_lock lock(mutex_);
+    std::vector<BanRecord> result;
+    for (const auto& [_, ban] : bans_) {
+        result.push_back(ban);
+    }
+    std::sort(
+        result.begin(), result.end(),
+        [](const auto& a, const auto& b) {
+            return a.created_unix > b.created_unix;
+        });
+    return result;
+}
+
+std::size_t ModerationStore::active_count() const {
+    const auto current = now();
+
+    if (database_) {
+        const auto value = database_->scalar(
+            "SELECT COUNT(*) AS count FROM ogl_moderation_bans "
+            "WHERE expires_unix=0 OR expires_unix>?",
+            {std::to_string(current)});
+        return value
+                   ? static_cast<std::size_t>(std::stoull(*value))
+                   : 0U;
+    }
+
+    std::scoped_lock lock(mutex_);
+    return static_cast<std::size_t>(
+        std::count_if(
+            bans_.begin(), bans_.end(),
+            [&](const auto& entry) {
+                return entry.second.expires_unix == 0 ||
+                       entry.second.expires_unix > current;
+            }));
+}
+
+void ModerationStore::load_locked() {
+    bans_.clear();
+    std::ifstream input(path_);
+    if (!input) return;
+    std::string line;
+    while (std::getline(input, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        const auto fields = tabs(line);
+        if (fields.size() != 8 &&
+            fields.size() != 9) {
+            continue;
+        }
+        try {
+            BanRecord record{
+                .id = fields[0],
+                .user_id = fields[1],
+                .scope = fields[2],
+                .scope_id = fields[3],
+                .reason = unhex(fields[4]),
+                .created_by = fields[5],
+                .created_unix = std::stoll(fields[6]),
+                .expires_unix = std::stoll(fields[7])};
+            bans_[record.id] = record;
+        } catch (...) {
+        }
+    }
+}
+
+void ModerationStore::persist_locked() const {
+    if (database_) return;
+    std::filesystem::path path(path_);
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(
+            path.parent_path());
+    }
+    const auto temporary = path.string() + ".tmp";
+    std::ofstream output(
+        temporary, std::ios::trunc);
+    if (!output) {
+        throw std::runtime_error(
+            "cannot write moderation");
+    }
+    output << "# OpenGenesisLINK moderation v1\n";
+    for (const auto& [_, ban] : bans_) {
+        output << ban.id << '	'
+               << ban.user_id << '	'
+               << ban.scope << '	'
+               << ban.scope_id << '	'
+               << hex(ban.reason) << '	'
+               << ban.created_by << '	'
+               << ban.created_unix << '	'
+               << ban.expires_unix << '\n';
+    }
+    output.close();
+    if (!output) {
+        throw std::runtime_error(
+            "cannot flush moderation");
+    }
+    opengenesis::platform::replace_file(
+        temporary, path);
+}
+
+} // namespace opengenesis::core

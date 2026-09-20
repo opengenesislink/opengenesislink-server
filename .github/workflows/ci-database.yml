@@ -1,0 +1,72 @@
+name: Database Integration CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: database-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  relational-backends:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: opengenesislink
+          POSTGRES_PASSWORD: opengenesislink-test
+          POSTGRES_DB: opengenesislink
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opengenesislink -d opengenesislink"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mariadb:
+        image: mariadb:11.8
+        env:
+          MARIADB_USER: opengenesislink
+          MARIADB_PASSWORD: opengenesislink-test
+          MARIADB_DATABASE: opengenesislink
+          MARIADB_ROOT_PASSWORD: root-test-only
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "healthcheck.sh --connect --innodb_initialized"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install production database client libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev libpq-dev libmariadb-dev
+      - name: Configure database integration build
+        run: cmake --preset release -DOGL_ENABLE_WERROR=ON
+      - name: Build database integration test
+        run: cmake --build --preset release --target ogl-database-foundation-tests
+      - name: SQLite integration
+        run: ./build/release/ogl-database-foundation-tests sqlite
+      - name: PostgreSQL integration
+        env:
+          OGL_TEST_DB_HOST: 127.0.0.1
+          OGL_TEST_DB_PORT: "5432"
+          OGL_TEST_DB_NAME: opengenesislink
+          OGL_TEST_DB_USER: opengenesislink
+          OGL_TEST_DB_PASSWORD: opengenesislink-test
+        run: ./build/release/ogl-database-foundation-tests postgresql
+      - name: MariaDB integration
+        env:
+          OGL_TEST_DB_HOST: 127.0.0.1
+          OGL_TEST_DB_PORT: "3306"
+          OGL_TEST_DB_NAME: opengenesislink
+          OGL_TEST_DB_USER: opengenesislink
+          OGL_TEST_DB_PASSWORD: opengenesislink-test
+        run: ./build/release/ogl-database-foundation-tests mariadb

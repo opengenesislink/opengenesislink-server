@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 9.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 10.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,6 +10,16 @@ option(OGL_ENABLE_WERROR "Treat warnings as errors" OFF)
 
 find_package(Threads REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(SQLite3 REQUIRED)
+find_package(PostgreSQL REQUIRED)
+if(WIN32)
+    find_package(unofficial-libmariadb CONFIG REQUIRED)
+    set(OGL_MARIADB_TARGET unofficial::libmariadb)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(MARIADB REQUIRED IMPORTED_TARGET libmariadb)
+    set(OGL_MARIADB_TARGET PkgConfig::MARIADB)
+endif()
 
 add_library(opengenesis-foundation
     src/common/log.cpp
@@ -36,6 +46,7 @@ add_library(opengenesis-foundation
     src/core/parcel_store.cpp
     src/core/moderation_store.cpp
     src/core/audit_store.cpp
+    src/core/admin_role_store.cpp
     src/core/estate_store.cpp
     src/core/landmark_store.cpp
     src/core/notification_store.cpp
@@ -72,6 +83,9 @@ add_library(opengenesis-foundation
     src/scripting/script_host.cpp
     src/scripting/world_action_queue.cpp
     src/storage/schema_version.cpp
+    src/storage/database.cpp
+    src/storage/database_config.cpp
+    src/storage/migrations.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
     src/world/region_runtime.cpp
@@ -84,7 +98,13 @@ add_library(OpenGenesis::Foundation ALIAS opengenesis-foundation)
 target_include_directories(opengenesis-foundation PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>)
-target_link_libraries(opengenesis-foundation PUBLIC Threads::Threads OpenSSL::Crypto OpenSSL::SSL)
+target_link_libraries(opengenesis-foundation PUBLIC
+    Threads::Threads
+    OpenSSL::Crypto
+    OpenSSL::SSL
+    SQLite::SQLite3
+    PostgreSQL::PostgreSQL
+    ${OGL_MARIADB_TARGET})
 if(WIN32)
     target_link_libraries(opengenesis-foundation PUBLIC ws2_32)
 endif()
@@ -109,8 +129,10 @@ add_executable(opengenesis-core apps/core/main.cpp)
 target_link_libraries(opengenesis-core PRIVATE OpenGenesis::Foundation)
 add_executable(opengenesis-world apps/world/main.cpp)
 target_link_libraries(opengenesis-world PRIVATE OpenGenesis::Foundation)
+add_executable(opengenesis-storage apps/storage/main.cpp)
+target_link_libraries(opengenesis-storage PRIVATE OpenGenesis::Foundation)
 
-install(TARGETS opengenesis-foundation opengenesis-core opengenesis-world
+install(TARGETS opengenesis-foundation opengenesis-core opengenesis-world opengenesis-storage
     RUNTIME DESTINATION bin LIBRARY DESTINATION lib ARCHIVE DESTINATION lib)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config/ DESTINATION share/opengenesislink/config)
@@ -148,4 +170,8 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-object-crossing-tests tests/object_crossing_tests.cpp)
     target_link_libraries(ogl-object-crossing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME object-crossing COMMAND ogl-object-crossing-tests)
+
+    add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
+    target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME database-foundation-sqlite COMMAND ogl-database-foundation-tests sqlite)
 endif()

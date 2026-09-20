@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdlib>
 #include <cstdint>
 #include <filesystem>
 #include <iomanip>
@@ -652,9 +653,59 @@ int main(int argc, char** argv) {
         const auto tick_hz = config.get_double("runtime.tick_hz", 45.0);
         const auto terrain_base = config.get_double("runtime.terrain_base_height", 21.0);
         const auto water_height = config.get_double("runtime.water_height", 20.0);
-        const auto scene_ticket_secret = config.get_string(
-            "security.scene_ticket_secret", "development-only-change-this-scene-ticket-secret");
-        if (scene_ticket_secret.size() < 32) throw std::runtime_error("security.scene_ticket_secret must contain at least 32 bytes");
+        const auto production_mode =
+            config.get_bool("security.production_mode", false);
+        const auto secret_from_env =
+            [&](const std::string& value_key,
+                const std::string& env_key,
+                const std::string& fallback) {
+                const auto env_name = config.get_string(env_key, "");
+                if (!env_name.empty()) {
+#ifdef _WIN32
+                    char* value = nullptr;
+                    std::size_t value_size = 0U;
+                    if (_dupenv_s(
+                            &value, &value_size,
+                            env_name.c_str()) == 0 &&
+                        value != nullptr) {
+                        const std::string result{value};
+                        std::free(value);
+                        if (!result.empty()) return result;
+                    }
+#else
+                    if (const auto* value =
+                            std::getenv(env_name.c_str());
+                        value && *value != '\0') {
+                        return std::string{value};
+                    }
+#endif
+                }
+                return config.get_string(value_key, fallback);
+            };
+        const auto scene_ticket_secret = secret_from_env(
+            "security.scene_ticket_secret",
+            "security.scene_ticket_secret_env",
+            "development-only-change-this-scene-ticket-secret");
+        const auto core_auth_secret = secret_from_env(
+            "core.auth_secret",
+            "core.auth_secret_env",
+            "");
+        if (scene_ticket_secret.size() < 32) {
+            throw std::runtime_error(
+                "security.scene_ticket_secret must contain at least 32 bytes");
+        }
+        if (!core_auth_secret.empty() &&
+            core_auth_secret.size() < 32U) {
+            throw std::runtime_error(
+                "core.auth_secret must be empty or contain at least 32 bytes");
+        }
+        if (production_mode &&
+            (scene_ticket_secret ==
+                 "development-only-change-this-scene-ticket-secret" ||
+             core_auth_secret.size() < 32U)) {
+            throw std::runtime_error(
+                "production_mode requires non-development scene secret and core.auth_secret");
+        }
         const auto storage_root = std::filesystem::path{
             config.get_string("storage.root", "data/world")};
         const auto save_interval = std::chrono::seconds{
@@ -692,7 +743,9 @@ int main(int argc, char** argv) {
         world::SceneServer scene_server(scene_address, scene_port, runtimes, scene_ticket_secret,
                                        parcel_path,
                                        config.get_string("storage.moderation", "data/moderation.db"));
-        if (scene_ticket_secret == "development-only-change-this-scene-ticket-secret") {
+        if (!production_mode &&
+            scene_ticket_secret ==
+                "development-only-change-this-scene-ticket-secret") {
             opengenesis::common::log(LogLevel::warning, "world.security",
                                      "Using development scene-ticket secret; replace it before network exposure");
         }
@@ -725,13 +778,36 @@ int main(int argc, char** argv) {
                 socket.send_frame({protocol::MessageType::hello, request_id,
                                    protocol::payload_from_string(
                                        "client=opengenesis-world\nprotocol=1\n")});
-                if (socket.receive_frame().type != protocol::MessageType::hello_ack) {
+                const auto hello_ack = socket.receive_frame();
+                if (hello_ack.type != protocol::MessageType::hello_ack) {
                     throw std::runtime_error("HELLO rejected");
+                }
+                const auto hello_body =
+                    protocol::payload_as_string(hello_ack);
+                const auto auth_mode = field(hello_body, "auth");
+                const auto challenge = field(hello_body, "challenge");
+                std::string registration_auth;
+                if (auth_mode == "hmac-sha256") {
+                    if (core_auth_secret.size() < 32U ||
+                        challenge.empty()) {
+                        throw std::runtime_error(
+                            "Core requires World Node authentication");
+                    }
+                    registration_auth =
+                        opengenesis::security::hmac_sha256_hex(
+                            core_auth_secret,
+                            challenge + "\n" + node_id + "\n" +
+                                public_endpoint);
+                } else if (production_mode) {
+                    throw std::runtime_error(
+                        "production World refuses unauthenticated Core");
                 }
 
                 std::ostringstream registration;
-                registration << "id=" << node_id << '\n' << "name=" << node_name << '\n'
-                             << "endpoint=" << public_endpoint << '\n';
+                registration << "id=" << node_id << '\n'
+                             << "name=" << node_name << '\n'
+                             << "endpoint=" << public_endpoint << '\n'
+                             << "auth=" << registration_auth << '\n';
                 socket.send_frame({protocol::MessageType::world_register, ++request_id,
                                    protocol::payload_from_string(registration.str())});
                 const auto world_ack = socket.receive_frame();

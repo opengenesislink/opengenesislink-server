@@ -1,6 +1,7 @@
 #include "opengenesis/config/toml_config.hpp"
 #include "opengenesis/core/asset_store.hpp"
 #include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/admin_role_store.hpp"
 #include "opengenesis/core/group_store.hpp"
 #include "opengenesis/core/group_channel_store.hpp"
 #include "opengenesis/core/notification_store.hpp"
@@ -142,6 +143,20 @@ void identity_test() {
     expect(reloaded_sessions.find(created.token).has_value(), "session persistence");
     expect(reloaded_sessions.revoke(created.token), "session revoke");
     expect(!reloaded_sessions.find(created.token).has_value(), "session revoked lookup");
+    const auto roles_path = (dir / "admin-roles.db").string();
+    opengenesis::core::AdminRoleStore roles(roles_path);
+    expect(
+        roles.grant(user->id, "moderator", "bootstrap", reason),
+        "admin role grant");
+    expect(
+        roles.has_role(user->id, "moderator") &&
+            !roles.has_role(user->id, "operator"),
+        "admin role hierarchy");
+    opengenesis::core::AdminRoleStore reloaded_roles(roles_path);
+    expect(
+        reloaded_roles.has_role(user->id, "moderator"),
+        "admin role file persistence");
+    expect(reloaded_roles.revoke(user->id), "admin role revoke");
 }
 
 

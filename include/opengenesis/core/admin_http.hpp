@@ -3,6 +3,7 @@
 #include "opengenesis/core/asset_store.hpp"
 #include "opengenesis/avatar/appearance_store.hpp"
 #include "opengenesis/core/audit_store.hpp"
+#include "opengenesis/core/admin_role_store.hpp"
 #include "opengenesis/core/group_store.hpp"
 #include "opengenesis/core/group_channel_store.hpp"
 #include "opengenesis/core/notification_store.hpp"
@@ -27,6 +28,8 @@
 #include "opengenesis/compat/hypergrid/session_store.hpp"
 #include "opengenesis/compat/hypergrid/im_adapter.hpp"
 #include "opengenesis/platform/socket.hpp"
+#include "opengenesis/security/rate_limiter.hpp"
+#include "opengenesis/storage/database.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -66,9 +69,13 @@ public:
                     std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service,
                     std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions,
                     std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im,
+                    std::shared_ptr<storage::DatabasePool> database,
+                    std::shared_ptr<AdminRoleStore> admin_roles,
                     std::string admin_api_key,
                     std::string scene_ticket_secret,
-                    std::chrono::seconds scene_ticket_lifetime);
+                    std::chrono::seconds scene_ticket_lifetime,
+                    std::size_t login_attempts_per_minute,
+                    std::size_t registration_attempts_per_minute);
     ~AdminHttpServer();
 
     void start();
@@ -105,6 +112,11 @@ private:
     std::shared_ptr<compat::hypergrid::HypergridService> hypergrid_service_;
     std::shared_ptr<compat::hypergrid::HypergridSessionStore> hypergrid_sessions_;
     std::shared_ptr<compat::hypergrid::HypergridInstantMessageAdapter> hypergrid_im_;
+    std::shared_ptr<storage::DatabasePool> database_;
+    std::shared_ptr<AdminRoleStore> admin_roles_;
+    security::RateLimiter auth_rate_limiter_;
+    std::size_t login_attempts_per_minute_{12};
+    std::size_t registration_attempts_per_minute_{6};
     std::string admin_api_key_;
     std::string scene_ticket_secret_;
     std::chrono::seconds scene_ticket_lifetime_;

@@ -156,7 +156,8 @@ std::optional<bool> json_bool(const std::string_view json, const std::string_vie
 bool admin_authorized(const HttpRequest& request, std::string_view key) {
     if (key.empty()) return false;
     const auto it = request.headers.find("x-opengenesis-admin-key");
-    return it != request.headers.end() && it->second == key;
+    return it != request.headers.end() &&
+           security::secure_equals(it->second, key);
 }
 
 bool recv_more(const platform::SocketHandle fd, std::string& buffer) {
@@ -228,6 +229,7 @@ std::string status_text(const int status) {
         case 403: return "403 Forbidden";
         case 404: return "404 Not Found";
         case 405: return "405 Method Not Allowed";
+        case 429: return "429 Too Many Requests";
         case 409: return "409 Conflict";
         case 502: return "502 Bad Gateway";
         case 503: return "503 Service Unavailable";
