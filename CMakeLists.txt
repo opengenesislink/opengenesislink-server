@@ -175,6 +175,10 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     target_link_libraries(ogl-object-crossing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME object-crossing COMMAND ogl-object-crossing-tests)
 
+    add_executable(ogl-platform-services-tests tests/platform_services_tests.cpp)
+    target_link_libraries(ogl-platform-services-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME platform-services COMMAND ogl-platform-services-tests)
+
     add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
     target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME database-foundation-sqlite COMMAND ogl-database-foundation-tests sqlite)
