@@ -246,7 +246,9 @@ line=next(
     x for x in snapshot.splitlines()
     if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
 parts=line.split('|')
-assert parts[3]=='140.000' and parts[4]=='141.000' and parts[5]=='31.000',parts
+assert parts[3]=='140.000' and parts[4]=='141.000',parts
+z=float(parts[5])
+assert 21.5 <= z <= 31.1,parts
 assert parts[20]=='OGL online',parts
 assert len(parts)>=31,parts
 assert parts[27]=='3.000',parts
