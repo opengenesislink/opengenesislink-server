@@ -42,6 +42,7 @@ std::optional<ScriptWorldActionType> world_action_type(const ScriptActionType ty
         case ScriptActionType::world_buoyancy: return ScriptWorldActionType::buoyancy;
         case ScriptActionType::world_material: return ScriptWorldActionType::material;
         case ScriptActionType::world_physics: return ScriptWorldActionType::physics;
+        case ScriptActionType::world_shape: return ScriptWorldActionType::shape;
         case ScriptActionType::world_text: return ScriptWorldActionType::text;
         case ScriptActionType::world_chat_say: return ScriptWorldActionType::chat_say;
         case ScriptActionType::world_chat_whisper: return ScriptWorldActionType::chat_whisper;
@@ -52,6 +53,7 @@ std::optional<ScriptWorldActionType> world_action_type(const ScriptActionType ty
         case ScriptActionType::world_query_water: return ScriptWorldActionType::query_water;
         case ScriptActionType::world_query_time: return ScriptWorldActionType::query_time;
         case ScriptActionType::world_query_nearby: return ScriptWorldActionType::query_nearby;
+        case ScriptActionType::world_query_raycast: return ScriptWorldActionType::query_raycast;
         default: return std::nullopt;
     }
 }
