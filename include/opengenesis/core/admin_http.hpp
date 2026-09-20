@@ -15,6 +15,9 @@
 #include "opengenesis/core/identity_store.hpp"
 #include "opengenesis/core/inventory_store.hpp"
 #include "opengenesis/core/message_store.hpp"
+#include "opengenesis/core/social_policy_store.hpp"
+#include "opengenesis/core/economy_ledger.hpp"
+#include "opengenesis/core/marketplace_store.hpp"
 #include "opengenesis/core/presence_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
@@ -53,6 +56,9 @@ public:
                     std::shared_ptr<PresenceStore> presences,
                     std::shared_ptr<FriendsStore> friends,
                     std::shared_ptr<MessageStore> messages,
+                    std::shared_ptr<SocialPolicyStore> social_policies,
+                    std::shared_ptr<EconomyLedger> economy,
+                    std::shared_ptr<MarketplaceStore> marketplace,
                     std::shared_ptr<GroupStore> groups,
                     std::shared_ptr<ParcelStore> parcels,
                     std::shared_ptr<ModerationStore> moderation,
@@ -96,6 +102,9 @@ private:
     std::shared_ptr<PresenceStore> presences_;
     std::shared_ptr<FriendsStore> friends_;
     std::shared_ptr<MessageStore> messages_;
+    std::shared_ptr<SocialPolicyStore> social_policies_;
+    std::shared_ptr<EconomyLedger> economy_;
+    std::shared_ptr<MarketplaceStore> marketplace_;
     std::shared_ptr<GroupStore> groups_;
     std::shared_ptr<ParcelStore> parcels_;
     std::shared_ptr<ModerationStore> moderation_;

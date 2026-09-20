@@ -9,6 +9,9 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
                                  std::shared_ptr<PresenceStore> presences,
                                  std::shared_ptr<FriendsStore> friends,
                                  std::shared_ptr<MessageStore> messages,
+                                 std::shared_ptr<SocialPolicyStore> social_policies,
+                                 std::shared_ptr<EconomyLedger> economy,
+                                 std::shared_ptr<MarketplaceStore> marketplace,
                                  std::shared_ptr<GroupStore> groups,
                                  std::shared_ptr<ParcelStore> parcels,
                                  std::shared_ptr<ModerationStore> moderation,
@@ -35,7 +38,9 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
     : address_(std::move(address)), port_(port), worlds_(std::move(worlds)), regions_(std::move(regions)),
       identities_(std::move(identities)), sessions_(std::move(sessions)), assets_(std::move(assets)),
       appearance_(std::move(appearance)), inventory_(std::move(inventory)), presences_(std::move(presences)), friends_(std::move(friends)),
-      messages_(std::move(messages)), groups_(std::move(groups)), parcels_(std::move(parcels)),
+      messages_(std::move(messages)), social_policies_(std::move(social_policies)),
+      economy_(std::move(economy)), marketplace_(std::move(marketplace)),
+      groups_(std::move(groups)), parcels_(std::move(parcels)),
       moderation_(std::move(moderation)), audit_(std::move(audit)), estates_(std::move(estates)),
       landmarks_(std::move(landmarks)), notifications_(std::move(notifications)),
       group_channels_(std::move(group_channels)), crossings_(std::move(crossings)),
@@ -49,8 +54,10 @@ AdminHttpServer::AdminHttpServer(std::string address, const std::uint16_t port,
       admin_api_key_(std::move(admin_api_key)),
       scene_ticket_secret_(std::move(scene_ticket_secret)),
       scene_ticket_lifetime_(scene_ticket_lifetime) {
-    if (!admin_roles_) {
-        throw std::invalid_argument("admin role store is required");
+    if (!admin_roles_ || !social_policies_ || !economy_ ||
+        !marketplace_) {
+        throw std::invalid_argument(
+            "admin platform service stores are required");
     }
 }
 
@@ -313,7 +320,14 @@ void AdminHttpServer::run() {
                            "}";
                 };
 
-                if (method == "GET" && path == "/") {
+                if (is_platform_service_path(path)) {
+                    response = platform_service_response(
+                        *request, *sessions_, *identities_,
+                        *social_policies_, *friends_, *groups_,
+                        *parcels_, *economy_, *marketplace_,
+                        *assets_, *inventory_, *notifications_,
+                        *audit_, *admin_roles_, admin_api_key_);
+                } else if (method == "GET" && path == "/") {
                     response.content_type = "text/html; charset=utf-8";
                     response.body = dashboard_html();
                 } else if (method == "GET" && path == "/health") {
@@ -342,6 +356,11 @@ void AdminHttpServer::run() {
                         << "opengenesis_online_presences " << presences_->count() << "\n"
                         << "opengenesis_active_sessions " << sessions_->active_count() << "\n"
                         << "opengenesis_groups " << groups_->count() << "\n"
+                        << "opengenesis_social_policies " << social_policies_->count() << "\n"
+                        << "opengenesis_economy_accounts " << economy_->account_count() << "\n"
+                        << "opengenesis_economy_entries " << economy_->entry_count() << "\n"
+                        << "opengenesis_economy_supply_minor " << economy_->total_supply_minor() << "\n"
+                        << "opengenesis_marketplace_active_listings " << marketplace_->active_count() << "\n"
                         << "opengenesis_parcels " << parcels_->count() << "\n"
                         << "opengenesis_estates " << estates_->count() << "\n"
                         << "opengenesis_landmarks " << landmarks_->count() << "\n"
@@ -381,7 +400,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","ogl-fed-v2","federation-service-grants-v1","federation-remote-profile-v1","federation-remote-appearance-v1","federation-remote-inventory-v1","federation-remote-assets-v1","federation-remote-social-v1","federation-remote-presence-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-persistence-v5","scene-persistence-v6","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","federation_service_profile":"POST /v1/federation/service/profile","federation_service_appearance":"POST /v1/federation/service/appearance","federation_service_inventory":"POST /v1/federation/service/inventory","federation_service_asset":"POST /v1/federation/service/asset","federation_service_social":"POST /v1/federation/service/social","federation_service_presence":"POST /v1/federation/service/presence","federation_service_grants":"GET /v1/federation/service-grants","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","social-policy-v1","groups-v1","group-invites-v1","land-parcels-v1","parcel-access-v1","economy-ledger-v1","economy-escrow-v1","marketplace-v1","marketplace-fulfillment-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","ogl-fed-v2","federation-service-grants-v1","federation-remote-profile-v1","federation-remote-appearance-v1","federation-remote-inventory-v1","federation-remote-assets-v1","federation-remote-social-v1","federation-remote-presence-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-persistence-v5","scene-persistence-v6","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","group_invites":"GET|POST /v1/groups/invites","parcels":"POST /v1/parcels","parcel_access":"GET /v1/parcels/{id}/access | POST /v1/parcels/access","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","social_policies":"GET /v1/social/policies","economy_wallet":"GET /v1/economy/wallet","economy_transfer":"POST /v1/economy/transfer","marketplace":"GET|POST /v1/marketplace/listings","marketplace_purchase":"POST /v1/marketplace/purchase","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","federation_service_profile":"POST /v1/federation/service/profile","federation_service_appearance":"POST /v1/federation/service/appearance","federation_service_inventory":"POST /v1/federation/service/inventory","federation_service_asset":"POST /v1/federation/service/asset","federation_service_social":"POST /v1/federation/service/social","federation_service_presence":"POST /v1/federation/service/presence","federation_service_grants":"GET /v1/federation/service-grants","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -407,6 +426,11 @@ void AdminHttpServer::run() {
                                     ",\"asset_bytes\":" + std::to_string(assets_->total_bytes()) +
                                     ",\"inventory_folders\":" + std::to_string(inventory_->folder_count()) +
                                     ",\"inventory_items\":" + std::to_string(inventory_->item_count()) +
+                                    ",\"economy_accounts\":" + std::to_string(economy_->account_count()) +
+                                    ",\"economy_entries\":" + std::to_string(economy_->entry_count()) +
+                                    ",\"economy_supply_minor\":" + std::to_string(economy_->total_supply_minor()) +
+                                    ",\"marketplace_active\":" + std::to_string(marketplace_->active_count()) +
+                                    ",\"social_policies\":" + std::to_string(social_policies_->count()) +
                                     ",\"federation_peers\":" + std::to_string(federation_runtime_->peers().size()) +
                                     ",\"federation_service_grants\":" + std::to_string(federation_runtime_->service_grants().size()) +
                                     ",\"foreign_sessions\":" + std::to_string(federation_runtime_->sessions().size()) +
@@ -1806,6 +1830,9 @@ void AdminHttpServer::run() {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!target_id || !identities_->find_by_id(*target_id)) {
                         response = {.status = 404, .body = "{\"error\":\"user-not-found\"}"};
+                    } else if (social_policies_->blocks(user->id, *target_id) ||
+                               social_policies_->blocks(*target_id, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
                     } else {
                         std::string reason;
                         const auto relation = friends_->request(user->id, *target_id, reason);
@@ -1823,6 +1850,9 @@ void AdminHttpServer::run() {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!other_id) {
                         response = {.status = 400, .body = "{\"error\":\"missing-user-id\"}"};
+                    } else if (social_policies_->blocks(user->id, *other_id) ||
+                               social_policies_->blocks(*other_id, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
                     } else {
                         std::string reason;
                         const auto relation = friends_->accept(user->id, *other_id, reason);
@@ -1853,6 +1883,9 @@ void AdminHttpServer::run() {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!recipient || !text || !identities_->find_by_id(*recipient)) {
                         response = {.status = 400, .body = "{\"error\":\"invalid-message-fields\"}"};
+                    } else if (social_policies_->blocks(user->id, *recipient) ||
+                               social_policies_->blocks(*recipient, user->id)) {
+                        response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
                     } else if (!friends_->are_friends(user->id, *recipient)) {
                         response = {.status = 403, .body = "{\"error\":\"recipient-not-friend\"}"};
                     } else {
@@ -1860,7 +1893,12 @@ void AdminHttpServer::run() {
                         const auto message = messages_->send(user->id, *recipient, *text, reason);
                         if (!message) response = {.status = 400, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         else {
-                            notifications_->push(*recipient, "direct_message", "Message from " + user->display_name, *text, message->id);
+                            if (!social_policies_->muted(*recipient, user->id)) {
+                                notifications_->push(
+                                    *recipient, "direct_message",
+                                    "Message from " + user->display_name,
+                                    *text, message->id);
+                            }
                             response.status = 201;
                             response.body = "{\"message_id\":\"" + message->id + "\",\"sent_unix\":" +
                                             std::to_string(message->sent_unix) + "}";
@@ -2106,7 +2144,12 @@ void AdminHttpServer::run() {
                            path == "/v1/world/object-crossings/rollback" ||
                            path == "/v1/groups" || path == "/v1/groups/members" ||
                            path == "/v1/groups/role" || path == "/v1/groups/remove" ||
+                           path == "/v1/groups/invites" ||
+                           path == "/v1/groups/invites/accept" ||
+                           path == "/v1/groups/invites/revoke" ||
                            path == "/v1/parcels" || path == "/v1/parcels/policy" ||
+                           path == "/v1/parcels/access" ||
+                           path == "/v1/parcels/access/remove" ||
                            path == "/v1/estates" || path == "/v1/estates/managers" ||
                            path == "/v1/estates/regions" || path == "/v1/estates/regions/policy" ||
                            path == "/v1/landmarks" || path == "/v1/landmarks/remove" ||
@@ -2116,6 +2159,13 @@ void AdminHttpServer::run() {
                            path == "/v1/admin/moderation/unban" || path == "/v1/social/friends/request" ||
                            path == "/v1/social/friends/accept" || path == "/v1/social/friends/remove" ||
                            path == "/v1/social/messages" || path == "/v1/social/messages/read" ||
+                           path == "/v1/social/block" || path == "/v1/social/mute" ||
+                           path == "/v1/economy/transfer" ||
+                           path == "/v1/economy/admin/mint" ||
+                           path == "/v1/economy/admin/burn" ||
+                           path == "/v1/marketplace/listings" ||
+                           path == "/v1/marketplace/cancel" ||
+                           path == "/v1/marketplace/purchase" ||
                            path == "/v1/assets" || path == "/v1/inventory/folders" ||
                            path == "/v1/inventory/items" ||
                            path == "/v1/federation/travel/issue" ||

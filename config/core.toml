@@ -50,6 +50,9 @@ appearance = "data/appearance.db"
 inventory = "data/inventory.db"
 friends = "data/friends.db"
 messages = "data/messages.db"
+social_policies = "data/social-policies.db"
+economy = "data/economy.db"
+marketplace = "data/marketplace.db"
 groups = "data/groups.db"
 parcels = "data/parcels.db"
 moderation = "data/moderation.db"
@@ -101,3 +104,6 @@ im_uri = "http://127.0.0.1:18081"
 region_host = "127.0.0.1"
 region_http_port = 19100
 region_internal_port = 19100
+
+[economy]
+currency_code = "OGL"

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 14.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 15.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -42,6 +42,9 @@ add_library(opengenesis-foundation
     src/core/presence_store.cpp
     src/core/friends_store.cpp
     src/core/message_store.cpp
+    src/core/social_policy_store.cpp
+    src/core/economy_ledger.cpp
+    src/core/marketplace_store.cpp
     src/core/group_store.cpp
     src/core/parcel_store.cpp
     src/core/moderation_store.cpp
@@ -171,6 +174,10 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-object-crossing-tests tests/object_crossing_tests.cpp)
     target_link_libraries(ogl-object-crossing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME object-crossing COMMAND ogl-object-crossing-tests)
+
+    add_executable(ogl-platform-services-tests tests/platform_services_tests.cpp)
+    target_link_libraries(ogl-platform-services-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME platform-services COMMAND ogl-platform-services-tests)
 
     add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
     target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)

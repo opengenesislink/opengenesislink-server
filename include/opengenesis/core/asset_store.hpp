@@ -27,6 +27,7 @@ public:
     [[nodiscard]] std::optional<AssetInfo> create(std::string owner_user_id,std::string name,std::string mime_type,std::string data,std::string& reason,PermissionMask permissions=perm_all,PermissionMask next_owner_permissions=perm_copy|perm_transfer);
     [[nodiscard]] std::optional<AssetInfo> transfer(std::string_view asset_id,std::string_view from_user,std::string to_user,bool keep_copy,std::string& reason);
     [[nodiscard]] std::optional<AssetInfo> find(std::string_view id) const;
+    [[nodiscard]] bool remove_owned(std::string_view id, std::string_view owner_user_id);
     [[nodiscard]] std::optional<std::string> read(std::string_view id,std::string_view owner_user_id) const;
     [[nodiscard]] std::vector<AssetInfo> list_for_user(std::string_view owner_user_id) const;
     [[nodiscard]] std::vector<AssetInfo> list_all() const;

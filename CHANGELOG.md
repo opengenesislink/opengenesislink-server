@@ -1,5 +1,25 @@
 # Changelog
 
+## 15.0.0-dev — 2026-09-20
+
+Platform Services Completion milestone.
+
+- added a provider-neutral native Economy ledger using integer minor units and a configurable currency code
+- added persistent wallet accounts, idempotent ledger references, direct user transfers and administrator-authorized mint/burn operations
+- added persisted escrow with explicit reserve, commit and release states while preserving total supply across reservations
+- added a native Marketplace store with active/reserved/sold/cancelled lifecycle and reservation against double purchase
+- Marketplace purchases reserve funds before delivery, copy a transferable Asset to the buyer, create the buyer Inventory item, finalize the listing and only then commit seller credit
+- added compensating rollback for logical Marketplace fulfillment/finalization failures, including Inventory removal, buyer Asset compensation removal, escrow refund and listing reactivation where applicable
+- added persistent Social block/mute policies; blocks are enforced by friend requests/acceptance, direct messages, Group invitations and direct wallet transfers
+- mute suppresses direct-message notifications without discarding the persisted message
+- added persistent Group invitations with bounded expiry, target-bound acceptance, revocation and inviter authorization revalidation
+- added owner-managed Parcel user allow/deny entries; explicit deny overrides public entry while owner access remains implicit
+- added Platform Services metrics and API capability discovery
+- extracted 15.0 Platform API routing from the historical monolithic HTTP dispatcher to preserve MSVC portability
+- added dedicated Platform Services unit coverage and a Core-level end-to-end smoke covering Social policy, Group invites, Wallet/Ledger, Marketplace fulfillment, rollback and persistence-visible results
+- 15.0 does not claim external payment-processor integration, cross-grid economy settlement, a globally distributed ACID transaction across file stores, taxation, auctions, recurring billing or a final stable economy protocol
+- exact tested PR head and squash merge are recorded in the 15.0 wiki handover after acceptance
+
 ## 14.0.0-dev — 2026-09-20
 
 Federation Completion milestone.

@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **14.0.0-dev**.
+Current development version: **15.0.0-dev**.
 
-`14.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`15.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -29,11 +29,16 @@ Current development version: **14.0.0-dev**.
 - authenticated avatar movement, Region boundary detection, teleport tickets and adjacent-Region handoff
 - live World-to-Core Presence snapshots
 - persistent friend requests, friendships and direct messages
+- persistent per-user Social block/mute policies enforced by friend requests, direct messaging, Group invitations and direct wallet transfers
 - persistent Groups with owner/officer/member roles and server-side powers
+- persistent Group invitation lifecycle with bounded expiry, accept/revoke state and authorization revalidation
 - persistent rectangular Parcels with owner/group/public entry, build and terraform policy
+- explicit owner-managed Parcel allow/deny access lists; explicit user deny overrides public entry
 - scene-object owner/group/everyone permission masks
 - Asset copy/modify/transfer permission masks and next-owner permission reduction
 - content-addressed Asset blob storage plus persistent Inventory
+- provider-neutral native Economy ledger with integer minor units, idempotent references, wallet transfers, operator mint/burn and persisted escrow reserve/commit/release
+- native Marketplace listing lifecycle with reservation against double purchase, escrow-backed settlement, Asset copy + Inventory fulfillment and compensating rollback on logical fulfillment failure
 - Region/global moderation bans and append-only audit events
 - persistent Estates with owner/manager Region policies, capacity and landing points
 - persistent user Landmarks integrated with authenticated teleport tickets
@@ -156,6 +161,31 @@ POST /v1/social/friends/remove
 GET/POST /v1/social/messages
 GET  /v1/notifications
 POST /v1/notifications/read
+
+GET  /v1/social/policies
+POST /v1/social/block
+POST /v1/social/mute
+
+GET/POST /v1/groups/invites
+POST     /v1/groups/invites/accept
+POST     /v1/groups/invites/revoke
+
+GET  /v1/parcels/<parcel-id>/access
+POST /v1/parcels/access
+POST /v1/parcels/access/remove
+
+GET  /v1/economy/info
+GET  /v1/economy/wallet
+GET  /v1/economy/ledger
+GET  /v1/economy/escrows
+POST /v1/economy/transfer
+POST /v1/economy/admin/mint
+POST /v1/economy/admin/burn
+
+GET/POST /v1/marketplace/listings
+GET      /v1/marketplace/mine
+POST     /v1/marketplace/cancel
+POST     /v1/marketplace/purchase
 
 GET  /metrics
 
