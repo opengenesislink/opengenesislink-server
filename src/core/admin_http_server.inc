@@ -2318,140 +2318,21 @@ void AdminHttpServer::run() {
                     }
                 } else if (method == "POST" && path == "/v1/marketplace/purchase") {
                     auto [session, user] = auth();
-                    const auto listing_id = json_string(request->body, "listing_id");
+                    const auto listing_id =
+                        json_string(request->body, "listing_id");
                     if (!session || !user) {
-                        response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
+                        response = {
+                            .status = 401,
+                            .body = "{\"error\":\"invalid-session\"}"};
                     } else if (!listing_id) {
-                        response = {.status = 400, .body = "{\"error\":\"missing-listing-id\"}"};
+                        response = {
+                            .status = 400,
+                            .body = "{\"error\":\"missing-listing-id\"}"};
                     } else {
-                        const auto listing = marketplace_->find(*listing_id);
-                        if (!listing) {
-                            response = {.status = 404, .body = "{\"error\":\"listing-not-found\"}"};
-                        } else if (listing->state != MarketplaceListingState::active) {
-                            response = {.status = 409, .body = "{\"error\":\"listing-not-active\"}"};
-                        } else if (listing->seller_user_id == user->id) {
-                            response = {.status = 409, .body = "{\"error\":\"cannot-buy-own-listing\"}"};
-                        } else if (listing->currency_code != economy_->currency_code()) {
-                            response = {.status = 409, .body = "{\"error\":\"listing-currency-mismatch\"}"};
-                        } else if (social_policies_->blocks(
-                                       user->id, listing->seller_user_id) ||
-                                   social_policies_->blocks(
-                                       listing->seller_user_id, user->id)) {
-                            response = {.status = 403, .body = "{\"error\":\"social-policy-blocked\"}"};
-                        } else {
-                            const auto asset = assets_->find(listing->asset_id);
-                            const auto required =
-                                static_cast<PermissionMask>(perm_copy | perm_transfer);
-                            if (!asset ||
-                                asset->owner_user_id != listing->seller_user_id ||
-                                !has_permission(asset->permissions, required)) {
-                                response = {.status = 409, .body = "{\"error\":\"listing-asset-unavailable\"}"};
-                            } else {
-                                const auto sale_reference =
-                                    "market:" + listing->id + ":" +
-                                    security::random_hex(12);
-                                std::string reason;
-                                if (!marketplace_->reserve_purchase(
-                                        listing->id, user->id,
-                                        sale_reference, reason)) {
-                                    response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
-                                } else {
-                                    const auto escrow = economy_->reserve(
-                                        user->id, listing->seller_user_id,
-                                        listing->price_minor,
-                                        sale_reference, reason);
-                                    if (!escrow) {
-                                        std::string release_reason;
-                                        (void)marketplace_->release_purchase(
-                                            listing->id, user->id,
-                                            sale_reference, release_reason);
-                                        response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
-                                    } else {
-                                        const auto delivered = assets_->transfer(
-                                            listing->asset_id,
-                                            listing->seller_user_id,
-                                            user->id, true, reason);
-                                        if (!delivered) {
-                                            std::string rollback_reason;
-                                            (void)economy_->release_escrow(
-                                                escrow->id, rollback_reason);
-                                            (void)marketplace_->release_purchase(
-                                                listing->id, user->id,
-                                                sale_reference, rollback_reason);
-                                            response = {.status = 409, .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
-                                        } else {
-                                            const auto root =
-                                                inventory_->ensure_root(user->id);
-                                            const auto item =
-                                                inventory_->create_item(
-                                                    user->id, root.id,
-                                                    delivered->id,
-                                                    delivered->name, reason);
-                                            if (!item) {
-                                                (void)assets_->remove_owned(
-                                                    delivered->id, user->id);
-                                                std::string rollback_reason;
-                                                (void)economy_->release_escrow(
-                                                    escrow->id, rollback_reason);
-                                                (void)marketplace_->release_purchase(
-                                                    listing->id, user->id,
-                                                    sale_reference, rollback_reason);
-                                                response = {.status = 503, .body = "{\"error\":\"marketplace-fulfillment-failed\"}"};
-                                            } else if (!marketplace_->complete_purchase(
-                                                           listing->id, user->id,
-                                                           sale_reference, reason)) {
-                                                (void)inventory_->delete_item(
-                                                    user->id, item->id, reason);
-                                                (void)assets_->remove_owned(
-                                                    delivered->id, user->id);
-                                                std::string rollback_reason;
-                                                (void)economy_->release_escrow(
-                                                    escrow->id, rollback_reason);
-                                                (void)marketplace_->rollback_purchase(
-                                                    listing->id, user->id,
-                                                    sale_reference, rollback_reason);
-                                                response = {.status = 503, .body = "{\"error\":\"marketplace-finalize-failed\"}"};
-                                            } else if (!economy_->commit_escrow(
-                                                           escrow->id, reason)) {
-                                                std::string rollback_reason;
-                                                (void)inventory_->delete_item(
-                                                    user->id, item->id, rollback_reason);
-                                                (void)assets_->remove_owned(
-                                                    delivered->id, user->id);
-                                                (void)economy_->release_escrow(
-                                                    escrow->id, rollback_reason);
-                                                (void)marketplace_->rollback_purchase(
-                                                    listing->id, user->id,
-                                                    sale_reference, rollback_reason);
-                                                response = {.status = 503, .body = "{\"error\":\"marketplace-payment-finalize-failed\"}"};
-                                            } else {
-                                                audit_->append(
-                                                    user->id, "marketplace.purchase",
-                                                    listing->id, sale_reference);
-                                                notifications_->push(
-                                                    listing->seller_user_id,
-                                                    "marketplace_sale",
-                                                    "Marketplace sale",
-                                                    "An item was purchased from your listing.",
-                                                    listing->id);
-                                                response.status = 201;
-                                                response.body =
-                                                    "{\"status\":\"purchased\",\"listing_id\":\"" +
-                                                    json_escape(listing->id) +
-                                                    "\",\"asset\":" +
-                                                    asset_json(*delivered) +
-                                                    ",\"inventory_item_id\":\"" +
-                                                    json_escape(item->id) +
-                                                    "\",\"escrow_id\":\"" +
-                                                    json_escape(escrow->id) +
-                                                    "\",\"sale_reference\":\"" +
-                                                    json_escape(sale_reference) + "\"}";
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        response = marketplace_purchase_response(
+                            *user, *listing_id, *assets_, *inventory_,
+                            *social_policies_, *economy_, *marketplace_,
+                            *audit_, *notifications_);
                     }
                 } else if (method == "POST" && path == "/v1/assets/transfer") {
                     auto [session, user] = auth();
