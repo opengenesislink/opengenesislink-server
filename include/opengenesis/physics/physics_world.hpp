@@ -69,6 +69,7 @@ public:
     bool set_body_radius(std::uint64_t id, double radius);
     bool apply_force(std::uint64_t id, Vec3 force);
     bool apply_impulse(std::uint64_t id, Vec3 impulse);
+    bool apply_angular_impulse(std::uint64_t id, Vec3 impulse);
     bool apply_torque(std::uint64_t id, Vec3 torque);
 
     std::uint64_t add_distance_constraint(std::uint64_t body_a,
