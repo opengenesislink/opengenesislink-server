@@ -193,7 +193,7 @@ def register(username,display):
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
 _,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='6.0.0'
-for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
+for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v2','scene-protocol-v2','viewer-bootstrap-v1','scene-sync-v1','avatar-reconcile-v1','region-metadata-v1','parcel-read-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
     assert cap in info['capabilities'],cap
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
 assert fed['protocol']=='OGL-FED/1' and fed['grid_id']=='local.opengenesislink' and len(fed['public_key'])==64

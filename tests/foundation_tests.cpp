@@ -177,6 +177,24 @@ void scene_ticket_test() {
     expect(!opengenesis::security::verify_scene_ticket(secret, issued.token, "region-2"), "scene ticket region binding");
     auto tampered = issued.token; tampered.back() = tampered.back() == '0' ? '1' : '0';
     expect(!opengenesis::security::verify_scene_ticket(secret, tampered, "region-1"), "scene ticket signature");
+
+    const auto viewer_ticket = opengenesis::security::issue_scene_ticket(
+        secret, "user-2", "Viewer Contract", "region-1",
+        std::chrono::seconds{60});
+    const auto viewer_claims =
+        opengenesis::security::verify_scene_ticket(
+            secret, viewer_ticket.token, "region-1");
+    expect(viewer_claims.has_value(), "default viewer scene ticket verify");
+    expect(
+        opengenesis::security::has_scene_capability(
+            *viewer_claims, "scene.sync") &&
+        opengenesis::security::has_scene_capability(
+            *viewer_claims, "scene.avatar.reconcile") &&
+        opengenesis::security::has_scene_capability(
+            *viewer_claims, "scene.region.metadata") &&
+        opengenesis::security::has_scene_capability(
+            *viewer_claims, "scene.parcel.read"),
+        "default viewer Scene v2 capabilities");
 }
 
 void social_test() {

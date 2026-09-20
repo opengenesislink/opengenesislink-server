@@ -37,3 +37,5 @@ jobs:
         run: bash ./scripts/smoke-crossing-v3.sh
       - name: Object Crossing end-to-end smoke test
         run: bash ./scripts/smoke-object-crossing.sh
+      - name: Viewer bootstrap and Scene v2 smoke test
+        run: bash ./scripts/smoke-viewer-scene-v2.sh

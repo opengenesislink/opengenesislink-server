@@ -70,12 +70,20 @@ enum class MessageType : std::uint16_t {
     entity_physics_ack = 127,
     scene_events_request = 130,
     scene_events = 131,
+    scene_sync_request = 132,
+    scene_sync = 133,
+    region_metadata_request = 134,
+    region_metadata = 135,
+    parcel_info_request = 136,
+    parcel_info = 137,
     terrain_sample_request = 140,
     terrain_sample = 141,
     terrain_set_request = 142,
     terrain_set_ack = 143,
     avatar_move = 150,
     avatar_move_ack = 151,
+    avatar_reconcile = 152,
+    avatar_reconcile_ack = 153,
 
     error = 255
 };

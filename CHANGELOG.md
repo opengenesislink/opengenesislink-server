@@ -1,5 +1,24 @@
 # Changelog
 
+## 13.0.0-dev — 2026-09-20
+
+Viewer & Scene Protocol Completion milestone.
+
+- added authenticated `POST /v1/viewer/bootstrap` as the first aggregated native Viewer startup contract
+- Viewer bootstrap returns Scene session/ticket, user identity, Avatar Appearance with wearables/attachments, Inventory tree, owned Asset metadata, Region runtime metadata and Parcel metadata
+- kept binary Asset payload delivery separate from bootstrap through the existing authenticated Asset API
+- introduced Scene Protocol v2 as an application-level contract on the existing OGL1 framed transport
+- added `SCENE_SYNC_REQUEST/SCENE_SYNC` with ordered delta batches and automatic full-snapshot recovery when the retained event history is insufficient
+- added `REGION_METADATA_REQUEST/REGION_METADATA` for terrain, water, sequence and runtime/physics metrics
+- added `PARCEL_INFO_REQUEST/PARCEL_INFO` for Region-wide or point-based Parcel metadata reads
+- added sequenced `AVATAR_RECONCILE/AVATAR_RECONCILE_ACK` with stale/replayed client sequence rejection
+- Avatar reconciliation returns authoritative Scene sequence, simulation tick, transform, velocity and boundary state for Viewer prediction correction
+- Scene ticket defaults now include `scene.sync`, `scene.avatar.reconcile`, `scene.region.metadata` and `scene.parcel.read`
+- API discovery advertises `viewer-bootstrap-v1`, `scene-protocol-v2`, `scene-sync-v1`, `avatar-reconcile-v1`, `region-metadata-v1` and `parcel-read-v1`
+- added `docs/SCENE-PROTOCOL-v2.md` and `docs/VIEWER-CONTRACT-13.0.md` as the canonical server handover for the separate Viewer project
+- added a dedicated Core → Viewer bootstrap → Scene v2 end-to-end smoke test to Linux x86_64 and ARM64 CI
+- 13.0 defines the native server contract only; it does not claim that the separate OpenGenesisLINK Viewer application is implemented or that the stable 1.0 wire protocol is frozen
+
 ## 12.0.0-dev — 2026-09-20
 
 World Runtime & Physics v2 milestone.
