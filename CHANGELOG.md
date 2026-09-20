@@ -1,5 +1,25 @@
 # Changelog
 
+## 11.0.0-dev — 2026-09-20
+
+Script Runtime Completion milestone.
+
+- upgraded the shared Script VM with bounded unconditional and conditional jumps while preserving the existing instruction, state and action budgets
+- added compile-time jump target validation so malformed control-flow programs cannot escape handler bounds
+- introduced OGL v2 with `if / else / endif`, `while / endwhile`, bounded `for / endfor`, reusable parameterless `function / call / endfunction` procedures and typed declarations
+- added typed OGL declarations for integer, float, bool, string, key, vector, rotation and list values
+- completed the defined OGL command/feature matrix from 27/31 to 31/31 implemented (100.00%)
+- expanded deterministic sandboxed LSL builtin coverage from 27 to 56 strictly implemented catalog entries
+- added LSL list conversion, extraction, slicing, search, insertion and replacement helpers
+- added URL escaping/unescaping, generated key and SHA-1 helpers
+- added quaternion/euler/axis-angle conversion, rotation/vector direction and rotation-angle helpers
+- LSL catalog remains explicit: 523 functions total, 56 implemented, 24 partial, 418 recognized and 25 unsupported
+- LSL executable coverage including partial entries is 15.30%; 11.0 does not claim full Second Life LSL semantic compatibility
+- upgraded the ScriptEngine process smoke to execute OGL v2 through Core + World
+- added unit coverage for OGL v2 control flow, functions, typed values and the expanded LSL deterministic builtin set
+- API discovery now advertises `script-engine-v3` and `script-language-ogl-v2`
+- exact pre-documentation CI head `6d74e79bde8cc64f78860675cd078a94a68f4fce` passed Linux x86_64, Linux ARM64/aarch64, Windows x86_64 and Database Integration CI
+
 ## 10.0.0-dev — 2026-09-20
 
 Production Server Foundation milestone.

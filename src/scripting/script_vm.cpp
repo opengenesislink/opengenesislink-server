@@ -7,6 +7,7 @@
 #include <charconv>
 #include <cctype>
 #include <cstdint>
+#include <cmath>
 #include <limits>
 #include <sstream>
 #include <string>
@@ -49,6 +50,36 @@ std::string resolve(std::string_view value,const ScriptVmState& state) {
         return it==state.variables.end()?std::string{}:it->second;
     }
     return std::string{value};
+}
+
+std::optional<double> number(std::string_view text) {
+    try {
+        std::size_t used=0;
+        const auto value=std::stod(std::string{text},&used);
+        if(used!=text.size()||!std::isfinite(value)) return std::nullopt;
+        return value;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
+bool condition_true(
+    std::string_view left,
+    std::string_view op,
+    std::string_view right,
+    const ScriptVmState& state) {
+    const auto lhs=resolve(left,state);
+    const auto rhs=resolve(right,state);
+    if(op=="==") return lhs==rhs;
+    if(op=="!=") return lhs!=rhs;
+    const auto a=number(lhs);
+    const auto b=number(rhs);
+    if(!a||!b) return false;
+    if(op=="<") return *a<*b;
+    if(op=="<=") return *a<=*b;
+    if(op==">") return *a>*b;
+    if(op==">=") return *a>=*b;
+    return false;
 }
 
 std::string hex(std::string_view input) {
@@ -180,6 +211,28 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             if(!atom(ins.a,128)||!atom(ins.b,128)||ins.c.size()>8192){
                 reason="invalid-builtin-call";return std::nullopt;
             }
+        } else if(op=="jump"){
+            ins.opcode=ScriptOpcode::jump;
+            std::string target,extra;
+            parts>>target>>extra;
+            const auto parsed=integer(target);
+            if(!parsed||*parsed<0||!extra.empty()){
+                reason="invalid-jump";return std::nullopt;
+            }
+            ins.target=static_cast<std::size_t>(*parsed);
+        } else if(op=="jfalse"){
+            ins.opcode=ScriptOpcode::jump_if_false;
+            std::string target,extra;
+            parts>>ins.a>>ins.b>>ins.c>>target>>extra;
+            const auto parsed=integer(target);
+            const bool valid_op=
+                ins.b=="=="||ins.b=="!="||ins.b=="<"||
+                ins.b=="<="||ins.b==">"||ins.b==">=";
+            if(ins.a.empty()||ins.c.empty()||!valid_op||
+               !parsed||*parsed<0||!extra.empty()){
+                reason="invalid-conditional-jump";return std::nullopt;
+            }
+            ins.target=static_cast<std::size_t>(*parsed);
         } else if(op=="stop"){
             ins.opcode=ScriptOpcode::stop;
         } else {
@@ -189,6 +242,15 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
         if(current->instructions.size()>1024){reason="handler-too-large";return std::nullopt;}
     }
     if(result.handlers.empty()){reason="no-event-handlers";return std::nullopt;}
+    for(const auto& handler:result.handlers){
+        for(const auto& ins:handler.instructions){
+            if((ins.opcode==ScriptOpcode::jump||
+                ins.opcode==ScriptOpcode::jump_if_false) &&
+               ins.target>handler.instructions.size()){
+                reason="jump-target-out-of-range";return std::nullopt;
+            }
+        }
+    }
     reason.clear();
     return result;
 }
@@ -232,10 +294,24 @@ ScriptVmResult execute_script_event(
         }
     }
 
-    for(const auto& ins:handler->instructions){
+    std::size_t pc=0U;
+    while(pc<handler->instructions.size()){
+        const auto& ins=handler->instructions[pc];
         if(result.instructions_executed>=limits.instruction_budget){result.error="instruction-budget-exceeded";return result;}
         ++result.instructions_executed;
         if(ins.opcode==ScriptOpcode::stop) break;
+        if(ins.opcode==ScriptOpcode::jump){
+            pc=ins.target;
+            continue;
+        }
+        if(ins.opcode==ScriptOpcode::jump_if_false){
+            if(!condition_true(ins.a,ins.b,ins.c,result.state)){
+                pc=ins.target;
+            } else {
+                ++pc;
+            }
+            continue;
+        }
         if(ins.opcode==ScriptOpcode::set){
             if(!result.state.variables.contains(ins.a) && result.state.variables.size()>=limits.max_variables){
                 result.error="variable-budget-exceeded";return result;
@@ -326,6 +402,7 @@ ScriptVmResult execute_script_event(
         }
         if(state_bytes(result.state)>limits.max_state_bytes){result.error="state-budget-exceeded";return result;}
         if(result.actions.size()>limits.max_output_actions){result.error="action-budget-exceeded";return result;}
+        ++pc;
     }
     result.ok=true;
     return result;

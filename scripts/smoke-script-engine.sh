@@ -155,14 +155,14 @@ assert len(caps['lsl_functions'])==523,caps
 assert len(caps['lsl_events'])==44,caps
 assert len(caps['ogl'])==31,caps
 summary=caps['summary']
-assert summary['lsl_functions']['implemented']==27,summary
+assert summary['lsl_functions']['implemented']==56,summary
 assert summary['lsl_functions']['partial']==24,summary
-assert summary['lsl_functions']['implemented_percent']==5.16,summary
-assert summary['lsl_functions']['executable_percent']==9.75,summary
+assert summary['lsl_functions']['implemented_percent']==10.71,summary
+assert summary['lsl_functions']['executable_percent']==15.30,summary
 assert summary['lsl_events']['implemented']==1,summary
 assert summary['lsl_events']['partial']==3,summary
-assert summary['ogl']['implemented']==27,summary
-assert summary['ogl']['implemented_percent']==87.10,summary
+assert summary['ogl']['implemented']==31,summary
+assert summary['ogl']['implemented_percent']==100.00,summary
 
 status,user=api('/v1/auth/register','POST',{
     'username':'script.engine.smoke',
@@ -195,12 +195,22 @@ entity=int(dict(
 binding=f'script-engine-region/{entity}'
 
 ogl=(
-    '@ogl 1\n'
+    '@ogl 2\n'
+    'function bump\n'
+    'inc count by 1\n'
+    'endfunction\n'
     'state default\n'
     'on touch\n'
-    'let count = 1\n'
-    'inc count by 2\n'
+    'let integer count = 0\n'
+    'call bump\n'
+    'while count < 3\n'
+    'call bump\n'
+    'endwhile\n'
+    'if count == 3\n'
     'world.move 140 141 31\n'
+    'else\n'
+    'stop\n'
+    'endif\n'
     'world.text OGL online\n'
     'goto active\n'
     'end\n'
@@ -311,5 +321,5 @@ assert parts is not None and parts[20]=='LSL active',parts
 
 send(scene,42,20,'')
 scene.close()
-print('OpenGenesisLINK 9.0 OGL/LSL ScriptEngine end-to-end smoke: PASS')
+print('OpenGenesisLINK 11.0 OGL/LSL ScriptEngine end-to-end smoke: PASS')
 PY

@@ -15,7 +15,7 @@ enum class ScriptOpcode {
     move, rotate, scale, velocity, angular_velocity, physics, text,
     say, whisper, shout,
     object_info, region_info, terrain_height, water_level, world_time,
-    nearby_avatars, builtin_set, stop
+    nearby_avatars, builtin_set, jump, jump_if_false, stop
 };
 
 struct ScriptInstruction {
@@ -23,6 +23,7 @@ struct ScriptInstruction {
     std::string a;
     std::string b;
     std::string c;
+    std::size_t target{0};
 };
 
 struct ScriptHandler {

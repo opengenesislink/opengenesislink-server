@@ -122,6 +122,47 @@ int main() {
                         opengenesis::scripting::ScriptActionType::world_text,
                 "OGL active-state timer selects state-specific handler");
 
+        const std::string ogl_v2_program =
+            "@ogl 2\n"
+            "function bump\n"
+            "inc count by 1\n"
+            "endfunction\n"
+            "state default\n"
+            "on touch\n"
+            "let integer count = 0\n"
+            "let bool enabled = true\n"
+            "call bump\n"
+            "if count == 1\n"
+            "let string branch = \"yes\"\n"
+            "else\n"
+            "let string branch = \"no\"\n"
+            "endif\n"
+            "while count < 3\n"
+            "call bump\n"
+            "endwhile\n"
+            "for i from 1 to 3 step 1\n"
+            "inc count by 2\n"
+            "endfor\n"
+            "emit $count\n"
+            "end\n";
+        const auto ogl_v2_compiled =
+            opengenesis::scripting::compile_script_source(
+                opengenesis::scripting::ScriptLanguage::ogl,
+                ogl_v2_program, reason);
+        require(ogl_v2_compiled && ogl_v2_compiled->handlers.size() == 1,
+                "OGL v2 control-flow program compiles");
+        const auto ogl_v2_touch =
+            opengenesis::scripting::execute_script_event(
+                *ogl_v2_compiled, "touch", {});
+        require(ogl_v2_touch.ok &&
+                    ogl_v2_touch.state.variables.at("count") == "9" &&
+                    ogl_v2_touch.state.variables.at("enabled") == "1" &&
+                    ogl_v2_touch.state.variables.at("branch") == "yes" &&
+                    ogl_v2_touch.state.variables.at("i") == "4" &&
+                    ogl_v2_touch.actions.size() == 1 &&
+                    ogl_v2_touch.actions.front().value == "9",
+                "OGL v2 typed values, functions, if, while and for execute");
+
         const std::string lsl_program =
             "default {\n"
             "  state_entry() {\n"
@@ -201,6 +242,49 @@ int main() {
                         opengenesis::scripting::ScriptActionType::world_text,
                 "LSL named-state timer executes correct handler");
 
+        const std::string lsl_builtin_program =
+            "default {\n"
+            "  touch_start(integer n) {\n"
+            "    list values = llCSV2List(\"one,two,3\");\n"
+            "    integer length = llGetListLength(values);\n"
+            "    string second = llList2String(values, 1);\n"
+            "    string csv = llList2CSV(values);\n"
+            "    string escaped = llEscapeURL(\"hello world\");\n"
+            "    string sha1 = llSHA1String(\"abc\");\n"
+            "    rotation identity = llEuler2Rot(<0,0,0>);\n"
+            "    vector forward = llRot2Fwd(identity);\n"
+            "    float angle = llAngleBetween(identity, <0,0,0,1>);\n"
+            "    llOwnerSay(second);\n"
+            "  }\n"
+            "}\n";
+        const auto lsl_builtin_compiled =
+            opengenesis::scripting::compile_script_source(
+                opengenesis::scripting::ScriptLanguage::lsl,
+                lsl_builtin_program, reason);
+        require(lsl_builtin_compiled &&
+                    lsl_builtin_compiled->handlers.size() == 1,
+                "expanded deterministic LSL builtin program compiles");
+        const auto lsl_builtin_run =
+            opengenesis::scripting::execute_script_event(
+                *lsl_builtin_compiled, "touch_start", {}, {}, "1");
+        require(lsl_builtin_run.ok &&
+                    lsl_builtin_run.state.variables.at("length") == "3" &&
+                    lsl_builtin_run.state.variables.at("second") == "two" &&
+                    lsl_builtin_run.state.variables.at("csv") == "one, two, 3" &&
+                    lsl_builtin_run.state.variables.at("escaped") ==
+                        "hello%20world" &&
+                    lsl_builtin_run.state.variables.at("sha1") ==
+                        "a9993e364706816aba3e25717850c26c9cd0d89d" &&
+                    lsl_builtin_run.state.variables.at("identity") ==
+                        "<0.000000, 0.000000, 0.000000, 1.000000>" &&
+                    lsl_builtin_run.state.variables.at("forward") ==
+                        "<1.000000, 0.000000, 0.000000>" &&
+                    lsl_builtin_run.state.variables.at("angle") ==
+                        "0.000000" &&
+                    lsl_builtin_run.actions.size() == 1 &&
+                    lsl_builtin_run.actions.front().value == "two",
+                "expanded deterministic LSL builtins execute");
+
         require(opengenesis::scripting::lsl_function_catalog().size() >= 500,
                 "LSL canonical function catalog is populated");
         require(opengenesis::scripting::lsl_event_catalog().size() == 44,
@@ -225,7 +309,7 @@ int main() {
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::implemented) ==
-                        27 &&
+                        56 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::partial) ==
@@ -233,12 +317,12 @@ int main() {
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::recognized) ==
-                        447 &&
+                        418 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
                         25,
-                "LSL function status matrix matches 9.0 contract");
+                "LSL function status matrix matches 11.0 contract");
         require(lsl_events.size() == 44 &&
                     count_status(
                         lsl_events,
@@ -253,12 +337,12 @@ int main() {
                     count_status(
                         ogl_features,
                         opengenesis::scripting::ScriptFeatureStatus::implemented) ==
-                        27 &&
+                        31 &&
                     count_status(
                         ogl_features,
                         opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
-                        4,
-                "OGL feature status matrix matches 9.0 contract");
+                        0,
+                "OGL feature status matrix matches 11.0 contract");
 
 
         auto identities = std::make_shared<opengenesis::core::IdentityStore>(
