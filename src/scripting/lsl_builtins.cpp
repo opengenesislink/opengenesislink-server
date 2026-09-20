@@ -346,6 +346,171 @@ std::string generated_key() {
            raw.substr(20U,12U);
 }
 
+Quat axes_to_quat(Vec3 forward, Vec3 left, Vec3 up) {
+    const auto normalize_axis=[](Vec3 value) {
+        const auto magnitude=std::sqrt(
+            value.x*value.x+value.y*value.y+value.z*value.z);
+        if(magnitude<=1e-12) return Vec3{};
+        return Vec3{
+            value.x/magnitude,value.y/magnitude,value.z/magnitude};
+    };
+    forward=normalize_axis(forward);
+    left=normalize_axis(left);
+    up=normalize_axis(up);
+    const double m00=forward.x,m01=left.x,m02=up.x;
+    const double m10=forward.y,m11=left.y,m12=up.y;
+    const double m20=forward.z,m21=left.z,m22=up.z;
+    const double trace=m00+m11+m22;
+    Quat q;
+    if(trace>0.0){
+        const double s=std::sqrt(trace+1.0)*2.0;
+        q.w=0.25*s;
+        q.x=(m21-m12)/s;
+        q.y=(m02-m20)/s;
+        q.z=(m10-m01)/s;
+    } else if(m00>m11&&m00>m22){
+        const double s=std::sqrt(1.0+m00-m11-m22)*2.0;
+        q.w=(m21-m12)/s;
+        q.x=0.25*s;
+        q.y=(m01+m10)/s;
+        q.z=(m02+m20)/s;
+    } else if(m11>m22){
+        const double s=std::sqrt(1.0+m11-m00-m22)*2.0;
+        q.w=(m02-m20)/s;
+        q.x=(m01+m10)/s;
+        q.y=0.25*s;
+        q.z=(m12+m21)/s;
+    } else {
+        const double s=std::sqrt(1.0+m22-m00-m11)*2.0;
+        q.w=(m10-m01)/s;
+        q.x=(m02+m20)/s;
+        q.y=(m12+m21)/s;
+        q.z=0.25*s;
+    }
+    return normalize_quat(q);
+}
+
+double linear_to_srgb_component(const double value) {
+    const auto v=std::clamp(value,0.0,1.0);
+    return v<=0.0031308
+        ? 12.92*v
+        : 1.055*std::pow(v,1.0/2.4)-0.055;
+}
+
+double srgb_to_linear_component(const double value) {
+    const auto v=std::clamp(value,0.0,1.0);
+    return v<=0.04045
+        ? v/12.92
+        : std::pow((v+0.055)/1.055,2.4);
+}
+
+std::uint64_t add_mod(
+    std::uint64_t left,
+    std::uint64_t right,
+    const std::uint64_t modulus) {
+    left%=modulus;
+    right%=modulus;
+    if(left>=modulus-right) return left-(modulus-right);
+    return left+right;
+}
+
+std::uint64_t multiply_mod(
+    std::uint64_t left,
+    std::uint64_t right,
+    const std::uint64_t modulus) {
+    std::uint64_t result=0;
+    left%=modulus;
+    while(right!=0U){
+        if((right&1U)!=0U) result=add_mod(result,left,modulus);
+        right>>=1U;
+        if(right!=0U) left=add_mod(left,left,modulus);
+    }
+    return result;
+}
+
+std::uint64_t power_mod(
+    std::uint64_t base,
+    std::uint64_t exponent,
+    const std::uint64_t modulus) {
+    std::uint64_t result=1U%modulus;
+    base%=modulus;
+    while(exponent!=0U){
+        if((exponent&1U)!=0U){
+            result=multiply_mod(result,base,modulus);
+        }
+        exponent>>=1U;
+        if(exponent!=0U){
+            base=multiply_mod(base,base,modulus);
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> parse_string_tokens(
+    const std::string& source,
+    const std::vector<std::string>& separators,
+    const std::vector<std::string>& spacers,
+    const bool keep_nulls) {
+    std::vector<std::string> output;
+    std::size_t position=0U;
+    while(position<=source.size()){
+        std::size_t next=std::string::npos;
+        std::string matched;
+        bool spacer=false;
+        const auto consider=[&](const std::string& token,const bool is_spacer){
+            if(token.empty()) return;
+            const auto found=source.find(token,position);
+            if(found==std::string::npos) return;
+            if(next==std::string::npos||found<next||
+               (found==next&&token.size()>matched.size())){
+                next=found;
+                matched=token;
+                spacer=is_spacer;
+            }
+        };
+        for(const auto& token:separators) consider(list_value(token),false);
+        for(const auto& token:spacers) consider(list_value(token),true);
+        if(next==std::string::npos){
+            const auto tail=source.substr(position);
+            if(keep_nulls||!tail.empty()) output.push_back("\""+tail+"\"");
+            break;
+        }
+        const auto before=source.substr(position,next-position);
+        if(keep_nulls||!before.empty()) output.push_back("\""+before+"\"");
+        if(spacer) output.push_back("\""+matched+"\"");
+        position=next+matched.size();
+        if(position==source.size()){
+            if(keep_nulls) output.push_back("\"\"");
+            break;
+        }
+    }
+    return output;
+}
+
+std::vector<std::string> list_strided(
+    const std::vector<std::string>& source,
+    const long long start,
+    const long long end,
+    const long long stride) {
+    if(source.empty()||stride==0) return {};
+    const auto selected=list_slice(source,start,end,false);
+    std::vector<std::string> result;
+    const auto step=static_cast<std::size_t>(std::llabs(stride));
+    if(stride>0){
+        for(std::size_t i=0;i<selected.size();i+=step){
+            result.push_back(selected[i]);
+        }
+    } else {
+        for(std::size_t i=selected.size();i>0;){
+            --i;
+            result.push_back(selected[i]);
+            if(i<step) break;
+            i-=step-1U;
+        }
+    }
+    return result;
+}
+
 } // namespace
 
 bool lsl_builtin_implemented(const std::string_view name) noexcept {
@@ -365,7 +530,10 @@ bool lsl_builtin_implemented(const std::string_view name) noexcept {
         "llListInsertList", "llListReplaceList", "llEuler2Rot",
         "llAxisAngle2Rot", "llRot2Angle", "llRot2Axis", "llRot2Euler",
         "llRot2Fwd", "llRot2Left", "llRot2Up", "llRotBetween",
-        "llAngleBetween"
+        "llAngleBetween", "llAxes2Rot", "llLinear2sRGB", "llsRGB2Linear",
+        "llModPow", "llMD5String", "llListFindListNext",
+        "llList2ListStrided", "llParseString2List",
+        "llParseStringKeepNulls"
     };
     return implemented.contains(std::string{name});
 }
@@ -832,6 +1000,128 @@ std::optional<std::string> evaluate_lsl_builtin(
             qa.x*qb.x+qa.y*qb.y+qa.z*qb.z+qa.w*qb.w);
         reason.clear();
         return float_string(2.0*std::acos(std::clamp(dot,0.0,1.0)));
+    }
+
+    if (name == "llAxes2Rot") {
+        if(!require_count(3U)) return std::nullopt;
+        const auto forward=parse_vec3(arguments[0]);
+        const auto left=parse_vec3(arguments[1]);
+        const auto up=parse_vec3(arguments[2]);
+        if(!forward||!left||!up){
+            reason="lsl-builtin-vector-required";
+            return std::nullopt;
+        }
+        reason.clear();
+        return quat_string(axes_to_quat(*forward,*left,*up));
+    }
+    if (name == "llLinear2sRGB" || name == "llsRGB2Linear") {
+        if(!require_count(1U)) return std::nullopt;
+        const auto value=parse_vec3(arguments[0]);
+        if(!value){
+            reason="lsl-builtin-vector-required";
+            return std::nullopt;
+        }
+        const auto convert =
+            name=="llLinear2sRGB"
+                ? linear_to_srgb_component
+                : srgb_to_linear_component;
+        reason.clear();
+        return vec3_string({
+            convert(value->x),
+            convert(value->y),
+            convert(value->z)});
+    }
+    if (name == "llModPow") {
+        if(!require_count(3U)) return std::nullopt;
+        const auto base=integer_value(arguments[0]);
+        const auto exponent=integer_value(arguments[1]);
+        const auto modulus=integer_value(arguments[2]);
+        if(!base||!exponent||!modulus||
+           *exponent<0||*modulus<=0){
+            reason="lsl-builtin-modpow-domain";
+            return std::nullopt;
+        }
+        const auto mod=static_cast<std::uint64_t>(*modulus);
+        const auto normalized_base=
+            ((*base%*modulus)+*modulus)%*modulus;
+        reason.clear();
+        return std::to_string(
+            power_mod(
+                static_cast<std::uint64_t>(normalized_base),
+                static_cast<std::uint64_t>(*exponent),
+                mod));
+    }
+    if (name == "llMD5String") {
+        if(!require_count(2U)) return std::nullopt;
+        const auto nonce=integer_value(arguments[1]);
+        if(!nonce){
+            reason="lsl-builtin-integer-required";
+            return std::nullopt;
+        }
+        const auto value=digest_hex(
+            EVP_md5(),
+            arguments[0]+":"+std::to_string(*nonce));
+        if(value.empty()){
+            reason="lsl-builtin-digest-failed";
+            return std::nullopt;
+        }
+        reason.clear();
+        return value;
+    }
+    if (name == "llListFindListNext") {
+        if(!require_count(3U)) return std::nullopt;
+        const auto source=split_list(arguments[0]);
+        const auto test=split_list(arguments[1]);
+        const auto start_value=integer_value(arguments[2]);
+        if(!start_value){
+            reason="lsl-builtin-integer-required";
+            return std::nullopt;
+        }
+        if(test.empty()||source.empty()){
+            reason.clear();
+            return "-1";
+        }
+        long long start=*start_value;
+        if(start<0) start+=static_cast<long long>(source.size());
+        start=std::max<long long>(0,start);
+        for(std::size_t i=static_cast<std::size_t>(start);
+            i+test.size()<=source.size();++i){
+            if(std::equal(
+                    test.begin(),test.end(),
+                    source.begin()+static_cast<std::ptrdiff_t>(i))){
+                reason.clear();
+                return std::to_string(i);
+            }
+        }
+        reason.clear();
+        return "-1";
+    }
+    if (name == "llList2ListStrided") {
+        if(!require_count(4U)) return std::nullopt;
+        const auto values=split_list(arguments[0]);
+        const auto start=integer_value(arguments[1]);
+        const auto end=integer_value(arguments[2]);
+        const auto stride=integer_value(arguments[3]);
+        if(!start||!end||!stride||*stride==0){
+            reason="lsl-builtin-stride-required";
+            return std::nullopt;
+        }
+        reason.clear();
+        return list_string(
+            list_strided(values,*start,*end,*stride));
+    }
+    if (name == "llParseString2List" ||
+        name == "llParseStringKeepNulls") {
+        if(!require_count(3U)) return std::nullopt;
+        const auto separators=split_list(arguments[1]);
+        const auto spacers=split_list(arguments[2]);
+        reason.clear();
+        return list_string(
+            parse_string_tokens(
+                arguments[0],
+                separators,
+                spacers,
+                name=="llParseStringKeepNulls"));
     }
 
     if (name == "llGetUnixTime") {
