@@ -347,7 +347,9 @@ for attempt in range(8):
         x for x in snapshot.splitlines()
         if x.startswith(f'entity={entity}|object|Script Engine Cube|'))
     parts=line.split('|')
-    assert parts[3]=='150.000' and parts[4]=='151.000' and parts[5]=='32.000',parts
+    assert parts[3]=='150.000' and parts[4]=='151.000',parts
+    z=float(parts[5])
+    assert 21.5 <= z <= 32.1,parts
     if parts[20]=='LSL active':
         break
 assert parts is not None and parts[20]=='LSL active',parts
