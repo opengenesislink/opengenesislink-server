@@ -188,12 +188,37 @@ void exercise_backend(const std::string& backend) {
     metrics.sim_fps = 44.5;
     require(regions.update_metrics(metrics, reason),
             backend + " region metrics");
+    const auto raw_region_rows = database->query(
+        "SELECT entities,sim_fps FROM ogl_regions WHERE id=?",
+        {region.id});
+    require(
+        raw_region_rows.size() == 1U,
+        backend + " raw region row");
+    const auto raw_entities =
+        raw_region_rows.front().find("entities");
+    const auto raw_sim_fps =
+        raw_region_rows.front().find("sim_fps");
+    require(
+        raw_entities != raw_region_rows.front().end() &&
+            raw_entities->second &&
+            std::stoull(*raw_entities->second) == 7U,
+        backend + " raw region entities");
+    require(
+        raw_sim_fps != raw_region_rows.front().end() &&
+            raw_sim_fps->second &&
+            std::stod(*raw_sim_fps->second) > 44.0,
+        backend + " raw region sim_fps");
+
     const auto loaded_region = regions.find(region.id);
     require(
-        loaded_region &&
-            loaded_region->entities == 7U &&
-            loaded_region->sim_fps > 44.0,
-        backend + " region persistence");
+        loaded_region.has_value(),
+        backend + " region readback");
+    require(
+        loaded_region->entities == 7U,
+        backend + " region entities readback");
+    require(
+        loaded_region->sim_fps > 44.0,
+        backend + " region sim_fps readback");
 
     core::ModerationStore moderation(database);
     const auto ban = moderation.ban(
