@@ -124,6 +124,7 @@ public:
                               physics::Vec3 angular_velocity);
     bool apply_force(std::uint64_t id, physics::Vec3 force);
     bool apply_impulse(std::uint64_t id, physics::Vec3 impulse);
+    bool apply_angular_impulse(std::uint64_t id, physics::Vec3 impulse);
     bool apply_torque(std::uint64_t id, physics::Vec3 torque);
     bool set_physics_material(std::uint64_t id, double mass,
                               double restitution, double friction);
