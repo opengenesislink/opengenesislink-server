@@ -18,6 +18,9 @@
 #include "opengenesis/core/presence_store.hpp"
 #include "opengenesis/core/friends_store.hpp"
 #include "opengenesis/core/message_store.hpp"
+#include "opengenesis/core/social_policy_store.hpp"
+#include "opengenesis/core/economy_ledger.hpp"
+#include "opengenesis/core/marketplace_store.hpp"
 #include "opengenesis/core/region_registry.hpp"
 #include "opengenesis/core/session_store.hpp"
 #include "opengenesis/core/world_registry.hpp"
@@ -323,6 +326,20 @@ int main(int argc, char** argv) {
             config.get_string("storage.friends", "data/friends.db"));
         auto messages = std::make_shared<core::MessageStore>(
             config.get_string("storage.messages", "data/messages.db"));
+        auto social_policies =
+            std::make_shared<core::SocialPolicyStore>(
+                config.get_string(
+                    "storage.social_policies",
+                    "data/social-policies.db"));
+        auto economy =
+            std::make_shared<core::EconomyLedger>(
+                config.get_string("storage.economy", "data/economy.db"),
+                config.get_string("economy.currency_code", "OGL"));
+        auto marketplace =
+            std::make_shared<core::MarketplaceStore>(
+                config.get_string(
+                    "storage.marketplace",
+                    "data/marketplace.db"));
         auto groups = std::make_shared<core::GroupStore>(
             config.get_string("storage.groups", "data/groups.db"));
         auto parcels = std::make_shared<core::ParcelStore>(
@@ -459,7 +476,8 @@ int main(int argc, char** argv) {
         core::AdminHttpServer admin(
             config.get_string("admin.listen_address", "127.0.0.1"),
             static_cast<std::uint16_t>(config.get_int("admin.port", 18080)), worlds, regions,
-            identities, auth_sessions, assets, appearance, inventory, presences, friends, messages, groups, parcels,
+            identities, auth_sessions, assets, appearance, inventory, presences, friends, messages,
+            social_policies, economy, marketplace, groups, parcels,
             moderation, audit, estates, landmarks, notifications, group_channels, crossings,
             object_crossings, scripts, script_host, federation_runtime,
             hypergrid_service, hypergrid_sessions, hypergrid_im, database,
@@ -489,6 +507,7 @@ int main(int argc, char** argv) {
                 const auto now_unix = std::chrono::duration_cast<std::chrono::seconds>(
                     std::chrono::system_clock::now().time_since_epoch()).count();
                 (void)federation_runtime->maintenance(now_unix);
+                (void)groups->purge_expired_invites(now_unix);
                 (void)hypergrid_sessions->purge_expired(now_unix);
                 (void)crossings->purge_expired(now_unix);
                 (void)object_crossings->maintenance(now_unix);
