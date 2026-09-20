@@ -26,6 +26,10 @@ struct ForeignSession {
     std::string origin_region;
     std::string destination_region;
     std::string remote_session_id;
+    std::string home_url;
+    std::string service_grant_id;
+    std::string service_token;
+    std::string service_capabilities;
     ForeignSessionState state{ForeignSessionState::active};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
