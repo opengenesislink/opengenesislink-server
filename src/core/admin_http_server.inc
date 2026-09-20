@@ -201,6 +201,67 @@ void AdminHttpServer::run() {
                            "},\"expires_unix\":" + std::to_string(ticket.claims.expires_unix) + "}";
                 };
 
+                const auto viewer_bootstrap_response =
+                    [&](const UserInfo& user,
+                        const RegionInfo& region,
+                        const WorldNodeInfo& world,
+                        const double spawn_x,
+                        const double spawn_y,
+                        const double spawn_z) {
+                        (void)inventory_->ensure_root(user.id);
+                        const auto appearance =
+                            appearance_->ensure(user.id);
+                        const auto inventory =
+                            inventory_->list(user.id);
+                        const auto assets =
+                            assets_->list_for_user(user.id);
+                        parcels_->reload();
+                        const auto parcel_list =
+                            parcels_->list_region(region.id);
+                        const auto session_json =
+                            viewer_response(
+                                user, region, world, {},
+                                spawn_x, spawn_y, spawn_z);
+                        std::ostringstream out;
+                        out << "{\"viewer_contract\":\"ogl-viewer-bootstrap-v1\","
+                            << "\"scene_contract\":\"scene-v2\","
+                            << "\"session\":" << session_json << ','
+                            << "\"appearance\":"
+                            << appearance_json(appearance) << ','
+                            << "\"inventory\":"
+                            << inventory_json(inventory) << ','
+                            << "\"assets\":"
+                            << assets_json(assets) << ','
+                            << "\"parcels\":"
+                            << parcels_json(parcel_list) << ','
+                            << "\"region_runtime\":{"
+                            << "\"id\":\"" << json_escape(region.id) << "\","
+                            << "\"name\":\"" << json_escape(region.name) << "\","
+                            << "\"node_id\":\"" << json_escape(region.node_id) << "\","
+                            << "\"grid_x\":" << region.grid_x << ','
+                            << "\"grid_y\":" << region.grid_y << ','
+                            << "\"ticks\":" << region.ticks << ','
+                            << "\"entities\":" << region.entities << ','
+                            << "\"avatars\":" << region.avatars << ','
+                            << "\"physics_bodies\":" << region.physics_bodies << ','
+                            << "\"scene_events\":" << region.scene_events << ','
+                            << "\"terrain_revision\":" << region.terrain_revision << ','
+                            << "\"sim_fps\":" << region.sim_fps
+                            << "},\"endpoints\":{"
+                            << "\"appearance\":\"GET /v1/avatar/appearance\","
+                            << "\"inventory\":\"GET /v1/inventory\","
+                            << "\"assets\":\"GET /v1/assets\","
+                            << "\"asset\":\"GET /v1/assets/{id}\","
+                            << "\"teleport\":\"POST /v1/viewer/teleport\","
+                            << "\"handoff\":\"POST /v1/viewer/handoff\","
+                            << "\"scene_sync\":\"SCENE_SYNC_REQUEST\","
+                            << "\"region_metadata\":\"REGION_METADATA_REQUEST\","
+                            << "\"parcel_info\":\"PARCEL_INFO_REQUEST\","
+                            << "\"avatar_reconcile\":\"AVATAR_RECONCILE\""
+                            << "}}";
+                        return out.str();
+                    };
+
                 const auto storage_status_json = [&]() {
                     if (!database_) {
                         return std::string{
@@ -296,7 +357,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-persistence-v5","scene-persistence-v6","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","groups-v1","land-parcels-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-persistence-v5","scene-persistence-v6","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","parcels":"POST /v1/parcels","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/worlds") {
                     response.body = "{\"world_nodes\":" + worlds_json(worlds_->list()) + "}";
                 } else if (method == "GET" && path == "/v1/regions") {
@@ -793,6 +854,72 @@ void AdminHttpServer::run() {
                     if (token.empty() || !sessions_->revoke(token)) {
                         response = {.status = 401, .body = "{\"error\":\"invalid-session\"}"};
                     } else response.body = "{\"status\":\"logged-out\"}";
+                } else if (method == "POST" &&
+                           path == "/v1/viewer/bootstrap") {
+                    auto [session, user] = auth();
+                    const auto region_id =
+                        json_string(request->body, "region");
+                    if (!session || !user) {
+                        response = {
+                            .status = 401,
+                            .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!region_id) {
+                        response = {
+                            .status = 400,
+                            .body = "{\"error\":\"missing-region\"}"};
+                    } else {
+                        const auto region = regions_->find(*region_id);
+                        const auto world =
+                            region
+                                ? worlds_->find(region->node_id)
+                                : std::nullopt;
+                        const auto x =
+                            json_number(request->body, "x")
+                                .value_or(128.0);
+                        const auto y =
+                            json_number(request->body, "y")
+                                .value_or(128.0);
+                        const auto z =
+                            json_number(request->body, "z")
+                                .value_or(0.0);
+                        const auto group_ids =
+                            groups_->group_ids_for_user(user->id);
+                        if (!region || !world ||
+                            region->state != "online" ||
+                            world->state != "online") {
+                            response = {
+                                .status = 409,
+                                .body =
+                                    "{\"error\":\"region-offline-or-unknown\"}"};
+                        } else if (
+                            moderation_->is_banned(
+                                user->id, region->id)) {
+                            response = {
+                                .status = 403,
+                                .body = "{\"error\":\"user-banned\"}"};
+                        } else if (
+                            const auto error =
+                                estate_entry_error(*user, *region);
+                            !error.empty()) {
+                            response = {
+                                .status = 403,
+                                .body = "{\"error\":\"" +
+                                        json_escape(error) + "\"}"};
+                        } else if (
+                            !parcels_->can_enter(
+                                region->id, x, y,
+                                user->id, group_ids)) {
+                            response = {
+                                .status = 403,
+                                .body =
+                                    "{\"error\":\"parcel-entry-denied\"}"};
+                        } else {
+                            response.body =
+                                viewer_bootstrap_response(
+                                    *user, *region, *world,
+                                    x, y, z);
+                        }
+                    }
                 } else if (method == "POST" && path == "/v1/viewer/session") {
                     auto [session, user] = auth();
                     const auto region_id = json_string(request->body, "region");
@@ -1735,7 +1862,8 @@ void AdminHttpServer::run() {
                     if (!admin_allowed("moderator")) response = {.status = 403, .body = "{\"error\":\"admin-authorization-required\"}"};
                     else response.body = "{\"events\":" + audit_json(audit_->recent()) + "}";
                 } else if (path == "/v1/auth/register" || path == "/v1/auth/login" ||
-                           path == "/v1/auth/logout" || path == "/v1/viewer/session" ||
+                           path == "/v1/auth/logout" || path == "/v1/viewer/bootstrap" ||
+                           path == "/v1/viewer/session" ||
                            path == "/v1/viewer/teleport" || path == "/v1/viewer/handoff" ||
                            path == "/v1/viewer/handoff/reserve" ||
                            path == "/v1/viewer/handoff/complete" ||
