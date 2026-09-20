@@ -661,10 +661,24 @@ int main(int argc, char** argv) {
                 const std::string& fallback) {
                 const auto env_name = config.get_string(env_key, "");
                 if (!env_name.empty()) {
-                    if (const auto* value = std::getenv(env_name.c_str());
+#ifdef _WIN32
+                    char* value = nullptr;
+                    std::size_t value_size = 0U;
+                    if (_dupenv_s(
+                            &value, &value_size,
+                            env_name.c_str()) == 0 &&
+                        value != nullptr) {
+                        const std::string result{value};
+                        std::free(value);
+                        if (!result.empty()) return result;
+                    }
+#else
+                    if (const auto* value =
+                            std::getenv(env_name.c_str());
                         value && *value != '\0') {
                         return std::string{value};
                     }
+#endif
                 }
                 return config.get_string(value_key, fallback);
             };

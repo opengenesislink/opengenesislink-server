@@ -37,9 +37,22 @@ opengenesis::storage::DatabaseConfig config_from_environment(
     }
 
     const auto env = [](const char* name, const char* fallback) {
+#ifdef _WIN32
+        char* value = nullptr;
+        std::size_t value_size = 0U;
+        if (_dupenv_s(&value, &value_size, name) == 0 &&
+            value != nullptr) {
+            const std::string result{
+                *value != '\0' ? value : fallback};
+            std::free(value);
+            return result;
+        }
+        return std::string{fallback};
+#else
         const auto* value = std::getenv(name);
         return std::string{
             value && *value != '\0' ? value : fallback};
+#endif
     };
     config.backend =
         backend == "postgresql"

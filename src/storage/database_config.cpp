@@ -43,11 +43,23 @@ DatabaseSelection database_selection_from_config(
             "database.password_env",
             "OGL_DATABASE_PASSWORD");
     if (!password_env.empty()) {
+#ifdef _WIN32
+        char* value = nullptr;
+        std::size_t value_size = 0U;
+        if (_dupenv_s(
+                &value, &value_size,
+                password_env.c_str()) == 0 &&
+            value != nullptr) {
+            if (*value != '\0') password = value;
+            std::free(value);
+        }
+#else
         if (const auto* value =
                 std::getenv(password_env.c_str());
             value && *value != '\0') {
             password = value;
         }
+#endif
     }
 
     DatabaseConfig result{
