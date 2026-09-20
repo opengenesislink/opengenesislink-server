@@ -153,15 +153,15 @@ assert caps['engine']=='OGL ScriptEngine',caps
 assert set(caps['languages'])=={'legacy','lsl','ogl'},caps
 assert len(caps['lsl_functions'])==523,caps
 assert len(caps['lsl_events'])==44,caps
-assert len(caps['ogl'])==31,caps
+assert len(caps['ogl'])==37,caps
 summary=caps['summary']
 assert summary['lsl_functions']['implemented']==56,summary
-assert summary['lsl_functions']['partial']==24,summary
+assert summary['lsl_functions']['partial']==29,summary
 assert summary['lsl_functions']['implemented_percent']==10.71,summary
-assert summary['lsl_functions']['executable_percent']==15.30,summary
+assert summary['lsl_functions']['executable_percent']==16.25,summary
 assert summary['lsl_events']['implemented']==1,summary
 assert summary['lsl_events']['partial']==3,summary
-assert summary['ogl']['implemented']==31,summary
+assert summary['ogl']['implemented']==37,summary
 assert summary['ogl']['implemented_percent']==100.00,summary
 
 status,user=api('/v1/auth/register','POST',{
@@ -211,6 +211,9 @@ ogl=(
     'else\n'
     'stop\n'
     'endif\n'
+    'world.material 3 0.4 0.7\n'
+    'world.buoyancy 1\n'
+    'world.impulse 0 0 1\n'
     'world.text OGL online\n'
     'goto active\n'
     'end\n'
@@ -231,7 +234,7 @@ status,ogl_run=api('/v1/scripts/event','POST',{
     'event':'touch'},token)
 assert status==200,ogl_run
 assert ogl_run['state']=='active',ogl_run
-assert ogl_run['host_applied']==2,ogl_run
+assert ogl_run['host_applied']==5,ogl_run
 assert ogl_run['host_errors']==[],ogl_run
 
 time.sleep(1.0)
@@ -244,6 +247,11 @@ line=next(
 parts=line.split('|')
 assert parts[3]=='140.000' and parts[4]=='141.000' and parts[5]=='31.000',parts
 assert parts[20]=='OGL online',parts
+assert len(parts)>=31,parts
+assert parts[27]=='3.000',parts
+assert parts[28]=='0.400',parts
+assert parts[29]=='0.700',parts
+assert parts[30]=='1.000',parts
 
 lsl=(
     'default {\n'
@@ -321,5 +329,5 @@ assert parts is not None and parts[20]=='LSL active',parts
 
 send(scene,42,20,'')
 scene.close()
-print('OpenGenesisLINK 11.0 OGL/LSL ScriptEngine end-to-end smoke: PASS')
+print('OpenGenesisLINK 12.0 OGL/LSL Physics ScriptEngine end-to-end smoke: PASS')
 PY
