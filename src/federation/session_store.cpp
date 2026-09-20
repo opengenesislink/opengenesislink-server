@@ -71,6 +71,10 @@ ForeignSession FederationSessionStore::create(const TravelTokenClaims& claims) {
         .origin_region = claims.origin_region,
         .destination_region = claims.destination_region,
         .remote_session_id = claims.session_id,
+        .home_url = claims.home_url,
+        .service_grant_id = claims.service_grant_id,
+        .service_token = claims.service_token,
+        .service_capabilities = claims.service_capabilities,
         .state = ForeignSessionState::active,
         .created_unix = now,
         .expires_unix = claims.expires_unix,
@@ -149,7 +153,7 @@ void FederationSessionStore::load() {
     while (std::getline(input, line)) {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
-        if (fields.size() != 11) continue;
+        if (fields.size() != 11U && fields.size() != 15U) continue;
         try {
             ForeignSession session{
                 .id = fields[0],
@@ -159,10 +163,21 @@ void FederationSessionStore::load() {
                 .origin_region = fields[4],
                 .destination_region = fields[5],
                 .remote_session_id = fields[6],
-                .state = parse_state(fields[7]),
-                .created_unix = std::stoll(fields[8]),
-                .expires_unix = std::stoll(fields[9]),
-                .ended_unix = std::stoll(fields[10])};
+                .home_url = fields.size() == 15U ? fields[7] : std::string{},
+                .service_grant_id =
+                    fields.size() == 15U ? fields[8] : std::string{},
+                .service_token =
+                    fields.size() == 15U ? fields[9] : std::string{},
+                .service_capabilities =
+                    fields.size() == 15U ? fields[10] : std::string{},
+                .state = parse_state(
+                    fields[fields.size() == 15U ? 11U : 7U]),
+                .created_unix = std::stoll(
+                    fields[fields.size() == 15U ? 12U : 8U]),
+                .expires_unix = std::stoll(
+                    fields[fields.size() == 15U ? 13U : 9U]),
+                .ended_unix = std::stoll(
+                    fields[fields.size() == 15U ? 14U : 10U])};
             if (!session.id.empty() && !session.issuer_grid.empty() &&
                 !session.subject_user.empty()) {
                 sessions_[session.id] = std::move(session);
@@ -179,7 +194,7 @@ void FederationSessionStore::persist_locked() const {
 
     std::ofstream output(temp, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write federation session store");
-    output << "# OpenGenesisLINK federation sessions v1\n";
+    output << "# OpenGenesisLINK federation sessions v2\n";
 
     std::vector<ForeignSession> rows;
     rows.reserve(sessions_.size());
@@ -192,6 +207,8 @@ void FederationSessionStore::persist_locked() const {
         output << session.id << '\t' << session.issuer_grid << '\t' << session.subject_user << '\t'
                << session.display_name << '\t' << session.origin_region << '\t'
                << session.destination_region << '\t' << session.remote_session_id << '\t'
+               << session.home_url << '\t' << session.service_grant_id << '\t'
+               << session.service_token << '\t' << session.service_capabilities << '\t'
                << foreign_session_state_name(session.state) << '\t'
                << session.created_unix << '\t' << session.expires_unix << '\t'
                << session.ended_unix << '\n';
