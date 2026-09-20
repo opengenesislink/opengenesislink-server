@@ -44,6 +44,7 @@ public:
     [[nodiscard]] std::optional<ForeignSession> find(std::string_view id) const;
     [[nodiscard]] std::vector<ForeignSession> list() const;
     [[nodiscard]] bool logout(std::string_view id);
+    std::size_t logout_issuer(std::string_view issuer_grid);
     std::size_t purge_expired(std::int64_t now_unix);
     [[nodiscard]] std::size_t active_count() const;
 
