@@ -6,6 +6,8 @@ OpenGenesisLINK Server 11.0.0-dev is the Script Runtime Completion milestone.
 
 - repository: `opengenesislink/opengenesislink-server`
 - pull request: #16
+- final tested PR head: `d26cbccbdd3f60e259668961d9da2b3427baee80`
+- squash merge: `8c94dd35aa25713e46f1ae2eb5dd9a37f0860d48`
 - version: `11.0.0-dev`
 - implementation language: C++23
 - license: MPL 2.0
@@ -283,4 +285,12 @@ These functions require real server/world integrations rather than merely determ
 - Linux x86_64 CI: required
 - Linux ARM64/aarch64 CI: required
 - Windows x86_64 CI: required
-- Database Integration CI: required
+- Database Integration CI: PASS
+- Linux x86_64 CI: PASS
+- Linux ARM64/aarch64 CI: PASS
+- Windows x86_64/MSVC CI: PASS
+- PR #16 merged: PASS
+
+The canonical 11.0 merge commit is:
+
+`8c94dd35aa25713e46f1ae2eb5dd9a37f0860d48`

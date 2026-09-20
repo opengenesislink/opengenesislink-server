@@ -19,6 +19,8 @@ Script Runtime Completion milestone.
 - added unit coverage for OGL v2 control flow, functions, typed values and the expanded LSL deterministic builtin set
 - API discovery now advertises `script-engine-v3` and `script-language-ogl-v2`
 - exact pre-documentation CI head `6d74e79bde8cc64f78860675cd078a94a68f4fce` passed Linux x86_64, Linux ARM64/aarch64, Windows x86_64 and Database Integration CI
+- final tested PR head: `d26cbccbdd3f60e259668961d9da2b3427baee80`
+- squash merge: `8c94dd35aa25713e46f1ae2eb5dd9a37f0860d48`
 
 ## 10.0.0-dev — 2026-09-20
 
