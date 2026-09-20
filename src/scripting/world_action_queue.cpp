@@ -46,6 +46,7 @@ std::optional<ScriptWorldActionType> parse_type(const std::string_view value) {
     if (value == "buoyancy") return ScriptWorldActionType::buoyancy;
     if (value == "material") return ScriptWorldActionType::material;
     if (value == "physics") return ScriptWorldActionType::physics;
+    if (value == "shape") return ScriptWorldActionType::shape;
     if (value == "text") return ScriptWorldActionType::text;
     if (value == "say") return ScriptWorldActionType::chat_say;
     if (value == "whisper") return ScriptWorldActionType::chat_whisper;
@@ -56,6 +57,7 @@ std::optional<ScriptWorldActionType> parse_type(const std::string_view value) {
     if (value == "query_water") return ScriptWorldActionType::query_water;
     if (value == "query_time") return ScriptWorldActionType::query_time;
     if (value == "query_nearby") return ScriptWorldActionType::query_nearby;
+    if (value == "query_raycast") return ScriptWorldActionType::query_raycast;
     return std::nullopt;
 }
 
@@ -75,6 +77,7 @@ const char* script_world_action_name(const ScriptWorldActionType type) noexcept 
         case ScriptWorldActionType::buoyancy: return "buoyancy";
         case ScriptWorldActionType::material: return "material";
         case ScriptWorldActionType::physics: return "physics";
+        case ScriptWorldActionType::shape: return "shape";
         case ScriptWorldActionType::text: return "text";
         case ScriptWorldActionType::chat_say: return "say";
         case ScriptWorldActionType::chat_whisper: return "whisper";
@@ -85,6 +88,7 @@ const char* script_world_action_name(const ScriptWorldActionType type) noexcept 
         case ScriptWorldActionType::query_water: return "query_water";
         case ScriptWorldActionType::query_time: return "query_time";
         case ScriptWorldActionType::query_nearby: return "query_nearby";
+        case ScriptWorldActionType::query_raycast: return "query_raycast";
     }
     return "move";
 }
@@ -95,7 +99,8 @@ bool script_world_action_is_query(const ScriptWorldActionType type) noexcept {
            type == ScriptWorldActionType::query_terrain ||
            type == ScriptWorldActionType::query_water ||
            type == ScriptWorldActionType::query_time ||
-           type == ScriptWorldActionType::query_nearby;
+           type == ScriptWorldActionType::query_nearby ||
+           type == ScriptWorldActionType::query_raycast;
 }
 
 std::string script_world_action_result_prefix(const ScriptWorldAction& action) {
