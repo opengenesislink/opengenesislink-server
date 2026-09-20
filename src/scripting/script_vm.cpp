@@ -162,17 +162,38 @@ std::optional<CompiledScript> compile_script(std::string_view source,std::string
             ins.opcode=ScriptOpcode::message; parts>>ins.a; std::getline(parts,ins.b); ins.b=trim(ins.b);
             if(!atom(ins.a,256)||ins.b.empty()||ins.b.size()>2000){reason="invalid-message";return std::nullopt;}
         } else if(op=="move"||op=="rotate"||op=="scale"||
-                  op=="velocity"||op=="angular_velocity"){
+                  op=="velocity"||op=="angular_velocity"||
+                  op=="force"||op=="impulse"||
+                  op=="angular_impulse"||op=="torque"){
             ins.opcode=op=="move"?ScriptOpcode::move:
                        (op=="rotate"?ScriptOpcode::rotate:
                         (op=="scale"?ScriptOpcode::scale:
                          (op=="velocity"?ScriptOpcode::velocity:
-                                          ScriptOpcode::angular_velocity)));
+                          (op=="angular_velocity"?ScriptOpcode::angular_velocity:
+                           (op=="force"?ScriptOpcode::force:
+                            (op=="impulse"?ScriptOpcode::impulse:
+                             (op=="angular_impulse"?ScriptOpcode::angular_impulse:
+                                                      ScriptOpcode::torque)))))));
             parts>>ins.a>>ins.b>>ins.c;
             std::string extra; parts>>extra;
             if(ins.a.empty()||ins.b.empty()||ins.c.empty()||!extra.empty()||
                ins.a.size()>128||ins.b.size()>128||ins.c.size()>128){
                 reason="invalid-world-vector";return std::nullopt;
+            }
+        } else if(op=="buoyancy"){
+            ins.opcode=ScriptOpcode::buoyancy;
+            parts>>ins.a;
+            std::string extra; parts>>extra;
+            if(ins.a.empty()||ins.a.size()>128||!extra.empty()){
+                reason="invalid-buoyancy";return std::nullopt;
+            }
+        } else if(op=="material"){
+            ins.opcode=ScriptOpcode::material;
+            parts>>ins.a>>ins.b>>ins.c;
+            std::string extra; parts>>extra;
+            if(ins.a.empty()||ins.b.empty()||ins.c.empty()||!extra.empty()||
+               ins.a.size()>128||ins.b.size()>128||ins.c.size()>128){
+                reason="invalid-physics-material";return std::nullopt;
             }
         } else if(op=="physics"){
             ins.opcode=ScriptOpcode::physics; parts>>ins.a;
@@ -341,17 +362,37 @@ ScriptVmResult execute_script_event(
                   ins.opcode==ScriptOpcode::rotate||
                   ins.opcode==ScriptOpcode::scale||
                   ins.opcode==ScriptOpcode::velocity||
-                  ins.opcode==ScriptOpcode::angular_velocity){
-            const auto type=ins.opcode==ScriptOpcode::move?ScriptActionType::world_move:
-                            (ins.opcode==ScriptOpcode::rotate?ScriptActionType::world_rotate:
-                             (ins.opcode==ScriptOpcode::scale?ScriptActionType::world_scale:
-                              (ins.opcode==ScriptOpcode::velocity?ScriptActionType::world_velocity:
-                                                                        ScriptActionType::world_angular_velocity)));
+                  ins.opcode==ScriptOpcode::angular_velocity||
+                  ins.opcode==ScriptOpcode::force||
+                  ins.opcode==ScriptOpcode::impulse||
+                  ins.opcode==ScriptOpcode::angular_impulse||
+                  ins.opcode==ScriptOpcode::torque){
+            const auto type=
+                ins.opcode==ScriptOpcode::move?ScriptActionType::world_move:
+                (ins.opcode==ScriptOpcode::rotate?ScriptActionType::world_rotate:
+                 (ins.opcode==ScriptOpcode::scale?ScriptActionType::world_scale:
+                  (ins.opcode==ScriptOpcode::velocity?ScriptActionType::world_velocity:
+                   (ins.opcode==ScriptOpcode::angular_velocity?ScriptActionType::world_angular_velocity:
+                    (ins.opcode==ScriptOpcode::force?ScriptActionType::world_force:
+                     (ins.opcode==ScriptOpcode::impulse?ScriptActionType::world_impulse:
+                      (ins.opcode==ScriptOpcode::angular_impulse?ScriptActionType::world_angular_impulse:
+                                                                  ScriptActionType::world_torque)))))));
             result.actions.push_back({.type=type,
                                       .value=resolve(ins.a,result.state)+" "+
                                              resolve(ins.b,result.state)+" "+
                                              resolve(ins.c,result.state),
                                       .number=0});
+        } else if(ins.opcode==ScriptOpcode::buoyancy){
+            result.actions.push_back({
+                .type=ScriptActionType::world_buoyancy,
+                .value=resolve(ins.a,result.state),.number=0});
+        } else if(ins.opcode==ScriptOpcode::material){
+            result.actions.push_back({
+                .type=ScriptActionType::world_material,
+                .value=resolve(ins.a,result.state)+" "+
+                       resolve(ins.b,result.state)+" "+
+                       resolve(ins.c,result.state),
+                .number=0});
         } else if(ins.opcode==ScriptOpcode::physics){
             result.actions.push_back({.type=ScriptActionType::world_physics,
                                       .value=ins.a,.number=0});
