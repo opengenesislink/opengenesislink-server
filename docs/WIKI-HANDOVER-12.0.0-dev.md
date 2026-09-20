@@ -6,6 +6,8 @@ OpenGenesisLINK Server 12.0.0-dev is the **World Runtime & Physics v2** mileston
 
 - repository: `opengenesislink/opengenesislink-server`
 - pull request: #17
+- final tested PR head: `5d4db8dd7a8340c286d716e793380689f5d0b9e5`
+- squash merge: `414a65e8b01cf9aded64e13f183eea24df69e3c7`
 - version: `12.0.0-dev`
 - implementation: C++23
 - license: MPL 2.0
@@ -264,6 +266,27 @@ Acceptance requires the exact final PR head to pass:
 - distributed cross-Region collision solving
 - complete LSL semantic compatibility
 - stable 1.0 API
+
+## Acceptance result
+
+All required gates passed on the final PR head `5d4db8dd7a8340c286d716e793380689f5d0b9e5`:
+
+- Linux x86_64: PASS
+- Linux ARM64/aarch64: PASS
+- Windows x86_64/MSVC: PASS
+- Unit tests: PASS
+- integrated world/social/handoff smoke: PASS
+- Script World query/ACK smoke: PASS
+- OGL/LSL Physics ScriptEngine smoke: PASS
+- Crossing v3 smoke: PASS
+- Object Crossing smoke: PASS
+- SQLite integration: PASS
+- PostgreSQL integration: PASS
+- MariaDB integration: PASS
+
+Canonical 12.0 squash merge:
+
+`414a65e8b01cf9aded64e13f183eea24df69e3c7`
 
 ## Roadmap after 12.0
 

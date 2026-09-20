@@ -22,6 +22,8 @@ World Runtime & Physics v2 milestone.
 - retained backward loading of earlier Scene persistence layouts
 - expanded unit, authenticated Scene, ScriptEngine and crossing coverage for Physics v2
 - 12.0 does not claim final mesh/convex collision, continuous collision detection, final avatar character controller, full vehicle semantics or complete LSL compatibility
+- final tested PR head: `5d4db8dd7a8340c286d716e793380689f5d0b9e5`
+- squash merge: `414a65e8b01cf9aded64e13f183eea24df69e3c7`
 
 ## 11.0.0-dev — 2026-09-20
 
