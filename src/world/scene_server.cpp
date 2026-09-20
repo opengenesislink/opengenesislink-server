@@ -173,8 +173,11 @@ std::string serialize_snapshot(const RegionRuntime& region) {
     return output.str();
 }
 
-std::string serialize_events(const RegionRuntime& region, const std::uint64_t since) {
-    const auto events = region.events_since(since);
+std::string serialize_events(
+    const RegionRuntime& region,
+    const std::uint64_t since,
+    const std::size_t max_events = 256U) {
+    const auto events = region.events_since(since, max_events);
     std::ostringstream output;
     output << std::fixed << std::setprecision(3) << "region=" << region.id() << '\n'
            << "from=" << since << '\n' << "latest=" << region.latest_sequence() << '\n'
@@ -188,6 +191,60 @@ std::string serialize_events(const RegionRuntime& region, const std::uint64_t si
                << '|' << transform.scale.y << '|' << transform.scale.z << '\n';
     }
     return output.str();
+}
+
+std::string serialize_region_metadata(const RegionRuntime& region) {
+    const auto metrics = region.metrics();
+    std::ostringstream out;
+    out << std::fixed << std::setprecision(3)
+        << "region=" << region.id() << '\n'
+        << "terrain_width=" << region.terrain().width() << '\n'
+        << "terrain_height=" << region.terrain().height() << '\n'
+        << "terrain_cell_size=" << region.terrain().cell_size() << '\n'
+        << "terrain_revision=" << region.terrain().revision() << '\n'
+        << "water_height=" << region.water_height() << '\n'
+        << "sequence=" << region.latest_sequence() << '\n'
+        << "ticks=" << metrics.ticks << '\n'
+        << "entities=" << metrics.entities << '\n'
+        << "avatars=" << metrics.avatars << '\n'
+        << "physics_bodies=" << metrics.physics_bodies << '\n'
+        << "collision_contacts=" << metrics.collision_contacts << '\n'
+        << "physics_constraints=" << metrics.physics_constraints << '\n'
+        << "sim_fps=" << metrics.sim_fps << '\n';
+    return out.str();
+}
+
+std::string serialize_parcel(const core::ParcelInfo& parcel) {
+    std::ostringstream out;
+    out << "parcel=" << clean(parcel.id, 128) << '|'
+        << clean(parcel.name, 128) << '|'
+        << clean(parcel.owner_user_id, 128) << '|'
+        << clean(parcel.group_id, 128) << '|'
+        << parcel.x1 << '|' << parcel.y1 << '|'
+        << parcel.x2 << '|' << parcel.y2 << '|'
+        << (parcel.public_entry ? 1 : 0) << '|'
+        << (parcel.public_build ? 1 : 0) << '|'
+        << (parcel.group_build ? 1 : 0) << '|'
+        << (parcel.group_terraform ? 1 : 0) << '\n';
+    return out.str();
+}
+
+std::string serialize_sync(
+    const RegionRuntime& region,
+    const std::uint64_t since,
+    const std::size_t max_events) {
+    const auto latest = region.latest_sequence();
+    const bool snapshot =
+        since == 0U || (latest > since && latest - since > 4096U);
+    std::ostringstream out;
+    if (snapshot) {
+        out << "mode=snapshot\n";
+        out << serialize_snapshot(region);
+    } else {
+        out << "mode=delta\n";
+        out << serialize_events(region, since, max_events);
+    }
+    return out.str();
 }
 
 void send_capability_error(opengenesis::network::TcpSocket& socket, const protocol::Frame& frame,
@@ -204,6 +261,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
                    std::shared_ptr<core::ModerationStore> moderation) {
     std::shared_ptr<RegionRuntime> region;
     std::uint64_t avatar_id = 0;
+    std::uint64_t last_client_move_sequence = 0;
     std::string user_id;
     security::SceneTicketClaims claims;
     try {
@@ -212,7 +270,9 @@ void handle_client(opengenesis::network::TcpSocket socket,
         socket.send_frame({protocol::MessageType::hello_ack, hello.request_id,
                            protocol::payload_from_string(
                                "protocol=1\nserver=opengenesis-scene\nauth=scene-ticket-v1\n"
-                               "movement=avatar-move-v1\ncapabilities=scene-capabilities-v1\n"
+                               "scene_contract=2\nmovement=avatar-reconcile-v1\n"
+                               "sync=scene-sync-v1\nmetadata=region-metadata-v1,parcel-read-v1\n"
+                               "capabilities=scene-capabilities-v2\n"
                                "object_runtime=linkset-v2,motion-v1,text-v1,physics-v2,collision-events-v1\n")});
 
         const auto join = socket.receive_frame();
@@ -254,6 +314,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
         std::ostringstream joined;
         joined << "status=joined\nregion=" << region->id() << "\nuser_id=" << user_id
                << "\navatar_id=" << avatar_id << "\nsequence=" << region->latest_sequence()
+               << "\nscene_contract=2\nsync=scene-sync-v1\nmovement=avatar-reconcile-v1"
                << "\nterrain_revision=" << region->terrain().revision() << "\ncapabilities="
                << claims.capabilities << "\nhandoff_from=" << claims.handoff_from_region
                << "\ncrossing_id=" << claims.crossing_id
@@ -280,6 +341,136 @@ void handle_client(opengenesis::network::TcpSocket socket,
                 socket.send_frame({protocol::MessageType::scene_events, frame.request_id,
                                    protocol::payload_from_string(
                                        serialize_events(*region, integer(request, "since")))});
+            } else if (frame.type == protocol::MessageType::scene_sync_request) {
+                if (!security::has_scene_capability(claims, "scene.sync")) {
+                    send_capability_error(socket, frame, "scene.sync");
+                    continue;
+                }
+                const auto since = integer(request, "since");
+                const auto requested = integer(request, "max_events", 256U);
+                const auto max_events = static_cast<std::size_t>(
+                    std::clamp<std::uint64_t>(requested, 1U, 1024U));
+                socket.send_frame({
+                    protocol::MessageType::scene_sync,
+                    frame.request_id,
+                    protocol::payload_from_string(
+                        serialize_sync(*region, since, max_events))});
+            } else if (frame.type == protocol::MessageType::region_metadata_request) {
+                if (!security::has_scene_capability(
+                        claims, "scene.region.metadata")) {
+                    send_capability_error(
+                        socket, frame, "scene.region.metadata");
+                    continue;
+                }
+                socket.send_frame({
+                    protocol::MessageType::region_metadata,
+                    frame.request_id,
+                    protocol::payload_from_string(
+                        serialize_region_metadata(*region))});
+            } else if (frame.type == protocol::MessageType::parcel_info_request) {
+                if (!security::has_scene_capability(
+                        claims, "scene.parcel.read")) {
+                    send_capability_error(
+                        socket, frame, "scene.parcel.read");
+                    continue;
+                }
+                parcels->reload();
+                std::ostringstream out;
+                const auto x_text = field(request, "x");
+                const auto y_text = field(request, "y");
+                if (!x_text.empty() || !y_text.empty()) {
+                    const auto parcel = parcels->at(
+                        region->id(),
+                        number(request, "x", 128.0),
+                        number(request, "y", 128.0));
+                    out << "mode=point\ncount=" << (parcel ? 1 : 0) << '\n';
+                    if (parcel) out << serialize_parcel(*parcel);
+                } else {
+                    const auto list = parcels->list_region(region->id());
+                    out << "mode=region\ncount=" << list.size() << '\n';
+                    for (const auto& parcel : list) {
+                        out << serialize_parcel(parcel);
+                    }
+                }
+                socket.send_frame({
+                    protocol::MessageType::parcel_info,
+                    frame.request_id,
+                    protocol::payload_from_string(out.str())});
+            } else if (frame.type == protocol::MessageType::avatar_reconcile) {
+                if (!security::has_scene_capability(
+                        claims, "scene.avatar.reconcile")) {
+                    send_capability_error(
+                        socket, frame, "scene.avatar.reconcile");
+                    continue;
+                }
+                const auto client_sequence =
+                    integer(request, "client_sequence");
+                if (client_sequence == 0U ||
+                    client_sequence <= last_client_move_sequence) {
+                    socket.send_frame({
+                        protocol::MessageType::error,
+                        frame.request_id,
+                        protocol::payload_from_string(
+                            "reason=stale-client-sequence\n")});
+                    continue;
+                }
+                const auto current = region->entity(avatar_id);
+                if (!current) {
+                    socket.send_frame({
+                        protocol::MessageType::error,
+                        frame.request_id,
+                        protocol::payload_from_string(
+                            "reason=avatar-not-found\n")});
+                    continue;
+                }
+                auto transform =
+                    transform_from_payload(request, current->transform);
+                const physics::Vec3 velocity{
+                    number(request, "vx", 0.0),
+                    number(request, "vy", 0.0),
+                    number(request, "vz", 0.0)};
+                std::string boundary;
+                const bool ok =
+                    region->move_avatar(
+                        avatar_id, transform, velocity, boundary);
+                if (!ok) {
+                    socket.send_frame({
+                        protocol::MessageType::error,
+                        frame.request_id,
+                        protocol::payload_from_string(
+                            "reason=avatar-move-rejected\n")});
+                    continue;
+                }
+                last_client_move_sequence = client_sequence;
+                const auto authoritative = region->entity(avatar_id);
+                const auto body_state =
+                    region->physics_body_state(avatar_id);
+                const auto metrics = region->metrics();
+                std::ostringstream response;
+                response << std::fixed << std::setprecision(3)
+                         << "status=reconciled\nclient_sequence="
+                         << client_sequence
+                         << "\nserver_sequence="
+                         << region->latest_sequence()
+                         << "\ntick=" << metrics.ticks
+                         << "\nboundary=" << boundary;
+                if (authoritative) {
+                    response << "\nx=" << authoritative->transform.position.x
+                             << "\ny=" << authoritative->transform.position.y
+                             << "\nz=" << authoritative->transform.position.z
+                             << "\nrx=" << authoritative->transform.rotation.x
+                             << "\nry=" << authoritative->transform.rotation.y
+                             << "\nrz=" << authoritative->transform.rotation.z;
+                }
+                const auto velocity_state =
+                    body_state ? body_state->velocity : velocity;
+                response << "\nvx=" << velocity_state.x
+                         << "\nvy=" << velocity_state.y
+                         << "\nvz=" << velocity_state.z << '\n';
+                socket.send_frame({
+                    protocol::MessageType::avatar_reconcile_ack,
+                    frame.request_id,
+                    protocol::payload_from_string(response.str())});
             } else if (frame.type == protocol::MessageType::avatar_move) {
                 if (!security::has_scene_capability(claims, "scene.move")) {
                     send_capability_error(socket, frame, "scene.move");
