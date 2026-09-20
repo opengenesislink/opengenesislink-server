@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -892,6 +893,13 @@ int main(int argc, char** argv) {
         }
         scene_server.start();
 
+        std::unordered_map<std::string, std::uint64_t>
+            script_event_cursors;
+        for (const auto& runtime : runtimes) {
+            script_event_cursors[runtime->id()] =
+                runtime->latest_sequence();
+        }
+
         std::thread persistence_thread([&] {
             while (running) {
                 std::this_thread::sleep_for(save_interval);
@@ -982,6 +990,7 @@ int main(int argc, char** argv) {
                 auto next_lease = std::chrono::steady_clock::now();
                 auto next_metrics = next_lease;
                 auto next_script_poll = next_lease;
+                auto next_script_events = next_lease;
                 auto next_object_crossing_poll = next_lease;
                 while (running) {
                     const auto now = std::chrono::steady_clock::now();
@@ -1038,6 +1047,78 @@ int main(int argc, char** argv) {
                             }
                         }
                         next_script_poll = now + std::chrono::milliseconds{100};
+                    }
+                    if (now >= next_script_events) {
+                        for (const auto& runtime : runtimes) {
+                            const auto previous_cursor =
+                                script_event_cursors[runtime->id()];
+                            const auto events =
+                                runtime->events_since(
+                                    previous_cursor, 128U);
+                            const auto batch_cursor =
+                                events.empty()
+                                    ? runtime->latest_sequence()
+                                    : events.back().sequence;
+
+                            std::ostringstream event_body;
+                            event_body
+                                << "region=" << runtime->id() << '\n'
+                                << "cursor=" << batch_cursor << '\n';
+                            for (const auto& event : events) {
+                                if (event.type != "collision_start" &&
+                                    event.type != "collision" &&
+                                    event.type != "collision_end" &&
+                                    event.type != "land_collision_start" &&
+                                    event.type != "land_collision" &&
+                                    event.type != "land_collision_end") {
+                                    continue;
+                                }
+                                event_body
+                                    << "event=" << event.sequence << '|'
+                                    << event.entity_id << '|'
+                                    << event.type << '|'
+                                    << std::setprecision(17)
+                                    << event.transform.position.x << '|'
+                                    << event.transform.position.y << '|'
+                                    << event.transform.position.z << '|'
+                                    << opengenesis::security::base64_encode(
+                                           event.text)
+                                    << '\n';
+                            }
+
+                            socket.send_frame({
+                                protocol::MessageType::script_scene_events,
+                                ++request_id,
+                                protocol::payload_from_string(
+                                    event_body.str())});
+                            const auto event_ack =
+                                socket.receive_frame();
+                            if (event_ack.type !=
+                                protocol::MessageType::
+                                    script_scene_events_ack) {
+                                throw std::runtime_error(
+                                    "script scene event acknowledgement rejected");
+                            }
+                            const auto ack_body =
+                                protocol::payload_as_string(
+                                    event_ack);
+                            if (field(ack_body, "status") != "ok") {
+                                throw std::runtime_error(
+                                    "script scene events rejected");
+                            }
+                            try {
+                                script_event_cursors[runtime->id()] =
+                                    std::stoull(
+                                        field(
+                                            ack_body,
+                                            "cursor"));
+                            } catch (...) {
+                                throw std::runtime_error(
+                                    "invalid script scene event cursor");
+                            }
+                        }
+                        next_script_events =
+                            now + std::chrono::milliseconds{100};
                     }
                     if (now >= next_object_crossing_poll) {
                         for (const auto& runtime : runtimes) {
