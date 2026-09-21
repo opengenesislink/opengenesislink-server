@@ -104,6 +104,14 @@ The v1 cache key is deterministic and includes:
 
 A later server cache can use this key for memory and disk entries without changing the mesh-generation contract.
 
+Implemented cache foundation:
+
+- bounded entry count
+- bounded aggregate triangle count
+- deterministic key lookup
+- hit/miss/eviction counters
+- thread-safe access
+
 Planned cache layers:
 
 1. per-Region hot memory cache
@@ -138,13 +146,15 @@ Phase M1 — completed foundation:
 - triangle budgets
 - collision representation policy
 
-Phase M2:
+Phase M2 — started:
 
-- `PhysicsShapeBuilder` interface
-- immutable mesh handles
-- static triangle-mesh collider data
-- dynamic convex-hull builder
-- cache ownership and lifecycle
+- `PhysicsShapeBuilder` interface implemented
+- bounded thread-safe in-memory mesh cache implemented
+- collision plans explicitly mark whether the current solver is ready
+- immutable/shared mesh handles remain planned
+- static triangle-mesh collider data remains planned
+- dynamic convex-hull builder remains planned
+- disk/shared cache ownership remains planned
 
 Phase M3:
 
