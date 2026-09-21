@@ -514,7 +514,18 @@ void runtime_test() {
     auto object_entity = runtime.entity(object);
     expect(object_entity.has_value(), "object lookup");
     object_entity->transform.position = {10, 20, 30};
+    object_entity->transform.scale = {2.0, 2.0, 2.0};
+    const auto before_scale = runtime.latest_sequence();
     expect(runtime.update_transform(object, object_entity->transform), "transform update");
+    const auto scale_events = runtime.events_since(before_scale, 8);
+    expect(std::any_of(
+               scale_events.begin(), scale_events.end(),
+               [&](const auto& event) {
+                   return event.type == "changed" &&
+                          event.entity_id == object &&
+                          event.text == "8";
+               }),
+           "scale mutation emits CHANGED_SCALE");
     expect(runtime.set_velocity(object, {1, 0, 0}), "velocity update");
     const auto chat_sequence = runtime.chat(avatar, "hello scene");
     expect(chat_sequence > before, "chat event");
@@ -552,8 +563,19 @@ void runtime_physics_v2_test() {
     child_transform.position.x = 22.0;
     const auto child = runtime.spawn_object(
         "Rigid Child", child_transform, false, "user-physics");
+    const auto before_link = runtime.latest_sequence();
     expect(runtime.link_objects(root, child, reason),
            "physics v2 linkset created");
+    const auto link_events = runtime.events_since(before_link, 16);
+    expect(std::count_if(
+               link_events.begin(), link_events.end(),
+               [&](const auto& event) {
+                   return event.type == "changed" &&
+                          event.text == "32" &&
+                          (event.entity_id == root ||
+                           event.entity_id == child);
+               }) == 2,
+           "link mutation emits CHANGED_LINK for linkset scripts");
 
     auto rotated = root_transform;
     rotated.rotation.z = 90.0;
