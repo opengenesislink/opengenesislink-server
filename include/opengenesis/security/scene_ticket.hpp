@@ -11,7 +11,7 @@ namespace opengenesis::security {
 inline constexpr std::string_view kDefaultSceneCapabilities =
     "scene.join,scene.read,scene.move,scene.chat,scene.object.create,"
     "scene.object.modify.own,scene.object.permissions,scene.object.link,"
-    "scene.terrain.sample,scene.terrain.modify,scene.sync,"
+    "scene.object.interact,scene.terrain.sample,scene.terrain.modify,scene.sync,"
     "scene.avatar.reconcile,scene.region.metadata,scene.parcel.read";
 
 struct SceneTicketClaims {
