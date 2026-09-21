@@ -665,8 +665,8 @@ const std::vector<ScriptFeature>& lsl_event_catalog() {
         {"state_entry", "event", ScriptFeatureStatus::partial},
         {"state_exit", "event", ScriptFeatureStatus::partial},
         {"timer", "event", ScriptFeatureStatus::implemented},
-        {"touch", "event", ScriptFeatureStatus::recognized},
-        {"touch_end", "event", ScriptFeatureStatus::recognized},
+        {"touch", "event", ScriptFeatureStatus::partial},
+        {"touch_end", "event", ScriptFeatureStatus::partial},
         {"touch_start", "event", ScriptFeatureStatus::partial},
         {"transaction_result", "event", ScriptFeatureStatus::recognized}
     };
