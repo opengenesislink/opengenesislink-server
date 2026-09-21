@@ -1295,6 +1295,44 @@ std::vector<SceneEvent> RegionRuntime::events_since(
     return result;
 }
 
+std::uint64_t RegionRuntime::interact_object(
+    const std::uint64_t target_entity,
+    const std::uint64_t avatar_entity,
+    std::string user_id,
+    std::string phase) {
+    if (target_entity == 0U || avatar_entity == 0U ||
+        user_id.empty() || user_id.size() > 256U) {
+        return 0;
+    }
+
+    std::string event_type;
+    if (phase == "start") {
+        event_type = "touch_start";
+    } else if (phase == "touch") {
+        event_type = "touch";
+    } else if (phase == "end") {
+        event_type = "touch_end";
+    } else {
+        return 0;
+    }
+
+    std::scoped_lock lock(mutex_);
+    const auto target = entities_.find(target_entity);
+    const auto avatar = entities_.find(avatar_entity);
+    if (target == entities_.end() ||
+        target->second.kind != EntityKind::object ||
+        avatar == entities_.end() ||
+        avatar->second.kind != EntityKind::avatar ||
+        avatar->second.owner_user_id != user_id) {
+        return 0;
+    }
+
+    return append_event_locked(
+        std::move(event_type), target_entity,
+        target->second.transform,
+        std::to_string(avatar_entity) + "\n" + std::move(user_id));
+}
+
 std::uint64_t RegionRuntime::chat(
     const std::uint64_t sender_entity, std::string text,
     std::string event_type) {
