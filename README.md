@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **15.0.0-dev**.
+Current development version: **16.0.0-dev**.
 
-`15.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`16.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -16,6 +16,8 @@ Current development version: **15.0.0-dev**.
 - native OpenGenesis Physics foundation
 - Physics v2 with body-vs-body and terrain contacts, restitution/friction, force/impulse/torque, damping, buoyancy and distance constraints
 - collision start/stay/end and land-collision events emitted by Region Runtime
+- authenticated Scene object interaction path with server-authoritative `touch_start`, `touch` and `touch_end` Script events
+- native `changed` Script events for real object scale changes (`CHANGED_SCALE`) and link/unlink changes (`CHANGED_LINK`)
 - rigid root rotation/translation propagation for linked object children
 - Scene Persistence v6 and Object Crossing preserve Physics v2 material state
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
@@ -69,8 +71,9 @@ Current development version: **15.0.0-dev**.
 - persistent Script language selection (`legacy`, `lsl`, `ogl`) with state-specific handlers, event parameter binding and restart-safe VM state
 - native OGL language v1 with state/event declarations, variables, increments, World/Social actions and durable World queries
 - OGL v2 control flow with bounded `if/else`, `while`, `for`, reusable parameterless functions and typed declarations on the shared sandboxed VM
-- OGL v2 language core remains 31/31 implemented; the 12.0 catalog is 37/37 including six native Physics v2 commands
-- LSL coverage is 56 strictly implemented functions plus 29 partial functions (85/523 executable including partial); the full 523-function catalog remains tracked without claiming full semantic compatibility
+- OGL v2 language core remains complete; the current 16.0 catalog is 37/37 implemented
+- LSL function coverage is 62 strictly implemented plus 34 partial functions (96/523 executable including partial, 18.36%); the full 523-function catalog remains tracked without claiming full semantic compatibility
+- LSL event coverage is 1 implemented plus 13 partial events (14/44 executable including partial, 31.82%), including automatic state lifecycle, collision/land-collision, authenticated Scene touch and first `changed` bitmask sources
 - LSL compatibility frontend with real `default`/named-state syntax, typed event parameter names, state changes, executable deterministic built-ins and a machine-readable canonical function/event status catalog
 - sandboxed event Script VM with persistent variables/state, timers, listen channels, explicit host actions and instruction/state/action budgets
 - policy-controlled ScriptHost with owner Notifications, local friend-only direct messaging and typed World actions
@@ -303,6 +306,9 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/OGL-SCRIPT-v1.md`
 - `docs/LSL-COMPAT-v1.md`
 - `docs/SCRIPT-COMMAND-STATUS-9.0.md`
+- `docs/SCRIPT-COMMAND-STATUS-12.0.md`
+- `docs/SCRIPT-COMMAND-STATUS-16.0.md`
+- `docs/WIKI-HANDOVER-16.0.0-dev.md`
 
 ## License
 
