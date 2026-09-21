@@ -390,6 +390,85 @@ TriangleMesh make_cylinder(
 
 } // namespace
 
+
+GenesisMeshCache::GenesisMeshCache(
+    const std::size_t max_entries,
+    const std::size_t max_triangles)
+    : max_entries_(std::max<std::size_t>(1U, max_entries)),
+      max_triangles_(std::max<std::size_t>(12U, max_triangles)) {}
+
+std::optional<TriangleMesh> GenesisMeshCache::get(
+    const std::string& key) {
+    std::scoped_lock lock(mutex_);
+    const auto it = entries_.find(key);
+    if (it == entries_.end()) {
+        ++misses_;
+        return std::nullopt;
+    }
+    ++hits_;
+    return it->second;
+}
+
+bool GenesisMeshCache::put(TriangleMesh mesh) {
+    if (mesh.cache_key.empty() || mesh.empty()) {
+        return false;
+    }
+    const auto triangles = mesh.triangle_count();
+    if (triangles == 0U || triangles > max_triangles_) {
+        return false;
+    }
+
+    std::scoped_lock lock(mutex_);
+    const auto existing = entries_.find(mesh.cache_key);
+    if (existing != entries_.end()) {
+        triangles_ -= existing->second.triangle_count();
+        existing->second = std::move(mesh);
+        triangles_ += triangles;
+        evict_locked();
+        return entries_.contains(existing->first);
+    }
+
+    const auto key = mesh.cache_key;
+    entries_.emplace(key, std::move(mesh));
+    insertion_order_.push_back(key);
+    triangles_ += triangles;
+    evict_locked();
+    return entries_.contains(key);
+}
+
+void GenesisMeshCache::clear() {
+    std::scoped_lock lock(mutex_);
+    entries_.clear();
+    insertion_order_.clear();
+    triangles_ = 0;
+}
+
+MeshCacheStats GenesisMeshCache::stats() const {
+    std::scoped_lock lock(mutex_);
+    return {
+        .entries = entries_.size(),
+        .triangles = triangles_,
+        .hits = hits_,
+        .misses = misses_,
+        .evictions = evictions_};
+}
+
+void GenesisMeshCache::evict_locked() {
+    while ((entries_.size() > max_entries_ ||
+            triangles_ > max_triangles_) &&
+           !insertion_order_.empty()) {
+        const auto key = insertion_order_.front();
+        insertion_order_.pop_front();
+        const auto it = entries_.find(key);
+        if (it == entries_.end()) {
+            continue;
+        }
+        triangles_ -= it->second.triangle_count();
+        entries_.erase(it);
+        ++evictions_;
+    }
+}
+
 const char* primitive_kind_name(const PrimitiveKind kind) noexcept {
     switch (kind) {
         case PrimitiveKind::box: return "box";
