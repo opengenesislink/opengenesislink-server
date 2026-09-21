@@ -4,6 +4,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -119,6 +120,52 @@ void collision_policy_test() {
         "static complex shape may use triangle mesh");
 }
 
+
+void bounded_cache_test() {
+    using namespace opengenesis::meshing;
+
+    GenesisMesher mesher;
+    GenesisMeshCache cache(2U, 100U);
+
+    auto first = mesher.mesh_primitive(
+        {.kind = PrimitiveKind::box,
+         .size = {1.0, 1.0, 1.0}});
+    auto second = mesher.mesh_primitive(
+        {.kind = PrimitiveKind::box,
+         .size = {2.0, 1.0, 1.0}});
+    auto third = mesher.mesh_primitive(
+        {.kind = PrimitiveKind::box,
+         .size = {3.0, 1.0, 1.0}});
+
+    expect(first.ok() && second.ok() && third.ok(),
+           "cache source meshes build");
+    const auto first_key = first.mesh.cache_key;
+    const auto second_key = second.mesh.cache_key;
+    const auto third_key = third.mesh.cache_key;
+
+    expect(cache.put(std::move(first.mesh)),
+           "cache first mesh");
+    expect(cache.put(std::move(second.mesh)),
+           "cache second mesh");
+    expect(cache.get(first_key).has_value(),
+           "cache hit");
+    expect(!cache.get("missing-key").has_value(),
+           "cache miss");
+    expect(cache.put(std::move(third.mesh)),
+           "cache third mesh after eviction");
+
+    const auto stats = cache.stats();
+    expect(stats.entries == 2U,
+           "cache entry bound");
+    expect(stats.evictions >= 1U,
+           "cache eviction recorded");
+    expect(!cache.get(first_key).has_value(),
+           "oldest mesh evicted");
+    expect(cache.get(second_key).has_value() &&
+               cache.get(third_key).has_value(),
+           "newer meshes retained");
+}
+
 } // namespace
 
 int main() {
@@ -126,6 +173,7 @@ int main() {
         primitive_meshing_test();
         deterministic_contract_test();
         collision_policy_test();
+        bounded_cache_test();
         std::cout << "OpenGenesisLINK GenesisMesher tests passed\n";
         return 0;
     } catch (const std::exception& error) {
