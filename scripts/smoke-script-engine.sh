@@ -160,8 +160,8 @@ assert summary['lsl_functions']['partial']==34,summary
 assert summary['lsl_functions']['implemented_percent']==11.85,summary
 assert summary['lsl_functions']['executable_percent']==18.36,summary
 assert summary['lsl_events']['implemented']==1,summary
-assert summary['lsl_events']['partial']==10,summary
-assert summary['lsl_events']['executable_percent']==25.00,summary
+assert summary['lsl_events']['partial']==12,summary
+assert summary['lsl_events']['executable_percent']==29.55,summary
 assert summary['ogl']['implemented']==37,summary
 assert summary['ogl']['implemented_percent']==100.00,summary
 
@@ -381,6 +381,9 @@ collision_lsl=(
     '  state_entry() { llSetStatus(STATUS_PHYSICS, TRUE); }\n'
     '  collision_start(integer n) { llOwnerSay("collision-auto"); }\n'
     '  land_collision_start(vector p) { llOwnerSay("land-auto"); }\n'
+    '  touch_start(integer n) { llOwnerSay("touch-start-auto"); }\n'
+    '  touch(integer n) { llOwnerSay("touch-auto"); }\n'
+    '  touch_end(integer n) { llOwnerSay("touch-end-auto"); }\n'
     '}\n'
 )
 status,collision_script=api('/v1/scripts','POST',{
@@ -393,6 +396,25 @@ def notification_bodies():
     status,payload=api('/v1/notifications',token=token)
     assert status==200,payload
     return [item['body'] for item in payload['notifications']]
+
+# 16.0: authenticated Scene interaction becomes automatic LSL touch events.
+for request_id,phase in ((102,'start'),(103,'touch'),(104,'end')):
+    send(scene,128,request_id,
+         f'id={collision_entity}\nphase={phase}\n')
+    msg,_,interaction_ack=recv(scene)
+    assert msg==129,interaction_ack
+    assert 'status=accepted' in interaction_ack,interaction_ack
+    assert f'phase={phase}' in interaction_ack,interaction_ack
+
+touch_seen=False
+for _ in range(20):
+    time.sleep(0.20)
+    bodies=notification_bodies()
+    if all(item in bodies for item in (
+            'touch-start-auto','touch-auto','touch-end-auto')):
+        touch_seen=True
+        break
+assert touch_seen,notification_bodies()
 
 land_seen=False
 for _ in range(20):
@@ -426,5 +448,5 @@ assert collision_record['event_count']>=3,collision_record
 
 send(scene,42,120,'')
 scene.close()
-print('OpenGenesisLINK 16.0 OGL/LSL ScriptEngine + automatic collision events smoke: PASS')
+print('OpenGenesisLINK 16.0 OGL/LSL ScriptEngine + automatic collision/touch events smoke: PASS')
 PY
