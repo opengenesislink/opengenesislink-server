@@ -1,5 +1,27 @@
 # Changelog
 
+## 16.0.0-dev — 2026-09-21
+
+Script & LSL Event Expansion milestone.
+
+- bumped the development line to `16.0.0-dev`
+- expanded deterministic LSL builtin coverage to 62 implemented plus 34 partial functions out of the canonical 523-function catalog
+- retained the native OGL catalog at 37/37 implemented
+- added automatic Script state lifecycle delivery with `state_exit` followed by `state_entry` on real state transitions
+- connected native Region Runtime collision and terrain-contact lifecycle to LSL `collision_start`, `collision`, `collision_end`, `land_collision_start`, `land_collision` and `land_collision_end`
+- introduced authenticated Scene object interaction messages and the `scene.object.interact` ticket capability
+- Scene interaction now generates server-authoritative `touch_start`, `touch` and `touch_end` events for object-bound scripts
+- added first native LSL `changed` bitmask sources: `CHANGED_SCALE = 0x008` for actual scale mutations and `CHANGED_LINK = 0x020` for link/unlink mutations
+- link changes are dispatched to the affected linkset members rather than being synthesized only for the initiating object
+- added API discovery capabilities `scene-interaction-v1`, `lsl-touch-events-v1` and `lsl-changed-events-v1`
+- made the Platform Services smoke version-aware so completed 15.0 regression coverage continues to run unchanged on later development branches
+- expanded cross-platform unit coverage for Scene interaction identity validation, touch event sequencing, scale-change masks and link-change masks
+- expanded the Core+World ScriptEngine process smoke to exercise real Scene touch and changed event sources instead of only manual Script event injection
+- current LSL event matrix: 44 total, 1 implemented, 13 partial, 29 recognized, 1 unsupported; executable including partial is 31.82%
+- current LSL function matrix: 523 total, 62 implemented, 34 partial, 402 recognized, 25 unsupported; executable including partial is 18.36%
+- verified code checkpoint before milestone documentation: `9100b31a167a7e464145681cbd0d017366aff21f` passed Linux x86_64, Linux ARM64/aarch64, Windows x86_64/MSVC, SQLite, PostgreSQL and MariaDB CI
+- 16.0 does not claim complete detected-touch metadata, complete `CHANGED_*` coverage, attach/detach, permissions events, link messages, sensor events, HTTP/DataServer semantics or full Second Life LSL compatibility
+
 ## 15.0.0-dev — 2026-09-20
 
 Platform Services Completion milestone.
