@@ -7,6 +7,7 @@
 #include <numbers>
 #include <sstream>
 #include <string>
+#include <utility>
 
 namespace opengenesis::meshing {
 namespace {
