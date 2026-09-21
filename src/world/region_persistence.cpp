@@ -4,6 +4,7 @@
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/world/region_runtime.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
@@ -130,7 +131,8 @@ void RegionPersistence::load(RegionRuntime& runtime) {
             const auto fields = split_tabs(line);
             if (fields.size() != 12 && fields.size() != 13 &&
                 fields.size() != 17 && fields.size() != 20 &&
-                fields.size() != 26 && fields.size() != 33) {
+                fields.size() != 26 && fields.size() != 33 &&
+                fields.size() != 38) {
                 continue;
             }
             try {
@@ -144,7 +146,8 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                 const auto owner = fields.size() >= 13 ? text_unhex(fields[12]) : std::string{};
                 const bool has_permissions =
                     fields.size() == 17 || fields.size() == 20 ||
-                    fields.size() == 26 || fields.size() == 33;
+                    fields.size() == 26 || fields.size() == 33 ||
+                    fields.size() == 38;
                 const auto group =
                     has_permissions ? text_unhex(fields[13]) : std::string{};
                 const auto owner_permissions =
@@ -168,12 +171,13 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                 std::uint32_t link_number = 1;
                 std::string floating_text;
                 if (fields.size() == 20 || fields.size() == 26 ||
-                    fields.size() == 33) {
+                    fields.size() == 33 || fields.size() == 38) {
                     velocity = {
                         std::stod(fields[17]), std::stod(fields[18]),
                         std::stod(fields[19])};
                 }
-                if (fields.size() == 26 || fields.size() == 33) {
+                if (fields.size() == 26 || fields.size() == 33 ||
+                    fields.size() == 38) {
                     angular_velocity = {
                         std::stod(fields[20]), std::stod(fields[21]),
                         std::stod(fields[22])};
@@ -189,7 +193,7 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                 double angular_damping = 0.04;
                 double gravity_scale = 1.0;
                 double buoyancy = 0.0;
-                if (fields.size() == 33) {
+                if (fields.size() == 33 || fields.size() == 38) {
                     mass = std::stod(fields[26]);
                     restitution = std::stod(fields[27]);
                     friction = std::stod(fields[28]);
@@ -198,6 +202,26 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                     gravity_scale = std::stod(fields[31]);
                     buoyancy = std::stod(fields[32]);
                 }
+                physics::CollisionShape collision_shape =
+                    physics::CollisionShape::sphere;
+                physics::Vec3 half_extents{
+                    std::max(0.05, transform.scale.x * 0.5),
+                    std::max(0.05, transform.scale.y * 0.5),
+                    std::max(0.05, transform.scale.z * 0.5)};
+                double capsule_half_height = 0.5;
+                if (fields.size() == 38) {
+                    const auto parsed =
+                        physics::parse_collision_shape(
+                            fields[33].c_str());
+                    if (!parsed) continue;
+                    collision_shape = *parsed;
+                    half_extents = {
+                        std::stod(fields[34]),
+                        std::stod(fields[35]),
+                        std::stod(fields[36])};
+                    capsule_half_height =
+                        std::stod(fields[37]);
+                }
                 (void)runtime.restore_object(
                     id, name, transform, physical, owner, group,
                     owner_permissions, group_permissions,
@@ -205,7 +229,9 @@ void RegionPersistence::load(RegionRuntime& runtime) {
                     floating_text, velocity, angular_velocity,
                     mass, restitution, friction,
                     linear_damping, angular_damping,
-                    gravity_scale, buoyancy);
+                    gravity_scale, buoyancy,
+                    collision_shape, half_extents,
+                    capsule_half_height);
             } catch (...) {
             }
         }
@@ -245,7 +271,7 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
         const auto temporary = path.string() + ".tmp";
         std::ofstream output(temporary, std::ios::trunc);
         if (!output) throw std::runtime_error("cannot write scene persistence");
-        output << "# OpenGenesisLINK persistent scene objects v6\n"
+        output << "# OpenGenesisLINK persistent scene objects v7\n"
                << std::setprecision(17);
         for (const auto& entity : runtime.snapshot_entities()) {
             if (entity.kind != EntityKind::object) continue;
@@ -259,6 +285,13 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
             double angular_damping = 0.04;
             double gravity_scale = 1.0;
             double buoyancy = 0.0;
+            physics::CollisionShape collision_shape =
+                physics::CollisionShape::sphere;
+            physics::Vec3 half_extents{
+                std::max(0.05, t.scale.x * 0.5),
+                std::max(0.05, t.scale.y * 0.5),
+                std::max(0.05, t.scale.z * 0.5)};
+            double capsule_half_height = 0.5;
             if (const auto transfer = runtime.export_object(entity.id)) {
                 velocity = transfer->velocity;
                 angular_velocity = transfer->angular_velocity;
@@ -269,6 +302,10 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
                 angular_damping = transfer->angular_damping;
                 gravity_scale = transfer->gravity_scale;
                 buoyancy = transfer->buoyancy;
+                collision_shape = transfer->collision_shape;
+                half_extents = transfer->half_extents;
+                capsule_half_height =
+                    transfer->capsule_half_height;
             }
             output << entity.id << '\t' << text_hex(entity.name) << '\t'
                    << t.position.x << '\t' << t.position.y << '\t'
@@ -296,7 +333,13 @@ void RegionPersistence::save(const RegionRuntime& runtime, const bool force) {
                    << linear_damping << '\t'
                    << angular_damping << '\t'
                    << gravity_scale << '\t'
-                   << buoyancy << '\n';
+                   << buoyancy << '\t'
+                   << physics::collision_shape_name(
+                          collision_shape) << '\t'
+                   << half_extents.x << '\t'
+                   << half_extents.y << '\t'
+                   << half_extents.z << '\t'
+                   << capsule_half_height << '\n';
         }
         output.close();
         if (!output) throw std::runtime_error("cannot flush scene persistence");
