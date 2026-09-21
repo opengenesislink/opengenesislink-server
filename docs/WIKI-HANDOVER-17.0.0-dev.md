@@ -50,6 +50,8 @@ Implemented mesh controls:
 - vertical segments
 - triangle budget
 - UV toggle
+- bounded thread-safe in-memory cache
+- cache hit/miss/eviction metrics
 
 Implemented output and validation:
 
@@ -67,7 +69,9 @@ Collision-policy output:
 - convex hull
 - triangle mesh
 
-The policy does not imply that triangle-mesh narrowphase is complete. That integration is a later 17.0 step.
+The new PhysicsShapeBuilder turns that output into an explicit Physics collision plan. Native box/sphere/capsule plans are solver-ready. Cylinder/complex plans remain deliberately not solver-ready until the convex/triangle narrowphase exists.
+
+The policy does not imply that triangle-mesh narrowphase is complete.
 
 ## Concept addition
 
@@ -79,13 +83,24 @@ See:
 - `docs/PROJECT-CONCEPT-ROADMAP.md`
 - `docs/PHYSICS.md`
 
+## Additional 17.0 work completed
+
+- Region Runtime scale-aware shape state
+- Region Runtime raycast
+- capsule Avatar controller configuration and jump
+- spring constraints
+- Scene Physics v3 actions
+- Scene Persistence v7 collision-shape state
+- Object Crossing collision-shape state
+- PhysicsShapeBuilder bridge
+- bounded GenesisMesher cache
+- API capability discovery for Physics v3 and GenesisMesher
+
 ## Remaining 17.0 work
 
-- Region Runtime shape/raycast/jump integration
-- Scene Physics v3 operations
-- persistence/crossing shape state
-- PhysicsShapeBuilder bridge
-- first static mesh acceleration data
-- World/Script integration for raycast and shape APIs
+- first static mesh acceleration data / BVH
+- convex-hull generation
+- actual triangle-mesh narrowphase
+- optional OGL scripting exposure for shape/raycast
 - process smoke expansion
 - full cross-platform CI acceptance
