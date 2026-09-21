@@ -291,6 +291,14 @@ int main() {
             "    rotation identity = llEuler2Rot(<0,0,0>);\n"
             "    vector forward = llRot2Fwd(identity);\n"
             "    float angle = llAngleBetween(identity, <0,0,0,1>);\n"
+            "    integer modpow = llModPow(2, 10, 1000);\n"
+            "    string md5 = llMD5String(\"abc\", 7);\n"
+            "    string replaced = llReplaceSubString(\"one two two\", \"two\", \"T\", 1);\n"
+            "    list repeated = llCSV2List(\"a,b,a\");\n"
+            "    list needle = llCSV2List(\"a\");\n"
+            "    integer next_match = llListFindListNext(repeated, needle, 1);\n"
+            "    list sequence = llCSV2List(\"1,2,3,4,5\");\n"
+            "    list strided = llList2ListStrided(sequence, 0, 4, 2);\n"
             "    llOwnerSay(second);\n"
             "  }\n"
             "}\n";
@@ -318,6 +326,14 @@ int main() {
                         "<1.000000, 0.000000, 0.000000>" &&
                     lsl_builtin_run.state.variables.at("angle") ==
                         "0.000000" &&
+                    lsl_builtin_run.state.variables.at("modpow") == "24" &&
+                    lsl_builtin_run.state.variables.at("md5") ==
+                        "8bc1e502f54f251099584fafc5c6969c" &&
+                    lsl_builtin_run.state.variables.at("replaced") ==
+                        "one T two" &&
+                    lsl_builtin_run.state.variables.at("next_match") == "2" &&
+                    lsl_builtin_run.state.variables.at("strided") ==
+                        "[\"1\", \"3\", \"5\"]" &&
                     lsl_builtin_run.actions.size() == 1 &&
                     lsl_builtin_run.actions.front().value == "two",
                 "expanded deterministic LSL builtins execute");
@@ -380,20 +396,20 @@ int main() {
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::implemented) ==
-                        56 &&
+                        62 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::partial) ==
-                        29 &&
+                        34 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::recognized) ==
-                        413 &&
+                        402 &&
                     count_status(
                         lsl_functions,
                         opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
                         25,
-                "LSL function status matrix matches 12.0 contract");
+                "LSL function status matrix matches 16.0 contract");
         require(lsl_events.size() == 44 &&
                     count_status(
                         lsl_events,
@@ -402,8 +418,16 @@ int main() {
                     count_status(
                         lsl_events,
                         opengenesis::scripting::ScriptFeatureStatus::partial) ==
-                        3,
-                "LSL event status matrix matches 9.0 contract");
+                        13 &&
+                    count_status(
+                        lsl_events,
+                        opengenesis::scripting::ScriptFeatureStatus::recognized) ==
+                        29 &&
+                    count_status(
+                        lsl_events,
+                        opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
+                        1,
+                "LSL event status matrix matches 16.0 contract");
         require(ogl_features.size() == 37 &&
                     count_status(
                         ogl_features,
@@ -638,6 +662,92 @@ int main() {
         }
 
 
+        {
+            opengenesis::scripting::ScriptRuntime scripts(scripts_path);
+            const std::string lifecycle_source =
+                "default {\n"
+                "  touch_start(integer n) {\n"
+                "    llOwnerSay(\"touch\");\n"
+                "    state active;\n"
+                "  }\n"
+                "  state_exit() { llOwnerSay(\"exit\"); }\n"
+                "}\n"
+                "active {\n"
+                "  state_entry() { llOwnerSay(\"enter\"); }\n"
+                "  collision_start(integer n) { llOwnerSay(\"hit\"); }\n"
+                "  land_collision_start(vector p) { llOwnerSay(\"land\"); }\n"
+                "}\n";
+            require(
+                scripts.upsert(
+                    {.id = "script-lifecycle",
+                     .object_id = "region-a/88",
+                     .owner_user_id = "user-1",
+                     .source_hash = "pending",
+                     .language =
+                         opengenesis::scripting::ScriptLanguage::lsl,
+                     .source = {},
+                     .vm_state = {},
+                     .state = "default",
+                     .enabled = true,
+                     .timer_interval_ms = 0,
+                     .next_timer_unix_ms = 0,
+                     .chat_channel = 0,
+                     .chat_enabled = false,
+                     .event_count = 0},
+                    reason),
+                "state lifecycle Script record created");
+            require(
+                scripts.set_program(
+                    "script-lifecycle",
+                    lifecycle_source, reason),
+                "state lifecycle LSL source stored");
+
+            const auto transition =
+                scripts.execute_event(
+                    "script-lifecycle", "touch_start",
+                    30000, reason, {}, "1");
+            require(
+                transition &&
+                    transition->state.state == "active" &&
+                    transition->actions.size() == 4 &&
+                    transition->actions[0].type ==
+                        opengenesis::scripting::ScriptActionType::notify_owner &&
+                    transition->actions[0].value == "touch" &&
+                    transition->actions[1].type ==
+                        opengenesis::scripting::ScriptActionType::state_change &&
+                    transition->actions[2].type ==
+                        opengenesis::scripting::ScriptActionType::notify_owner &&
+                    transition->actions[2].value == "exit" &&
+                    transition->actions[3].type ==
+                        opengenesis::scripting::ScriptActionType::notify_owner &&
+                    transition->actions[3].value == "enter",
+                "state changes automatically dispatch state_exit and state_entry");
+
+            const auto collision_events =
+                scripts.dispatch_object_event(
+                    "region-a", 88, "collision_start", "1");
+            require(
+                collision_events.size() == 1U &&
+                    collision_events.front().script_id ==
+                        "script-lifecycle" &&
+                    scripts.dispatch_object_event(
+                        "region-a", 89,
+                        "collision_start", "1").empty(),
+                "World Script events bind only to the selected Scene object");
+            const auto collision =
+                scripts.execute_event(
+                    collision_events.front().script_id,
+                    collision_events.front().type,
+                    30001, reason, {},
+                    collision_events.front().payload);
+            require(
+                collision && collision->actions.size() == 1U &&
+                    collision->actions.front().type ==
+                        opengenesis::scripting::ScriptActionType::notify_owner &&
+                    collision->actions.front().value == "hit",
+                "object collision event executes active LSL handler");
+        }
+
         const auto crossing_path = (root / "crossings.db").string();
         std::string crossing_id;
         std::string reservation_token;
@@ -742,10 +852,10 @@ int main() {
                 "crossing id is signed into Scene Ticket");
 
         std::filesystem::remove_all(root);
-        std::cout << "OpenGenesisLINK 9.0 ScriptEngine/LSL/OGL runtime tests: PASS\n";
+        std::cout << "OpenGenesisLINK 16.0 ScriptEngine/LSL/OGL runtime tests: PASS\n";
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "OpenGenesisLINK 9.0 runtime test failure: " << error.what() << '\n';
+        std::cerr << "OpenGenesisLINK 16.0 runtime test failure: " << error.what() << '\n';
         return 1;
     }
 }

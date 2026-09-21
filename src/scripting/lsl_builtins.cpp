@@ -365,7 +365,11 @@ bool lsl_builtin_implemented(const std::string_view name) noexcept {
         "llListInsertList", "llListReplaceList", "llEuler2Rot",
         "llAxisAngle2Rot", "llRot2Angle", "llRot2Axis", "llRot2Euler",
         "llRot2Fwd", "llRot2Left", "llRot2Up", "llRotBetween",
-        "llAngleBetween"
+        "llAngleBetween", "llFrand", "llGetGMTclock",
+        "llGetWallclock", "llGetTimeOfDay", "llMD5String",
+        "llModPow", "llReplaceSubString", "llListSort",
+        "llListRandomize", "llListFindListNext",
+        "llList2ListStrided"
     };
     return implemented.contains(std::string{name});
 }
@@ -832,6 +836,272 @@ std::optional<std::string> evaluate_lsl_builtin(
             qa.x*qb.x+qa.y*qb.y+qa.z*qb.z+qa.w*qb.w);
         reason.clear();
         return float_string(2.0*std::acos(std::clamp(dot,0.0,1.0)));
+    }
+
+    if (name == "llFrand") {
+        const auto magnitude = one_float();
+        if (!magnitude) return std::nullopt;
+        if (*magnitude <= 0.0) {
+            reason.clear();
+            return "0.000000";
+        }
+        thread_local std::mt19937_64 generator{
+            std::random_device{}()};
+        std::uniform_real_distribution<double> distribution(
+            0.0, *magnitude);
+        reason.clear();
+        return float_string(distribution(generator));
+    }
+    if (name == "llGetGMTclock" ||
+        name == "llGetWallclock" ||
+        name == "llGetTimeOfDay") {
+        if (!require_count(0U)) return std::nullopt;
+        const auto now = std::chrono::system_clock::now();
+        const auto seconds =
+            std::chrono::duration_cast<std::chrono::seconds>(
+                now.time_since_epoch()).count();
+        auto day_seconds = seconds % 86400LL;
+        if (day_seconds < 0) day_seconds += 86400LL;
+        reason.clear();
+        return float_string(
+            static_cast<double>(day_seconds));
+    }
+    if (name == "llMD5String") {
+        if (!require_count(2U)) return std::nullopt;
+        const auto nonce = integer_value(arguments[1]);
+        if (!nonce) {
+            reason = "lsl-builtin-integer-required";
+            return std::nullopt;
+        }
+        const auto value = digest_hex(
+            EVP_md5(),
+            arguments[0] + ":" + std::to_string(*nonce));
+        if (value.empty()) {
+            reason = "lsl-builtin-digest-failed";
+            return std::nullopt;
+        }
+        reason.clear();
+        return value;
+    }
+    if (name == "llModPow") {
+        if (!require_count(3U)) return std::nullopt;
+        const auto base = integer_value(arguments[0]);
+        const auto exponent = integer_value(arguments[1]);
+        const auto modulus = integer_value(arguments[2]);
+        if (!base || !exponent || !modulus ||
+            *exponent < 0 || *modulus <= 0 ||
+            *base < std::numeric_limits<std::int32_t>::min() ||
+            *base > std::numeric_limits<std::int32_t>::max() ||
+            *exponent > std::numeric_limits<std::int32_t>::max() ||
+            *modulus > std::numeric_limits<std::int32_t>::max()) {
+            reason = "lsl-builtin-modpow-range";
+            return std::nullopt;
+        }
+        const std::int64_t mod = *modulus;
+        std::int64_t factor = *base % mod;
+        if (factor < 0) factor += mod;
+        std::int64_t value = 1 % mod;
+        std::int64_t power = *exponent;
+        while (power > 0) {
+            if ((power & 1LL) != 0) {
+                value = (value * factor) % mod;
+            }
+            factor = (factor * factor) % mod;
+            power >>= 1LL;
+        }
+        reason.clear();
+        return std::to_string(value);
+    }
+    if (name == "llReplaceSubString") {
+        if (!require_count(4U)) return std::nullopt;
+        const auto count = integer_value(arguments[3]);
+        if (!count) {
+            reason = "lsl-builtin-integer-required";
+            return std::nullopt;
+        }
+        auto output = arguments[0];
+        const auto& pattern = arguments[1];
+        const auto& replacement = arguments[2];
+        if (pattern.empty() || *count == 0) {
+            reason.clear();
+            return output;
+        }
+
+        std::size_t replacements = 0U;
+        const auto limit = static_cast<std::size_t>(
+            std::min<long long>(
+                std::llabs(*count), 4096LL));
+        if (*count > 0) {
+            std::size_t position = 0U;
+            while (replacements < limit) {
+                position = output.find(pattern, position);
+                if (position == std::string::npos) break;
+                output.replace(
+                    position, pattern.size(), replacement);
+                position += replacement.size();
+                ++replacements;
+                if (output.size() > 64U * 1024U) {
+                    reason = "lsl-builtin-result-too-large";
+                    return std::nullopt;
+                }
+            }
+        } else {
+            std::size_t before = output.size();
+            while (replacements < limit) {
+                const auto position =
+                    output.rfind(pattern, before);
+                if (position == std::string::npos) break;
+                output.replace(
+                    position, pattern.size(), replacement);
+                before = position == 0U ? 0U : position - 1U;
+                ++replacements;
+                if (output.size() > 64U * 1024U) {
+                    reason = "lsl-builtin-result-too-large";
+                    return std::nullopt;
+                }
+                if (position == 0U) break;
+            }
+        }
+        reason.clear();
+        return output;
+    }
+    if (name == "llListFindListNext") {
+        if (!require_count(3U)) return std::nullopt;
+        const auto source = split_list(arguments[0]);
+        const auto test = split_list(arguments[1]);
+        const auto start = integer_value(arguments[2]);
+        if (!start) {
+            reason = "lsl-builtin-integer-required";
+            return std::nullopt;
+        }
+        if (test.empty() || source.empty()) {
+            reason.clear();
+            return "-1";
+        }
+        long long first = *start;
+        if (first < 0) {
+            first += static_cast<long long>(source.size());
+        }
+        first = std::max<long long>(first, 0LL);
+        for (std::size_t index =
+                 static_cast<std::size_t>(first);
+             index + test.size() <= source.size();
+             ++index) {
+            if (std::equal(
+                    test.begin(), test.end(),
+                    source.begin() +
+                        static_cast<std::ptrdiff_t>(index))) {
+                reason.clear();
+                return std::to_string(index);
+            }
+        }
+        reason.clear();
+        return "-1";
+    }
+    if (name == "llList2ListStrided") {
+        if (!require_count(4U)) return std::nullopt;
+        const auto source = split_list(arguments[0]);
+        const auto start = integer_value(arguments[1]);
+        const auto end = integer_value(arguments[2]);
+        const auto stride = integer_value(arguments[3]);
+        if (!start || !end || !stride || *stride == 0) {
+            reason = "lsl-builtin-invalid-stride";
+            return std::nullopt;
+        }
+        const auto selected =
+            list_slice(source, *start, *end, false);
+        std::vector<std::string> result;
+        const auto step = static_cast<std::size_t>(
+            std::llabs(*stride));
+        if (*stride > 0) {
+            for (std::size_t index = 0U;
+                 index < selected.size();
+                 index += step) {
+                result.push_back(selected[index]);
+            }
+        } else {
+            for (std::size_t offset = 0U;
+                 offset < selected.size();
+                 offset += step) {
+                result.push_back(
+                    selected[selected.size() - 1U - offset]);
+            }
+        }
+        reason.clear();
+        return list_string(result);
+    }
+    if (name == "llListSort") {
+        if (!require_count(3U)) return std::nullopt;
+        auto source = split_list(arguments[0]);
+        const auto stride = integer_value(arguments[1]);
+        const auto ascending = integer_value(arguments[2]);
+        if (!stride || !ascending || *stride <= 0) {
+            reason = "lsl-builtin-invalid-stride";
+            return std::nullopt;
+        }
+        const auto step = static_cast<std::size_t>(*stride);
+        if (step > source.size() ||
+            source.size() % step != 0U) {
+            reason.clear();
+            return list_string(source);
+        }
+        std::vector<std::vector<std::string>> rows;
+        for (std::size_t index = 0U;
+             index < source.size(); index += step) {
+            rows.emplace_back(
+                source.begin() +
+                    static_cast<std::ptrdiff_t>(index),
+                source.begin() +
+                    static_cast<std::ptrdiff_t>(index + step));
+        }
+        std::stable_sort(
+            rows.begin(), rows.end(),
+            [&](const auto& left, const auto& right) {
+                const auto l = list_value(left.front());
+                const auto r = list_value(right.front());
+                return *ascending != 0 ? l < r : l > r;
+            });
+        source.clear();
+        for (const auto& row : rows) {
+            source.insert(
+                source.end(), row.begin(), row.end());
+        }
+        reason.clear();
+        return list_string(source);
+    }
+    if (name == "llListRandomize") {
+        if (!require_count(2U)) return std::nullopt;
+        auto source = split_list(arguments[0]);
+        const auto stride = integer_value(arguments[1]);
+        if (!stride || *stride <= 0) {
+            reason = "lsl-builtin-invalid-stride";
+            return std::nullopt;
+        }
+        const auto step = static_cast<std::size_t>(*stride);
+        if (step > source.size() ||
+            source.size() % step != 0U) {
+            reason.clear();
+            return list_string(source);
+        }
+        std::vector<std::vector<std::string>> rows;
+        for (std::size_t index = 0U;
+             index < source.size(); index += step) {
+            rows.emplace_back(
+                source.begin() +
+                    static_cast<std::ptrdiff_t>(index),
+                source.begin() +
+                    static_cast<std::ptrdiff_t>(index + step));
+        }
+        thread_local std::mt19937_64 generator{
+            std::random_device{}()};
+        std::shuffle(rows.begin(), rows.end(), generator);
+        source.clear();
+        for (const auto& row : rows) {
+            source.insert(
+                source.end(), row.begin(), row.end());
+        }
+        reason.clear();
+        return list_string(source);
     }
 
     if (name == "llGetUnixTime") {

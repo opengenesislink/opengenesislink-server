@@ -536,7 +536,7 @@ int main(int argc, char** argv) {
             if (!accepted) continue;
             std::thread([socket = std::move(*accepted), worlds, regions, presences,
                          node_sessions, script_world_actions, object_crossings, scripts,
-                         lease_timeout, world_node_secret]() mutable {
+                         script_host, lease_timeout, world_node_secret]() mutable {
                 std::string node_id;
                 std::uint64_t generation = 0;
                 try {
@@ -675,6 +675,107 @@ int main(int argc, char** argv) {
                                                frame.request_id,
                                                protocol::payload_from_string(
                                                    ok ? "status=ok\n" : "reason=stale-region\n")});
+                        } else if (frame.type ==
+                                   protocol::MessageType::script_event) {
+                            const auto region_id = field(body, "region");
+                            const auto region = regions->find(region_id);
+                            const bool owns_region =
+                                region && region->node_id == node_id &&
+                                region->node_generation == generation;
+                            const auto type = field(body, "type");
+                            const auto entity_id = u64(body, "entity");
+                            const auto sequence = u64(body, "sequence");
+                            const bool collision_event =
+                                type == "collision_start" ||
+                                type == "collision" ||
+                                type == "collision_end";
+                            const bool land_event =
+                                type == "land_collision_start" ||
+                                type == "land_collision" ||
+                                type == "land_collision_end";
+                            const bool touch_event =
+                                type == "touch_start" ||
+                                type == "touch" ||
+                                type == "touch_end";
+                            const bool changed_event =
+                                type == "changed";
+                            const auto change_mask =
+                                changed_event ? u64(body, "change") : 0U;
+                            if (!owns_region || entity_id == 0U ||
+                                sequence == 0U ||
+                                (changed_event && change_mask == 0U) ||
+                                (!collision_event && !land_event &&
+                                 !touch_event && !changed_event)) {
+                                socket.send_frame({
+                                    protocol::MessageType::error,
+                                    frame.request_id,
+                                    protocol::payload_from_string(
+                                        "reason=invalid-script-event\n")});
+                                continue;
+                            }
+
+                            std::string event_payload;
+                            if (changed_event) {
+                                event_payload =
+                                    std::to_string(change_mask);
+                            } else if (collision_event || touch_event) {
+                                event_payload = "1";
+                            } else {
+                                std::ostringstream payload;
+                                payload << std::fixed
+                                        << std::setprecision(6)
+                                        << '<' << number(body, "x")
+                                        << ", " << number(body, "y")
+                                        << ", " << number(body, "z")
+                                        << '>';
+                                event_payload = payload.str();
+                            }
+
+                            std::size_t dispatched = 0U;
+                            std::size_t executed = 0U;
+                            std::size_t host_errors = 0U;
+                            const auto events =
+                                scripts->dispatch_object_event(
+                                    region_id, entity_id, type,
+                                    std::move(event_payload));
+                            dispatched = events.size();
+                            const auto now_ms = unix_ms();
+                            for (const auto& event : events) {
+                                const auto script =
+                                    scripts->find(event.script_id);
+                                if (!script) continue;
+                                std::string reason;
+                                const auto result =
+                                    scripts->execute_event(
+                                        event.script_id, event.type,
+                                        now_ms, reason, {},
+                                        event.payload);
+                                if (!result) {
+                                    ++host_errors;
+                                    continue;
+                                }
+                                ++executed;
+                                const auto host_result =
+                                    script_host->apply(
+                                        script->owner_user_id,
+                                        script->id,
+                                        result->actions,
+                                        script->object_id);
+                                host_errors +=
+                                    host_result.errors.size();
+                            }
+
+                            std::ostringstream ack;
+                            ack << "status=ok\n"
+                                << "sequence=" << sequence << '\n'
+                                << "dispatched=" << dispatched << '\n'
+                                << "executed=" << executed << '\n'
+                                << "host_errors=" << host_errors << '\n';
+                            socket.send_frame({
+                                protocol::MessageType::script_event_ack,
+                                frame.request_id,
+                                protocol::payload_from_string(
+                                    ack.str())});
                         } else if (frame.type == protocol::MessageType::script_action_poll) {
                             const auto region_id = field(body, "region");
                             const auto region = regions->find(region_id);

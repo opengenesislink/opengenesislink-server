@@ -140,7 +140,9 @@ ScriptFeatureStatus status_for(std::string_view name) {
         // Executable pure builtins with deliberately conservative fidelity
         // status because edge behavior/Unicode still differs from SL LSL.
         "llChar", "llOrd", "llDeleteSubString", "llGetSubString",
-        "llInsertString", "llStringTrim", "llSqrt", "llLog", "llLog10"
+        "llInsertString", "llStringTrim", "llSqrt", "llLog", "llLog10",
+        "llGetTimeOfDay", "llReplaceSubString", "llListSort",
+        "llListRandomize", "llList2ListStrided"
     };
     static const std::unordered_set<std::string> unsupported = {
         "llCloseRemoteDataChannel", "llCloud", "llGodLikeRezObject",

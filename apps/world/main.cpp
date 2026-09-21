@@ -24,6 +24,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -84,6 +85,39 @@ std::string presence_snapshot_payload(const world::RegionRuntime& runtime) {
              << entity.transform.position.z << '\n';
     }
     body << "count=" << count << '\n';
+    return body.str();
+}
+
+bool script_world_event_type(const std::string_view type) {
+    return type == "collision_start" ||
+           type == "collision" ||
+           type == "collision_end" ||
+           type == "land_collision_start" ||
+           type == "land_collision" ||
+           type == "land_collision_end" ||
+           type == "touch_start" ||
+           type == "touch" ||
+           type == "touch_end" ||
+           type == "changed";
+}
+
+std::string script_world_event_payload(
+    const world::RegionRuntime& runtime,
+    const world::SceneEvent& event) {
+    std::ostringstream body;
+    body << std::fixed << std::setprecision(6)
+         << "region=" << runtime.id() << '\n'
+         << "sequence=" << event.sequence << '\n'
+         << "type=" << event.type << '\n'
+         << "entity=" << event.entity_id << '\n'
+         << "text_b64="
+         << opengenesis::security::base64_encode(event.text) << '\n'
+         << "x=" << event.transform.position.x << '\n'
+         << "y=" << event.transform.position.y << '\n'
+         << "z=" << event.transform.position.z << '\n';
+    if (event.type == "changed") {
+        body << "change=" << event.text << '\n';
+    }
     return body.str();
 }
 
@@ -816,6 +850,8 @@ int main(int argc, char** argv) {
 
         std::vector<std::shared_ptr<world::RegionRuntime>> runtimes;
         std::vector<std::unique_ptr<world::RegionPersistence>> persistence;
+        std::unordered_map<std::string, std::uint64_t>
+            script_event_cursors;
         runtimes.reserve(region_configs.size());
         persistence.reserve(region_configs.size());
         for (const auto& region : region_configs) {
@@ -824,6 +860,8 @@ int main(int argc, char** argv) {
             auto store = std::make_unique<world::RegionPersistence>(storage_root / region.id);
             store->load(*runtime);
             runtime->start();
+            script_event_cursors[region.id] =
+                runtime->latest_sequence();
             runtimes.push_back(std::move(runtime));
             persistence.push_back(std::move(store));
         }
@@ -988,7 +1026,34 @@ int main(int argc, char** argv) {
                                 }
                             }
                         }
-                        next_script_poll = now + std::chrono::milliseconds{100};
+                        for (const auto& runtime : runtimes) {
+                            auto& cursor =
+                                script_event_cursors[runtime->id()];
+                            const auto events =
+                                runtime->events_since(cursor, 128U);
+                            for (const auto& event : events) {
+                                if (!script_world_event_type(event.type)) {
+                                    cursor = event.sequence;
+                                    continue;
+                                }
+                                socket.send_frame({
+                                    protocol::MessageType::script_event,
+                                    ++request_id,
+                                    protocol::payload_from_string(
+                                        script_world_event_payload(
+                                            *runtime, event))});
+                                const auto event_ack =
+                                    socket.receive_frame();
+                                if (event_ack.type !=
+                                    protocol::MessageType::script_event_ack) {
+                                    throw std::runtime_error(
+                                        "script event rejected");
+                                }
+                                cursor = event.sequence;
+                            }
+                        }
+                        next_script_poll =
+                            now + std::chrono::milliseconds{100};
                     }
                     if (now >= next_object_crossing_poll) {
                         for (const auto& runtime : runtimes) {

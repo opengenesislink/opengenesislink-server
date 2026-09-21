@@ -23,6 +23,8 @@ print(*ports)
 PY
 )
 export CORE_PORT ADMIN_PORT
+EXPECTED_VERSION="$(sed -e 's/-dev$//' VERSION | tr -d '\r\n')"
+export EXPECTED_VERSION
 
 CFG=/tmp/ogl-core-platform-15.toml
 ADMIN_KEY="platform-15-smoke-admin-key-0123456789abcdef"
@@ -151,7 +153,7 @@ def register(username,display):
     return payload
 
 _,info=api('/v1',expect=200)
-assert info['version']=='15.0.0',info
+assert info['version']==os.environ['EXPECTED_VERSION'],info
 for cap in (
     'social-policy-v1','group-invites-v1','parcel-access-v1',
     'economy-ledger-v1','economy-escrow-v1',

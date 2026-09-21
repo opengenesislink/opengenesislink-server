@@ -224,8 +224,8 @@ int main() {
         {
             opengenesis::scripting::ScriptRuntime scripts(scripts_path);
             const auto script = scripts.find("script-1");
-            require(script && script->state == "running" && script->event_count == 2,
-                    "script runtime state persisted");
+            require(script && script->state == "running" && script->event_count == 0,
+                    "queued Script events do not count as VM executions");
         }
 
         opengenesis::security::RateLimiter limits;

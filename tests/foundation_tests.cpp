@@ -193,7 +193,9 @@ void scene_ticket_test() {
         opengenesis::security::has_scene_capability(
             *viewer_claims, "scene.region.metadata") &&
         opengenesis::security::has_scene_capability(
-            *viewer_claims, "scene.parcel.read"),
+            *viewer_claims, "scene.parcel.read") &&
+        opengenesis::security::has_scene_capability(
+            *viewer_claims, "scene.object.interact"),
         "default viewer Scene v2 capabilities");
 }
 
@@ -482,10 +484,48 @@ void runtime_test() {
     std::this_thread::sleep_for(std::chrono::milliseconds{180});
 
     const auto before = runtime.latest_sequence();
+    const auto touch_start =
+        runtime.interact_object(object, avatar, "user-1", "start");
+    const auto touch_hold =
+        runtime.interact_object(object, avatar, "user-1", "touch");
+    const auto touch_end =
+        runtime.interact_object(object, avatar, "user-1", "end");
+    expect(touch_start > before &&
+               touch_hold > touch_start &&
+               touch_end > touch_hold,
+           "object interaction event sequence");
+    expect(runtime.interact_object(
+               object, avatar, "wrong-user", "start") == 0,
+           "object interaction rejects avatar identity mismatch");
+    expect(runtime.interact_object(
+               object, avatar, "user-1", "invalid") == 0,
+           "object interaction rejects invalid phase");
+    const auto touch_events = runtime.events_since(before, 8);
+    expect(std::any_of(
+               touch_events.begin(), touch_events.end(),
+               [&](const auto& event) {
+                   return event.type == "touch_start" &&
+                          event.entity_id == object &&
+                          event.text.starts_with(
+                              std::to_string(avatar) + "\nuser-1");
+               }),
+           "object interaction emits touch_start Scene event");
+
     auto object_entity = runtime.entity(object);
     expect(object_entity.has_value(), "object lookup");
     object_entity->transform.position = {10, 20, 30};
+    object_entity->transform.scale = {2.0, 2.0, 2.0};
+    const auto before_scale = runtime.latest_sequence();
     expect(runtime.update_transform(object, object_entity->transform), "transform update");
+    const auto scale_events = runtime.events_since(before_scale, 8);
+    expect(std::any_of(
+               scale_events.begin(), scale_events.end(),
+               [&](const auto& event) {
+                   return event.type == "changed" &&
+                          event.entity_id == object &&
+                          event.text == "8";
+               }),
+           "scale mutation emits CHANGED_SCALE");
     expect(runtime.set_velocity(object, {1, 0, 0}), "velocity update");
     const auto chat_sequence = runtime.chat(avatar, "hello scene");
     expect(chat_sequence > before, "chat event");
@@ -523,8 +563,19 @@ void runtime_physics_v2_test() {
     child_transform.position.x = 22.0;
     const auto child = runtime.spawn_object(
         "Rigid Child", child_transform, false, "user-physics");
+    const auto before_link = runtime.latest_sequence();
     expect(runtime.link_objects(root, child, reason),
            "physics v2 linkset created");
+    const auto link_events = runtime.events_since(before_link, 16);
+    expect(std::count_if(
+               link_events.begin(), link_events.end(),
+               [&](const auto& event) {
+                   return event.type == "changed" &&
+                          event.text == "32" &&
+                          (event.entity_id == root ||
+                           event.entity_id == child);
+               }) == 2,
+           "link mutation emits CHANGED_LINK for linkset scripts");
 
     auto rotated = root_transform;
     rotated.rotation.z = 90.0;

@@ -273,7 +273,7 @@ void handle_client(opengenesis::network::TcpSocket socket,
                                "scene_contract=2\nmovement=avatar-reconcile-v1\n"
                                "sync=scene-sync-v1\nmetadata=region-metadata-v1,parcel-read-v1\n"
                                "capabilities=scene-capabilities-v2\n"
-                               "object_runtime=linkset-v2,motion-v1,text-v1,physics-v2,collision-events-v1\n")});
+                               "object_runtime=linkset-v2,motion-v1,text-v1,physics-v2,collision-events-v1,interaction-v1\n")});
 
         const auto join = socket.receive_frame();
         if (join.type != protocol::MessageType::scene_join) throw std::runtime_error("SCENE_JOIN required");
@@ -734,6 +734,31 @@ void handle_client(opengenesis::network::TcpSocket socket,
                 socket.send_frame({
                     ok ? protocol::MessageType::entity_physics_ack
                        : protocol::MessageType::error,
+                    frame.request_id,
+                    protocol::payload_from_string(response.str())});
+            } else if (frame.type == protocol::MessageType::entity_interact) {
+                if (!security::has_scene_capability(
+                        claims, "scene.object.interact")) {
+                    send_capability_error(
+                        socket, frame, "scene.object.interact");
+                    continue;
+                }
+                const auto target_id = integer(request, "id");
+                const auto phase = field(request, "phase");
+                const auto sequence = region->interact_object(
+                    target_id, avatar_id, user_id, phase);
+                std::ostringstream response;
+                if (sequence != 0U) {
+                    response << "status=accepted\n"
+                             << "phase=" << phase << '\n'
+                             << "sequence=" << sequence << '\n';
+                } else {
+                    response << "reason=interaction-rejected\n";
+                }
+                socket.send_frame({
+                    sequence != 0U
+                        ? protocol::MessageType::entity_interact_ack
+                        : protocol::MessageType::error,
                     frame.request_id,
                     protocol::payload_from_string(response.str())});
             } else if (frame.type == protocol::MessageType::chat_send) {
