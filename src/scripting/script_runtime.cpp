@@ -433,7 +433,6 @@ std::vector<ScriptEvent> ScriptRuntime::due_timers(const std::int64_t now_unix_m
         }
 
         events.push_back({.script_id = script.id, .type = "timer", .payload = {}});
-        ++script.event_count;
 
         const auto elapsed = now_unix_ms - script.next_timer_unix_ms;
         const auto skipped = elapsed / script.timer_interval_ms;
@@ -460,7 +459,6 @@ std::vector<ScriptEvent> ScriptRuntime::dispatch_chat(const std::int32_t channel
             .script_id = script.id,
             .type = script.language == ScriptLanguage::lsl ? "listen" : "chat",
             .payload = payload});
-        ++script.event_count;
     }
     if (!events.empty()) persist_locked();
     return events;
