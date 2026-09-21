@@ -421,11 +421,12 @@ bool GenesisMeshCache::put(TriangleMesh mesh) {
     std::scoped_lock lock(mutex_);
     const auto existing = entries_.find(mesh.cache_key);
     if (existing != entries_.end()) {
+        const auto key = existing->first;
         triangles_ -= existing->second.triangle_count();
         existing->second = std::move(mesh);
         triangles_ += triangles;
         evict_locked();
-        return entries_.contains(existing->first);
+        return entries_.contains(key);
     }
 
     const auto key = mesh.cache_key;
