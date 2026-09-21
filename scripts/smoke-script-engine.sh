@@ -155,12 +155,13 @@ assert len(caps['lsl_functions'])==523,caps
 assert len(caps['lsl_events'])==44,caps
 assert len(caps['ogl'])==37,caps
 summary=caps['summary']
-assert summary['lsl_functions']['implemented']==56,summary
-assert summary['lsl_functions']['partial']==29,summary
-assert summary['lsl_functions']['implemented_percent']==10.71,summary
-assert summary['lsl_functions']['executable_percent']==16.25,summary
+assert summary['lsl_functions']['implemented']==62,summary
+assert summary['lsl_functions']['partial']==34,summary
+assert summary['lsl_functions']['implemented_percent']==11.85,summary
+assert summary['lsl_functions']['executable_percent']==18.36,summary
 assert summary['lsl_events']['implemented']==1,summary
-assert summary['lsl_events']['partial']==3,summary
+assert summary['lsl_events']['partial']==10,summary
+assert summary['lsl_events']['executable_percent']==25.00,summary
 assert summary['ogl']['implemented']==37,summary
 assert summary['ogl']['implemented_percent']==100.00,summary
 
@@ -294,8 +295,10 @@ lsl=(
     '    llSetPos(<150,151,32>);\n'
     '    state active;\n'
     '  }\n'
+    '  state_exit() { llOwnerSay("leaving-default"); }\n'
     '}\n'
     'active {\n'
+    '  state_entry() { llOwnerSay("entered-active"); }\n'
     '  timer() {\n'
     '    llSetText("LSL active", <1,1,1>, 1.0);\n'
     '  }\n'
@@ -308,11 +311,12 @@ status,lsl_script=api('/v1/scripts','POST',{
 assert status==201,lsl_script
 assert lsl_script['language']=='lsl',lsl_script
 
-status,entry=api('/v1/scripts/event','POST',{
-    'script_id':lsl_script['id'],
-    'event':'state_entry'},token)
-assert status==200,entry
-assert entry['host_applied']==1,entry
+# state_entry is automatic at Script creation in 16.0.
+status,scripts_after_create=api('/v1/scripts',token=token)
+created_record=next(
+    item for item in scripts_after_create['scripts']
+    if item['id']==lsl_script['id'])
+assert created_record['timer_interval_ms']==1000,created_record
 
 status,listen=api('/v1/scripts/event','POST',{
     'script_id':lsl_script['id'],
@@ -329,7 +333,13 @@ status,touch=api('/v1/scripts/event','POST',{
     'payload':'1'},token)
 assert status==200,touch
 assert touch['state']=='active',touch
-assert touch['host_applied']==1,touch
+assert touch['host_applied']==3,touch
+assert any(
+    action['type']=='notify' and action['value']=='leaving-default'
+    for action in touch['actions']),touch
+assert any(
+    action['type']=='notify' and action['value']=='entered-active'
+    for action in touch['actions']),touch
 
 status,scripts=api('/v1/scripts',token=token)
 records={item['id']:item for item in scripts['scripts']}
@@ -354,7 +364,67 @@ for attempt in range(8):
         break
 assert parts is not None and parts[20]=='LSL active',parts
 
-send(scene,42,20,'')
+# 16.0: prove native World collision events automatically reach LSL.
+send(scene,110,100,
+     'name=Collision Listener\n'
+     'x=160\ny=160\nz=24\n'
+     'physical=false\n')
+msg,_,payload=recv(scene)
+assert msg==111,payload
+collision_entity=int(dict(
+    line.split('=',1) for line in payload.splitlines()
+    if '=' in line)['id'])
+collision_binding=f'script-engine-region/{collision_entity}'
+
+collision_lsl=(
+    'default {\n'
+    '  state_entry() { llSetStatus(STATUS_PHYSICS, TRUE); }\n'
+    '  collision_start(integer n) { llOwnerSay("collision-auto"); }\n'
+    '  land_collision_start(vector p) { llOwnerSay("land-auto"); }\n'
+    '}\n'
+)
+status,collision_script=api('/v1/scripts','POST',{
+    'object_id':collision_binding,
+    'language':'lsl',
+    'source':collision_lsl},token)
+assert status==201,collision_script
+
+def notification_bodies():
+    status,payload=api('/v1/notifications',token=token)
+    assert status==200,payload
+    return [item['body'] for item in payload['notifications']]
+
+land_seen=False
+for _ in range(20):
+    time.sleep(0.25)
+    if 'land-auto' in notification_bodies():
+        land_seen=True
+        break
+assert land_seen,notification_bodies()
+
+# Spawn a second physical object overlapping the grounded listener.
+send(scene,110,101,
+     'name=Collision Partner\n'
+     'x=160\ny=160\nz=22\n'
+     'physical=true\n')
+msg,_,payload=recv(scene)
+assert msg==111,payload
+
+collision_seen=False
+for _ in range(24):
+    time.sleep(0.25)
+    if 'collision-auto' in notification_bodies():
+        collision_seen=True
+        break
+assert collision_seen,notification_bodies()
+
+status,collision_records=api('/v1/scripts',token=token)
+collision_record=next(
+    item for item in collision_records['scripts']
+    if item['id']==collision_script['id'])
+assert collision_record['event_count']>=3,collision_record
+
+send(scene,42,120,'')
 scene.close()
-print('OpenGenesisLINK 12.0 OGL/LSL Physics ScriptEngine end-to-end smoke: PASS')
+print('OpenGenesisLINK 16.0 OGL/LSL ScriptEngine + automatic collision events smoke: PASS')
 PY
