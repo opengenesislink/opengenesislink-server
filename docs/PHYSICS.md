@@ -105,16 +105,23 @@ GenesisMesher can produce validated indexed triangle meshes for native procedura
 - a convex hull
 - a triangle mesh
 
-Physics v3 does not yet claim triangle-mesh narrowphase. The next bridge is a dedicated PhysicsShapeBuilder so the solver never has to parse arbitrary asset data itself.
+Physics v3 does not yet claim triangle-mesh narrowphase. A dedicated PhysicsShapeBuilder is now present so the solver never has to parse arbitrary asset data itself. It maps supported primitive geometry to native solver shapes and marks convex/triangle plans as pending rather than silently degrading them.
 
 See `docs/GENESIS-MESHER-v1.md`.
 
-## 17.0 next integration steps
+## 17.0 integration status
+
+Completed in the current 17.0 branch:
 
 - Region Runtime shape state
 - scale-aware object collider mapping
 - Scene Physics v3 actions
 - persistence and crossing of shape state
+- GenesisMesher bounded memory cache
+- PhysicsShapeBuilder collision plans
+
+Next:
+
 - static mesh BVH foundation
 - mesh raycast
 - primitive/capsule versus static mesh contacts
