@@ -19,7 +19,8 @@ Current development version: **17.0.0-dev**.
 - authenticated Scene object interaction path with server-authoritative `touch_start`, `touch` and `touch_end` Script events
 - native `changed` Script events for real object scale changes (`CHANGED_SCALE`) and link/unlink changes (`CHANGED_LINK`)
 - rigid root rotation/translation propagation for linked object children
-- GenesisMesher v1 with deterministic procedural box/sphere/cylinder/capsule triangulation, validation, bounds, cache keys and triangle budgets\n- Scene Persistence v6 and Object Crossing currently preserve the accepted Physics v2 material state; Physics-v3 shape persistence is a 17.0 integration target
+- GenesisMesher v1 with deterministic procedural box/sphere/cylinder/capsule triangulation, validation, bounds, cache keys, triangle budgets and a bounded in-memory cache
+- PhysicsShapeBuilder bridge with explicit primitive/convex/triangle collision plans and no false triangle-mesh solver claims\n- Scene Persistence v6 and Object Crossing currently preserve the accepted Physics v2 material state; Physics-v3 shape persistence is a 17.0 integration target
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
 - production relational storage layer for SQLite, PostgreSQL and MariaDB with prepared parameters, bounded connection pools and transactions
 - cross-database schema migrations with SQL-authoritative Identity, Auth Session, World Registry, Region Registry, Audit, Moderation and Admin Role stores
