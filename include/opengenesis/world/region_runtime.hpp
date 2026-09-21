@@ -188,6 +188,10 @@ public:
         std::uint64_t sequence, std::size_t max_events = 256) const;
     std::uint64_t chat(std::uint64_t sender_entity, std::string text,
                        std::string event_type = "chat");
+    std::uint64_t interact_object(std::uint64_t target_entity,
+                                  std::uint64_t avatar_entity,
+                                  std::string user_id,
+                                  std::string phase);
 
     [[nodiscard]] RuntimeMetrics metrics() const;
     [[nodiscard]] std::uint64_t latest_sequence() const;
