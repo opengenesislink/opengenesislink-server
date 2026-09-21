@@ -70,6 +70,8 @@ enum class MessageType : std::uint16_t {
     entity_motion_ack = 125,
     entity_physics = 126,
     entity_physics_ack = 127,
+    entity_interact = 128,
+    entity_interact_ack = 129,
     scene_events_request = 130,
     scene_events = 131,
     scene_sync_request = 132,
