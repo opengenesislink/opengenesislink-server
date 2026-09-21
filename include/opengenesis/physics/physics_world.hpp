@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -18,6 +19,12 @@ struct Vec3 {
     }
 };
 
+enum class CollisionShape {
+    sphere,
+    box,
+    capsule
+};
+
 struct Body {
     std::uint64_t id{0};
     Vec3 position{}, velocity{};
@@ -27,12 +34,19 @@ struct Body {
     double restitution{0.15};
     double friction{0.6};
     double radius{0.5};
+    Vec3 half_extents{0.5, 0.5, 0.5};
+    double capsule_half_height{0.5};
     double linear_damping{0.04};
     double angular_damping{0.04};
     double gravity_scale{1.0};
     double buoyancy{0.0};
+    CollisionShape shape{CollisionShape::sphere};
     bool dynamic{true};
     bool character{false};
+    bool grounded{false};
+    double max_slope_degrees{50.0};
+    double step_height{0.45};
+    double jump_speed{5.0};
 };
 
 struct CollisionContact {
@@ -52,6 +66,23 @@ struct DistanceConstraint {
     double stiffness{1.0};
 };
 
+struct SpringConstraint {
+    std::uint64_t id{0};
+    std::uint64_t body_a{0};
+    std::uint64_t body_b{0};
+    double rest_length{0.0};
+    double stiffness{20.0};
+    double damping{2.0};
+};
+
+struct RaycastHit {
+    std::uint64_t body_id{0};
+    Vec3 point{};
+    Vec3 normal{};
+    double distance{0.0};
+    bool ground{false};
+};
+
 class PhysicsWorld final {
 public:
     std::uint64_t add_body(Body body);
@@ -67,6 +98,14 @@ public:
     bool set_body_gravity_scale(std::uint64_t id, double gravity_scale);
     bool set_body_buoyancy(std::uint64_t id, double buoyancy);
     bool set_body_radius(std::uint64_t id, double radius);
+    bool set_body_shape(std::uint64_t id, CollisionShape shape,
+                        Vec3 half_extents = {0.5, 0.5, 0.5},
+                        double capsule_half_height = 0.5);
+    bool set_character_controller(std::uint64_t id,
+                                  double max_slope_degrees,
+                                  double step_height,
+                                  double jump_speed);
+    bool character_jump(std::uint64_t id);
     bool apply_force(std::uint64_t id, Vec3 force);
     bool apply_impulse(std::uint64_t id, Vec3 impulse);
     bool apply_angular_impulse(std::uint64_t id, Vec3 impulse);
@@ -76,7 +115,16 @@ public:
                                           std::uint64_t body_b,
                                           double rest_length,
                                           double stiffness = 1.0);
+    std::uint64_t add_spring_constraint(std::uint64_t body_a,
+                                        std::uint64_t body_b,
+                                        double rest_length,
+                                        double stiffness = 20.0,
+                                        double damping = 2.0);
     bool remove_constraint(std::uint64_t constraint_id);
+
+    [[nodiscard]] std::optional<RaycastHit> raycast(
+        Vec3 origin, Vec3 direction, double max_distance,
+        std::uint64_t ignore_body = 0) const;
 
     void step(double dt);
 
@@ -84,6 +132,7 @@ public:
     [[nodiscard]] Body body(std::uint64_t id) const;
     [[nodiscard]] std::vector<CollisionContact> collisions() const;
     [[nodiscard]] std::vector<DistanceConstraint> constraints() const;
+    [[nodiscard]] std::vector<SpringConstraint> spring_constraints() const;
 
     void set_gravity(Vec3 gravity);
     void set_ground_height(double height);
@@ -93,6 +142,7 @@ private:
     mutable std::mutex mutex_;
     std::unordered_map<std::uint64_t, Body> bodies_;
     std::unordered_map<std::uint64_t, DistanceConstraint> constraints_;
+    std::unordered_map<std::uint64_t, SpringConstraint> spring_constraints_;
     std::vector<CollisionContact> collisions_;
     std::uint64_t next_id_{1};
     std::uint64_t next_constraint_id_{1};
@@ -100,5 +150,9 @@ private:
     double ground_height_{0.0};
     std::function<double(double, double)> ground_sampler_;
 };
+
+[[nodiscard]] const char* collision_shape_name(CollisionShape shape) noexcept;
+[[nodiscard]] std::optional<CollisionShape> parse_collision_shape(
+    const char* value) noexcept;
 
 } // namespace opengenesis::physics
