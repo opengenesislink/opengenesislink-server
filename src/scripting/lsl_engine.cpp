@@ -628,7 +628,7 @@ const std::vector<ScriptFeature>& lsl_event_catalog() {
         {"attach", "event", ScriptFeatureStatus::recognized},
         {"at_rot_target", "event", ScriptFeatureStatus::recognized},
         {"at_target", "event", ScriptFeatureStatus::recognized},
-        {"changed", "event", ScriptFeatureStatus::recognized},
+        {"changed", "event", ScriptFeatureStatus::partial},
         {"collision", "event", ScriptFeatureStatus::partial},
         {"collision_end", "event", ScriptFeatureStatus::partial},
         {"collision_start", "event", ScriptFeatureStatus::partial},
