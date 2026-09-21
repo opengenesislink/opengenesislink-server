@@ -1,9 +1,11 @@
 #include "opengenesis/physics/physics_world.hpp"
 #include "opengenesis/world/region_runtime.hpp"
+#include "opengenesis/world/region_persistence.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -199,6 +201,53 @@ void region_runtime_v3_test() {
            "runtime removes spring");
 }
 
+
+void persistence_v3_test() {
+    using opengenesis::physics::CollisionShape;
+    using opengenesis::world::RegionPersistence;
+    using opengenesis::world::RegionRuntime;
+    using opengenesis::world::Transform;
+
+    const auto root =
+        std::filesystem::temp_directory_path() /
+        "ogl-physics-v3-persistence";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root);
+
+    std::uint64_t source_id = 0;
+    {
+        RegionRuntime runtime("persist-v3", 60.0, 0.0, -10.0);
+        Transform transform;
+        transform.position = {30.0, 30.0, 10.0};
+        transform.scale = {4.0, 2.0, 3.0};
+        source_id = runtime.spawn_object(
+            "Persistent v3 box", transform, true, "owner-v3");
+        expect(runtime.set_physics_shape(
+                   source_id, CollisionShape::box),
+               "persistence source box shape");
+        RegionPersistence persistence(root);
+        persistence.save(runtime, true);
+    }
+
+    {
+        RegionRuntime runtime("persist-v3", 60.0, 0.0, -10.0);
+        RegionPersistence persistence(root);
+        persistence.load(runtime);
+        const auto restored = runtime.entity(source_id);
+        expect(restored.has_value(),
+               "persistence restores v3 object");
+        const auto body = runtime.physics_body_state(source_id);
+        expect(body && body->shape == CollisionShape::box,
+               "persistence restores collision shape");
+        expect(std::abs(body->half_extents.x - 2.0) < 1e-9 &&
+                   std::abs(body->half_extents.y - 1.0) < 1e-9 &&
+                   std::abs(body->half_extents.z - 1.5) < 1e-9,
+               "persistence restores shape extents");
+    }
+
+    std::filesystem::remove_all(root);
+}
+
 } // namespace
 
 int main() {
@@ -208,6 +257,7 @@ int main() {
         spring_constraint_test();
         shape_parser_test();
         region_runtime_v3_test();
+        persistence_v3_test();
         std::cout << "OpenGenesisLINK Physics v3 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
