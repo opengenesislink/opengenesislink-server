@@ -92,6 +92,7 @@ add_library(opengenesis-foundation
     src/storage/migrations.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
+    src/physics/physics_shape_builder.cpp
     src/meshing/genesis_mesher.cpp
     src/world/region_runtime.cpp
     src/world/region_persistence.cpp
@@ -187,6 +188,16 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-meshing-tests tests/meshing_tests.cpp)
     target_link_libraries(ogl-meshing-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME genesis-mesher COMMAND ogl-meshing-tests)
+
+    add_executable(
+        ogl-physics-shape-builder-tests
+        tests/physics_shape_builder_tests.cpp)
+    target_link_libraries(
+        ogl-physics-shape-builder-tests
+        PRIVATE OpenGenesis::Foundation)
+    add_test(
+        NAME physics-shape-builder
+        COMMAND ogl-physics-shape-builder-tests)
 
     add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
     target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)
