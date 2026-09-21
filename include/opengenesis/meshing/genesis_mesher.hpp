@@ -2,7 +2,11 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <deque>
+#include <mutex>
+#include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace opengenesis::meshing {
@@ -72,6 +76,48 @@ struct MeshBuildResult {
     [[nodiscard]] bool ok() const noexcept {
         return error.empty();
     }
+};
+
+
+struct MeshCacheStats {
+    std::size_t entries{0};
+    std::size_t triangles{0};
+    std::uint64_t hits{0};
+    std::uint64_t misses{0};
+    std::uint64_t evictions{0};
+};
+
+class GenesisMeshCache final {
+public:
+    explicit GenesisMeshCache(
+        std::size_t max_entries = 256,
+        std::size_t max_triangles = 1'000'000);
+
+    [[nodiscard]] std::optional<TriangleMesh> get(
+        const std::string& key);
+    bool put(TriangleMesh mesh);
+    void clear();
+
+    [[nodiscard]] MeshCacheStats stats() const;
+    [[nodiscard]] std::size_t max_entries() const noexcept {
+        return max_entries_;
+    }
+    [[nodiscard]] std::size_t max_triangles() const noexcept {
+        return max_triangles_;
+    }
+
+private:
+    void evict_locked();
+
+    mutable std::mutex mutex_;
+    std::unordered_map<std::string, TriangleMesh> entries_;
+    std::deque<std::string> insertion_order_;
+    std::size_t max_entries_{256};
+    std::size_t max_triangles_{1'000'000};
+    std::size_t triangles_{0};
+    std::uint64_t hits_{0};
+    std::uint64_t misses_{0};
+    std::uint64_t evictions_{0};
 };
 
 class GenesisMesher final {
