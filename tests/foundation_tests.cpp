@@ -193,7 +193,9 @@ void scene_ticket_test() {
         opengenesis::security::has_scene_capability(
             *viewer_claims, "scene.region.metadata") &&
         opengenesis::security::has_scene_capability(
-            *viewer_claims, "scene.parcel.read"),
+            *viewer_claims, "scene.parcel.read") &&
+        opengenesis::security::has_scene_capability(
+            *viewer_claims, "scene.object.interact"),
         "default viewer Scene v2 capabilities");
 }
 
@@ -482,6 +484,33 @@ void runtime_test() {
     std::this_thread::sleep_for(std::chrono::milliseconds{180});
 
     const auto before = runtime.latest_sequence();
+    const auto touch_start =
+        runtime.interact_object(object, avatar, "user-1", "start");
+    const auto touch_hold =
+        runtime.interact_object(object, avatar, "user-1", "touch");
+    const auto touch_end =
+        runtime.interact_object(object, avatar, "user-1", "end");
+    expect(touch_start > before &&
+               touch_hold > touch_start &&
+               touch_end > touch_hold,
+           "object interaction event sequence");
+    expect(runtime.interact_object(
+               object, avatar, "wrong-user", "start") == 0,
+           "object interaction rejects avatar identity mismatch");
+    expect(runtime.interact_object(
+               object, avatar, "user-1", "invalid") == 0,
+           "object interaction rejects invalid phase");
+    const auto touch_events = runtime.events_since(before, 8);
+    expect(std::any_of(
+               touch_events.begin(), touch_events.end(),
+               [&](const auto& event) {
+                   return event.type == "touch_start" &&
+                          event.entity_id == object &&
+                          event.text.starts_with(
+                              std::to_string(avatar) + "\nuser-1");
+               }),
+           "object interaction emits touch_start Scene event");
+
     auto object_entity = runtime.entity(object);
     expect(object_entity.has_value(), "object lookup");
     object_entity->transform.position = {10, 20, 30};
