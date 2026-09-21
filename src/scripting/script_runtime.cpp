@@ -185,11 +185,79 @@ std::optional<ScriptVmResult> ScriptRuntime::execute_event(
         state = *decoded;
     }
 
+    const auto original_state = state.state;
     auto result = execute_script_event(
         *program, event, state, limits, payload);
     if (!result.ok) {
         reason = result.error;
         return result;
+    }
+
+    auto apply_lifecycle_event =
+        [&](const std::string_view lifecycle_event,
+            const ScriptVmState& lifecycle_state)
+            -> std::optional<ScriptVmResult> {
+            if (result.instructions_executed >=
+                limits.instruction_budget) {
+                reason = "instruction-budget-exceeded";
+                return std::nullopt;
+            }
+            ScriptVmLimits remaining = limits;
+            remaining.instruction_budget =
+                limits.instruction_budget -
+                result.instructions_executed;
+            if (result.actions.size() >= limits.max_output_actions) {
+                remaining.max_output_actions = 0;
+            } else {
+                remaining.max_output_actions =
+                    limits.max_output_actions -
+                    result.actions.size();
+            }
+            auto lifecycle = execute_script_event(
+                *program, lifecycle_event,
+                lifecycle_state, remaining, {});
+            if (!lifecycle.ok) {
+                reason = lifecycle.error;
+                return std::nullopt;
+            }
+            result.instructions_executed +=
+                lifecycle.instructions_executed;
+            result.actions.insert(
+                result.actions.end(),
+                lifecycle.actions.begin(),
+                lifecycle.actions.end());
+            if (result.actions.size() >
+                limits.max_output_actions) {
+                reason = "action-budget-exceeded";
+                return std::nullopt;
+            }
+            return lifecycle;
+        };
+
+    std::string previous_state = original_state;
+    std::string target_state = result.state.state;
+    std::size_t transitions = 0U;
+    while (target_state != previous_state) {
+        if (++transitions > 8U) {
+            reason = "state-transition-budget-exceeded";
+            return std::nullopt;
+        }
+
+        ScriptVmState exit_state = result.state;
+        exit_state.state = previous_state;
+        const auto exit_result =
+            apply_lifecycle_event("state_exit", exit_state);
+        if (!exit_result) return std::nullopt;
+
+        ScriptVmState entry_state = exit_result->state;
+        entry_state.state = target_state;
+        const auto entry_result =
+            apply_lifecycle_event("state_entry", entry_state);
+        if (!entry_result) return std::nullopt;
+
+        result.state = entry_result->state;
+        previous_state = target_state;
+        target_state = result.state.state;
     }
 
     script.state = result.state.state;
@@ -198,10 +266,14 @@ std::optional<ScriptVmResult> ScriptRuntime::execute_event(
     for (const auto& action : result.actions) {
         if (action.type == ScriptActionType::set_timer) {
             script.timer_interval_ms = action.number;
-            script.next_timer_unix_ms = action.number <= 0 ? 0 : now_unix_ms + action.number;
+            script.next_timer_unix_ms =
+                action.number <= 0
+                    ? 0
+                    : now_unix_ms + action.number;
         } else if (action.type == ScriptActionType::listen) {
             script.chat_enabled = true;
-            script.chat_channel = static_cast<std::int32_t>(action.number);
+            script.chat_channel =
+                static_cast<std::int32_t>(action.number);
         }
     }
     persist_locked();
@@ -391,6 +463,41 @@ std::vector<ScriptEvent> ScriptRuntime::dispatch_chat(const std::int32_t channel
         ++script.event_count;
     }
     if (!events.empty()) persist_locked();
+    return events;
+}
+
+std::vector<ScriptEvent> ScriptRuntime::dispatch_object_event(
+    const std::string_view region_id,
+    const std::uint64_t entity_id,
+    const std::string_view event,
+    std::string payload) {
+    if (region_id.empty() || entity_id == 0U ||
+        event.empty() || event.size() > 64U ||
+        payload.size() > 8U * 1024U) {
+        return {};
+    }
+    const auto object_id =
+        std::string{region_id} + "/" +
+        std::to_string(entity_id);
+
+    std::scoped_lock lock(mutex_);
+    std::vector<ScriptEvent> events;
+    for (const auto& [_, script] : scripts_) {
+        if (!script.enabled ||
+            script.object_id != object_id) {
+            continue;
+        }
+        events.push_back({
+            .script_id = script.id,
+            .type = std::string{event},
+            .payload = payload});
+    }
+    std::sort(
+        events.begin(), events.end(),
+        [](const ScriptEvent& left,
+           const ScriptEvent& right) {
+            return left.script_id < right.script_id;
+        });
     return events;
 }
 
