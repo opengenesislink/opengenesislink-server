@@ -5,13 +5,14 @@
 OpenGenesisLINK Server 16.0.0-dev is the **Script & LSL Event Expansion** milestone.
 
 - repository: `opengenesislink/opengenesislink-server`
+- pull request: #22
 - branch: `dev/16.0.0-script-lsl-expansion`
 - version: `16.0.0-dev`
 - implementation: C++23
 - license: MPL 2.0
 - verified pre-documentation code checkpoint: `9100b31a167a7e464145681cbd0d017366aff21f`
-- final PR head: to be recorded after the documentation head passes all CI gates
-- squash merge: to be recorded after merge
+- final tested PR head: `d8c78aaf58fa03e58692a525366a423206e7e760`
+- squash merge: `cf99988f37d0c3abad20454f017afb28ab008588`
 
 16.0 builds on the 15.0 Platform Services milestone. The main focus is no longer adding another platform service; it is making the ScriptEngine react to more real World/Scene activity so LSL compatibility advances from parser/catalog coverage toward actual runtime semantics.
 
@@ -149,23 +150,39 @@ The Linux x86_64 and ARM64 ScriptEngine process smoke now verifies:
 - existing collision and land-collision delivery
 - the version-aware Platform Services regression smoke
 
-## Verified checkpoint
+## Acceptance result
 
-Code checkpoint `9100b31a167a7e464145681cbd0d017366aff21f` passed:
+All required gates passed on final PR head `d8c78aaf58fa03e58692a525366a423206e7e760`:
 
 - Linux x86_64 warnings-as-errors build: PASS
 - Linux x86_64 unit tests: PASS
-- Linux x86_64 integrated smokes: PASS
+- Linux x86_64 World/Social/Handoff smoke: PASS
+- Linux x86_64 Script World query/ACK smoke: PASS
+- Linux x86_64 OGL/LSL ScriptEngine smoke: PASS
+- Linux x86_64 Crossing v3 smoke: PASS
+- Linux x86_64 Object Crossing smoke: PASS
+- Linux x86_64 Viewer Bootstrap/Scene v2 smoke: PASS
+- Linux x86_64 OGL-FED/2 Remote Services smoke: PASS
+- Linux x86_64 Platform Services smoke: PASS
 - Linux ARM64/aarch64 warnings-as-errors build: PASS
 - Linux ARM64/aarch64 unit tests: PASS
-- Linux ARM64/aarch64 integrated smokes: PASS
+- Linux ARM64/aarch64 World/Social/Handoff smoke: PASS
+- Linux ARM64/aarch64 Script World query/ACK smoke: PASS
+- Linux ARM64/aarch64 OGL/LSL ScriptEngine smoke: PASS
+- Linux ARM64/aarch64 Crossing v3 smoke: PASS
+- Linux ARM64/aarch64 Object Crossing smoke: PASS
+- Linux ARM64/aarch64 Viewer Bootstrap/Scene v2 smoke: PASS
+- Linux ARM64/aarch64 OGL-FED/2 Remote Services smoke: PASS
+- Linux ARM64/aarch64 Platform Services smoke: PASS
 - Windows x86_64/MSVC warnings-as-errors build: PASS
 - Windows unit tests: PASS
 - SQLite integration: PASS
 - PostgreSQL integration: PASS
 - MariaDB integration: PASS
 
-The final documentation head must pass the same gates before merge.
+Canonical 16.0 squash merge:
+
+`cf99988f37d0c3abad20454f017afb28ab008588`
 
 ## Explicit non-claims
 
