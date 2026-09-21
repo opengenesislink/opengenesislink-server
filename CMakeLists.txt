@@ -92,6 +92,7 @@ add_library(opengenesis-foundation
     src/storage/migrations.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
+    src/meshing/genesis_mesher.cpp
     src/world/region_runtime.cpp
     src/world/region_persistence.cpp
     src/world/terrain.cpp
