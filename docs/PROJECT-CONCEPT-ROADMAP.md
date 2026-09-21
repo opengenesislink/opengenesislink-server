@@ -121,16 +121,21 @@ GenesisMesher v1:
 - deterministic cache key
 - triangle budgets
 - collision representation policy
+- bounded GenesisMesher in-memory cache with hit/miss/eviction metrics
+- PhysicsShapeBuilder bridge from meshed geometry to Physics collision plans
+- Region Runtime shape/raycast/spring/avatar-jump integration
+- Scene Persistence v7 shape-state storage
+- object-crossing shape-state transport
+- authenticated Scene Physics v3 operations
 
 Next 17.0 integration steps:
 
-1. Region Runtime Physics-v3 shape/raycast/jump API
-2. Scene Physics v3 authenticated operations
-3. persistence/crossing of Physics-v3 shape state
-4. `PhysicsShapeBuilder` bridge from GenesisMesher output to Physics
-5. static triangle-mesh acceleration structure foundation
-6. script-facing OGL raycast/shape actions after server-authoritative World integration
-7. cross-platform CI and process-smoke acceptance
+1. static triangle-mesh acceleration structure foundation
+2. convex-hull generation for dynamic complex geometry
+3. mesh raycast and primitive-vs-static-mesh narrowphase
+4. script-facing OGL raycast/shape actions after server-authoritative World integration
+5. process-smoke expansion for Scene Physics v3
+6. cross-platform CI acceptance
 
 ## Roadmap after 17.0
 
