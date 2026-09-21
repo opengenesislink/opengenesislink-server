@@ -94,7 +94,10 @@ bool script_world_event_type(const std::string_view type) {
            type == "collision_end" ||
            type == "land_collision_start" ||
            type == "land_collision" ||
-           type == "land_collision_end";
+           type == "land_collision_end" ||
+           type == "touch_start" ||
+           type == "touch" ||
+           type == "touch_end";
 }
 
 std::string script_world_event_payload(
