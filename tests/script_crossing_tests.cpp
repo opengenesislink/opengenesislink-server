@@ -418,11 +418,11 @@ int main() {
                     count_status(
                         lsl_events,
                         opengenesis::scripting::ScriptFeatureStatus::partial) ==
-                        12 &&
+                        13 &&
                     count_status(
                         lsl_events,
                         opengenesis::scripting::ScriptFeatureStatus::recognized) ==
-                        30 &&
+                        29 &&
                     count_status(
                         lsl_events,
                         opengenesis::scripting::ScriptFeatureStatus::unsupported) ==
