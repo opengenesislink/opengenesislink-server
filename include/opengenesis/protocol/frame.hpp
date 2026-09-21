@@ -45,6 +45,8 @@ enum class MessageType : std::uint16_t {
     object_crossing_command = 46,
     object_crossing_result = 47,
     object_crossing_result_ack = 48,
+    script_event = 49,
+    script_event_ack = 50,
 
     scene_join = 100,
     scene_join_ack = 101,
