@@ -10,6 +10,8 @@ namespace {
 constexpr std::size_t kMaxSceneEvents = 4096;
 constexpr std::uint64_t kMovementEventStride = 5;
 constexpr std::size_t kMaxLinksetMembers = 64;
+constexpr std::uint32_t kLslChangedScale = 0x008U;
+constexpr std::uint32_t kLslChangedLink = 0x020U;
 
 double delta_squared(const physics::Vec3& a, const physics::Vec3& b) {
     const double dx = a.x - b.x;
@@ -363,6 +365,8 @@ bool RegionRuntime::update_transform(
     if (it == entities_.end()) return false;
 
     const auto previous = it->second.transform;
+    const bool scale_changed =
+        delta_squared(transform.scale, previous.scale) > 0.000001;
     it->second.transform = transform;
     if (it->second.physics_body != 0) {
         (void)physics_.set_body_position(
@@ -409,6 +413,19 @@ bool RegionRuntime::update_transform(
     }
 
     append_event_locked("entity_updated", id, transform);
+    if (it->second.kind == EntityKind::object && scale_changed) {
+        const auto changed_id =
+            it->second.parent_entity_id == 0
+                ? id
+                : it->second.parent_entity_id;
+        const auto changed = entities_.find(changed_id);
+        if (changed != entities_.end() &&
+            changed->second.kind == EntityKind::object) {
+            append_event_locked(
+                "changed", changed_id, changed->second.transform,
+                std::to_string(kLslChangedScale));
+        }
+    }
     return true;
 }
 
@@ -676,6 +693,23 @@ bool RegionRuntime::link_objects(
     append_event_locked(
         "entity_linked", child_id, child->second.transform,
         std::to_string(root_id));
+
+    std::vector<std::uint64_t> changed_members;
+    for (const auto& [member_id, member] : entities_) {
+        if (member_id == root_id ||
+            member.parent_entity_id == root_id) {
+            changed_members.push_back(member_id);
+        }
+    }
+    std::sort(changed_members.begin(), changed_members.end());
+    for (const auto member_id : changed_members) {
+        const auto member = entities_.find(member_id);
+        if (member != entities_.end()) {
+            append_event_locked(
+                "changed", member_id, member->second.transform,
+                std::to_string(kLslChangedLink));
+        }
+    }
     reason.clear();
     return true;
 }
@@ -699,6 +733,26 @@ bool RegionRuntime::unlink_object(
     append_event_locked(
         "entity_unlinked", child_id, child->second.transform,
         std::to_string(previous_parent));
+
+    std::vector<std::uint64_t> changed_members{child_id};
+    for (const auto& [member_id, member] : entities_) {
+        if (member_id == previous_parent ||
+            member.parent_entity_id == previous_parent) {
+            changed_members.push_back(member_id);
+        }
+    }
+    std::sort(changed_members.begin(), changed_members.end());
+    changed_members.erase(
+        std::unique(changed_members.begin(), changed_members.end()),
+        changed_members.end());
+    for (const auto member_id : changed_members) {
+        const auto member = entities_.find(member_id);
+        if (member != entities_.end()) {
+            append_event_locked(
+                "changed", member_id, member->second.transform,
+                std::to_string(kLslChangedLink));
+        }
+    }
     reason.clear();
     return true;
 }
