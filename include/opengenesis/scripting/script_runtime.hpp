@@ -79,6 +79,11 @@ public:
     [[nodiscard]] std::vector<ScriptEvent> dispatch_chat(std::int32_t channel,
                                                          std::string_view speaker,
                                                          std::string_view text);
+    [[nodiscard]] std::vector<ScriptEvent> dispatch_object_event(
+        std::string_view region_id,
+        std::uint64_t entity_id,
+        std::string_view event,
+        std::string payload);
 
     [[nodiscard]] std::optional<ScriptRecord> find(std::string_view script_id) const;
     [[nodiscard]] std::vector<ScriptRecord> list() const;
