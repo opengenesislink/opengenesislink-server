@@ -1628,7 +1628,21 @@ void AdminHttpServer::run() {
                             response = {.status = 400,
                                         .body = "{\"error\":\"" + json_escape(reason) + "\"}"};
                         } else {
+                            const auto now_ms =
+                                std::chrono::duration_cast<std::chrono::milliseconds>(
+                                    std::chrono::system_clock::now().time_since_epoch())
+                                    .count();
+                            const auto initial =
+                                scripts_->execute_event(
+                                    id, "state_entry", now_ms, reason);
                             const auto script = scripts_->find(id);
+                            if (initial && script) {
+                                (void)script_host_->apply(
+                                    script->owner_user_id,
+                                    script->id,
+                                    initial->actions,
+                                    script->object_id);
+                            }
                             response.status = 201;
                             response.body = script ? script_record_json(*script)
                                                    : "{\"error\":\"script-not-found\"}";
