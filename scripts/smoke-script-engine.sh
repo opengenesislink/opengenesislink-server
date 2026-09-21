@@ -160,8 +160,8 @@ assert summary['lsl_functions']['partial']==34,summary
 assert summary['lsl_functions']['implemented_percent']==11.85,summary
 assert summary['lsl_functions']['executable_percent']==18.36,summary
 assert summary['lsl_events']['implemented']==1,summary
-assert summary['lsl_events']['partial']==12,summary
-assert summary['lsl_events']['executable_percent']==29.55,summary
+assert summary['lsl_events']['partial']==13,summary
+assert summary['lsl_events']['executable_percent']==31.82,summary
 assert summary['ogl']['implemented']==37,summary
 assert summary['ogl']['implemented_percent']==100.00,summary
 
@@ -384,6 +384,7 @@ collision_lsl=(
     '  touch_start(integer n) { llOwnerSay("touch-start-auto"); }\n'
     '  touch(integer n) { llOwnerSay("touch-auto"); }\n'
     '  touch_end(integer n) { llOwnerSay("touch-end-auto"); }\n'
+    '  changed(integer mask) { llOwnerSay("changed-auto"); }\n'
     '}\n'
 )
 status,collision_script=api('/v1/scripts','POST',{
@@ -415,6 +416,21 @@ for _ in range(20):
         touch_seen=True
         break
 assert touch_seen,notification_bodies()
+
+# A real Scene scale mutation must produce changed(CHANGED_SCALE).
+send(scene,112,105,
+     f'id={collision_entity}\nsx=1.25\nsy=1.25\nsz=1.25\n')
+msg,_,update_ack=recv(scene)
+assert msg==113,update_ack
+assert 'status=updated' in update_ack,update_ack
+changed_seen=False
+for _ in range(20):
+    time.sleep(0.20)
+    bodies=notification_bodies()
+    if 'changed-auto' in bodies:
+        changed_seen=True
+        break
+assert changed_seen,notification_bodies()
 
 land_seen=False
 for _ in range(20):
@@ -448,5 +464,5 @@ assert collision_record['event_count']>=3,collision_record
 
 send(scene,42,120,'')
 scene.close()
-print('OpenGenesisLINK 16.0 OGL/LSL ScriptEngine + automatic collision/touch events smoke: PASS')
+print('OpenGenesisLINK 16.0 OGL/LSL ScriptEngine + automatic collision/touch/changed events smoke: PASS')
 PY
