@@ -179,6 +179,14 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     target_link_libraries(ogl-platform-services-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME platform-services COMMAND ogl-platform-services-tests)
 
+    add_executable(ogl-physics-v3-tests tests/physics_v3_tests.cpp)
+    target_link_libraries(ogl-physics-v3-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME physics-v3 COMMAND ogl-physics-v3-tests)
+
+    add_executable(ogl-meshing-tests tests/meshing_tests.cpp)
+    target_link_libraries(ogl-meshing-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME genesis-mesher COMMAND ogl-meshing-tests)
+
     add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
     target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME database-foundation-sqlite COMMAND ogl-database-foundation-tests sqlite)
