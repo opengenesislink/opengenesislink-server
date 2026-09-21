@@ -693,9 +693,14 @@ int main(int argc, char** argv) {
                                 type == "land_collision_start" ||
                                 type == "land_collision" ||
                                 type == "land_collision_end";
+                            const bool touch_event =
+                                type == "touch_start" ||
+                                type == "touch" ||
+                                type == "touch_end";
                             if (!owns_region || entity_id == 0U ||
                                 sequence == 0U ||
-                                (!collision_event && !land_event)) {
+                                (!collision_event && !land_event &&
+                                 !touch_event)) {
                                 socket.send_frame({
                                     protocol::MessageType::error,
                                     frame.request_id,
@@ -705,7 +710,7 @@ int main(int argc, char** argv) {
                             }
 
                             std::string event_payload;
-                            if (collision_event) {
+                            if (collision_event || touch_event) {
                                 event_payload = "1";
                             } else {
                                 std::ostringstream payload;
