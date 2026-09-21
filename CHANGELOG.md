@@ -12,7 +12,11 @@
 - GenesisMesher v1 procedurally triangulates box, sphere/ellipsoid, cylinder and capsule geometry.
 - Added mesh validation, degenerate-triangle removal, AABB bounds, deterministic cache keys, UV generation controls and triangle budgets.
 - Added collision-representation policy for primitive proxy, convex-hull and triangle-mesh paths without claiming triangle-mesh narrowphase.
-- Added dedicated Physics-v3 and GenesisMesher unit-test targets.
+- Added bounded GenesisMesher memory caching with hit/miss/eviction metrics.
+- Added PhysicsShapeBuilder collision planning between GenesisMesher and the native solver.
+- Integrated Physics v3 shape/raycast/spring/character operations with Region Runtime and authenticated Scene Physics v3.
+- Added Scene Persistence v7 and Object Crossing transport for collision shape, half extents and capsule height.
+- Added dedicated Physics-v3, GenesisMesher and PhysicsShapeBuilder unit-test targets.
 - Added `docs/GENESIS-MESHER-v1.md`, `docs/PROJECT-CONCEPT-ROADMAP.md` and the 17.0 wiki handover draft.
 
 
