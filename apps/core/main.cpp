@@ -697,10 +697,15 @@ int main(int argc, char** argv) {
                                 type == "touch_start" ||
                                 type == "touch" ||
                                 type == "touch_end";
+                            const bool changed_event =
+                                type == "changed";
+                            const auto change_mask =
+                                changed_event ? u64(body, "change") : 0U;
                             if (!owns_region || entity_id == 0U ||
                                 sequence == 0U ||
+                                (changed_event && change_mask == 0U) ||
                                 (!collision_event && !land_event &&
-                                 !touch_event)) {
+                                 !touch_event && !changed_event)) {
                                 socket.send_frame({
                                     protocol::MessageType::error,
                                     frame.request_id,
@@ -710,7 +715,10 @@ int main(int argc, char** argv) {
                             }
 
                             std::string event_payload;
-                            if (collision_event || touch_event) {
+                            if (changed_event) {
+                                event_payload =
+                                    std::to_string(change_mask);
+                            } else if (collision_event || touch_event) {
                                 event_payload = "1";
                             } else {
                                 std::ostringstream payload;
