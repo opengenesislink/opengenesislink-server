@@ -20,6 +20,8 @@ Script & LSL Event Expansion milestone.
 - current LSL event matrix: 44 total, 1 implemented, 13 partial, 29 recognized, 1 unsupported; executable including partial is 31.82%
 - current LSL function matrix: 523 total, 62 implemented, 34 partial, 402 recognized, 25 unsupported; executable including partial is 18.36%
 - verified code checkpoint before milestone documentation: `9100b31a167a7e464145681cbd0d017366aff21f` passed Linux x86_64, Linux ARM64/aarch64, Windows x86_64/MSVC, SQLite, PostgreSQL and MariaDB CI
+- final tested PR head: `d8c78aaf58fa03e58692a525366a423206e7e760`
+- squash merge: `cf99988f37d0c3abad20454f017afb28ab008588`
 - 16.0 does not claim complete detected-touch metadata, complete `CHANGED_*` coverage, attach/detach, permissions events, link messages, sensor events, HTTP/DataServer semantics or full Second Life LSL compatibility
 
 ## 15.0.0-dev — 2026-09-20
