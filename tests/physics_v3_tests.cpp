@@ -1,10 +1,13 @@
 #include "opengenesis/physics/physics_world.hpp"
+#include "opengenesis/world/region_runtime.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <chrono>
 
 namespace {
 
@@ -127,6 +130,75 @@ void shape_parser_test() {
            "mesh narrowphase is not falsely advertised");
 }
 
+
+void region_runtime_v3_test() {
+    using opengenesis::physics::CollisionShape;
+    using opengenesis::world::RegionRuntime;
+    using opengenesis::world::Transform;
+
+    RegionRuntime runtime("physics-v3-test", 60.0, 0.0, -10.0);
+
+    Transform object_transform;
+    object_transform.position = {20.0, 20.0, 10.0};
+    object_transform.scale = {2.0, 4.0, 6.0};
+    const auto object = runtime.spawn_object(
+        "Physics v3 box", object_transform, true, "owner-v3");
+    const auto object_body = runtime.physics_body_state(object);
+    expect(object_body &&
+               object_body->shape == CollisionShape::box,
+           "runtime object defaults to scale-aware box");
+    expect(std::abs(object_body->half_extents.x - 1.0) < 1e-9 &&
+               std::abs(object_body->half_extents.y - 2.0) < 1e-9 &&
+               std::abs(object_body->half_extents.z - 3.0) < 1e-9,
+           "runtime object box extents follow scale");
+
+    expect(runtime.set_physics_shape(
+               object, CollisionShape::capsule),
+           "runtime changes object collision shape");
+    const auto capsule = runtime.physics_body_state(object);
+    expect(capsule && capsule->shape == CollisionShape::capsule,
+           "runtime exposes capsule shape");
+
+    const auto hit = runtime.raycast(
+        {20.0, 20.0, 20.0}, {0.0, 0.0, -1.0}, 30.0);
+    expect(hit && hit->entity_id == object,
+           "runtime raycast maps body back to entity");
+
+    Transform avatar_transform;
+    avatar_transform.position = {30.0, 30.0, 0.9};
+    const auto avatar = runtime.spawn_avatar(
+        "avatar-v3", "Avatar V3", avatar_transform);
+    const auto avatar_body = runtime.physics_body_state(avatar);
+    expect(avatar_body &&
+               avatar_body->shape == CollisionShape::capsule &&
+               avatar_body->character,
+           "runtime avatar uses capsule character body");
+    expect(runtime.configure_character(
+               avatar, 45.0, 0.4, 6.5),
+           "runtime character config");
+    runtime.start();
+    for (int i = 0; i < 20; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    runtime.stop();
+    expect(runtime.avatar_jump(avatar),
+           "runtime grounded avatar jump");
+
+    Transform second_transform;
+    second_transform.position = {24.0, 20.0, 10.0};
+    const auto second = runtime.spawn_object(
+        "Spring target", second_transform, true, "owner-v3");
+    std::string reason;
+    const auto spring = runtime.constrain_spring(
+        object, second, 2.0, 20.0, 2.0, reason);
+    expect(spring != 0U && reason.empty(),
+           "runtime spring constraint");
+    expect(runtime.metrics().physics_constraints >= 1U,
+           "runtime reports spring constraint");
+    expect(runtime.remove_constraint(spring),
+           "runtime removes spring");
+}
+
 } // namespace
 
 int main() {
@@ -135,6 +207,7 @@ int main() {
         character_controller_test();
         spring_constraint_test();
         shape_parser_test();
+        region_runtime_v3_test();
         std::cout << "OpenGenesisLINK Physics v3 tests passed\n";
         return 0;
     } catch (const std::exception& error) {
