@@ -1,5 +1,7 @@
 # OpenGenesisLINK Scene Protocol v2
 
+> Release note: Server 1.0.0-alpha.1 freezes the named `scene-v2` application contract as the first Viewer-development baseline. Additive capabilities may be introduced; breaking changes require a new Scene contract revision.
+
 OpenGenesisLINK 13.0.0-dev defines the second native Viewer-facing Scene contract.
 
 The binary transport remains the existing OGL1 framed protocol with protocol version 1. Scene v2 is an application-level contract layered on that transport.
@@ -171,7 +173,7 @@ Object and land mutations continue to combine:
 
 ## Current boundaries
 
-13.0 does not freeze the wire format for stable 1.0.
+The current OGL1 transport is not claimed as the final production-stable transport, but the named Scene v2 application contract is frozen for the 1.0.0-alpha.1 client-development baseline.
 
 Not yet claimed:
 
