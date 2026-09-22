@@ -20,15 +20,9 @@ It is intentionally an alpha. The release gate is contract coherence, cross-plat
 
 ## Client development baseline
 
-Viewer:
+Viewer and Atlas handovers are distributed separately from the server repository.
 
-`docs/VIEWER-HANDOVER-1.0.0-alpha.1.md`
-
-Atlas:
-
-`docs/ATLAS-HANDOVER-1.0.0-alpha.1.md`
-
-Shared release compatibility:
+Shared server-side release compatibility remains documented in:
 
 `docs/RELEASE-CONTRACT-1.0.md`
 
