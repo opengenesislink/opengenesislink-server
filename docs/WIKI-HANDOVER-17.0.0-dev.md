@@ -96,6 +96,13 @@ See:
 - bounded GenesisMesher cache
 - API capability discovery for Physics v3 and GenesisMesher
 
+## CI hardening
+
+- CMake project version is aligned to 17.0.0.
+- the integrated smoke no longer hard-codes an old milestone version
+- expected API version is derived from the repository `VERSION` file
+- this prevents future milestone bumps from producing false-negative smoke failures
+
 ## Remaining 17.0 work
 
 - first static mesh acceleration data / BVH
