@@ -1,5 +1,7 @@
 # OpenGenesisLINK Viewer Contract — 13.0.0-dev
 
+> Release note: OpenGenesisLINK Server 1.0.0-alpha.1 promotes this bootstrap contract to the first client-development release baseline. The canonical implementation handover is `docs/VIEWER-HANDOVER-1.0.0-alpha.1.md`. Existing `ogl-viewer-bootstrap-v1` fields are retained; breaking changes require a new contract revision.
+
 OpenGenesisLINK 13.0.0-dev adds the first aggregated native Viewer bootstrap contract.
 
 The separate OpenGenesisLINK Viewer project can use this document as the canonical server-side handover for its login/world-entry implementation.
@@ -187,6 +189,6 @@ The separate Viewer project should implement the server contract in this sequenc
 
 ## Non-claims
 
-13.0 completes the first coherent **server contract** for a native Viewer.
+13.0 introduced the first coherent **server contract** for a native Viewer; 1.0.0-alpha.1 adopts it as the first released Viewer baseline.
 
 It does not mean the separate OpenGenesisLINK Viewer application itself is implemented or production ready.
