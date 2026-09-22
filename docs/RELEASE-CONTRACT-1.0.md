@@ -76,9 +76,7 @@ POST /v1/viewer/handoff/rollback
 
 World entry then uses the Scene endpoint and signed Scene Ticket returned by Core.
 
-Canonical Viewer handover:
-
-`docs/VIEWER-HANDOVER-1.0.0-alpha.1.md`
+The canonical Viewer handover is distributed separately from the server repository.
 
 ## Atlas baseline
 
@@ -92,9 +90,7 @@ GET /v1/atlas/regions/{region-id}
 
 The contract exposes Grid coordinates, Region state, Region runtime counters, neighbors and per-Region Parcel metadata without exposing individual Presence locations.
 
-Canonical Atlas handover:
-
-`docs/ATLAS-HANDOVER-1.0.0-alpha.1.md`
+The canonical Atlas handover is distributed separately from the server repository.
 
 ## Server subsystems available at this baseline
 
