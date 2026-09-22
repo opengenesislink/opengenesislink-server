@@ -212,7 +212,7 @@ endif()
 # CMake keeps a numeric project version for package generators.
 set(CPACK_PACKAGE_NAME "opengenesislink-server")
 set(CPACK_PACKAGE_VENDOR "OpenGenesisLINK")
-set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VERSION "${OGL_VERSION_LABEL}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenGenesisLINK federated virtual-world server")
 if(WIN32)
     set(CPACK_GENERATOR "ZIP")
