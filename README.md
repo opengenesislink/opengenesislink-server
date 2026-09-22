@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **17.0.0-dev**.
+Current release line: **1.0.0-alpha.1**.
 
-`17.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`1.0.0-alpha.1` is the first client-development release. It freezes the named Viewer/Scene/Atlas alpha contracts so the separate Viewer and Atlas projects can be built against a versioned baseline. It is not the final production-stable 1.0.0 release.
 
 ## What already runs
 
@@ -20,7 +20,8 @@ Current development version: **17.0.0-dev**.
 - native `changed` Script events for real object scale changes (`CHANGED_SCALE`) and link/unlink changes (`CHANGED_LINK`)
 - rigid root rotation/translation propagation for linked object children
 - GenesisMesher v1 with deterministic procedural box/sphere/cylinder/capsule triangulation, validation, bounds, cache keys, triangle budgets and a bounded in-memory cache
-- PhysicsShapeBuilder bridge with explicit primitive/convex/triangle collision plans and no false triangle-mesh solver claims\n- Scene Persistence v6 and Object Crossing currently preserve the accepted Physics v2 material state; Physics-v3 shape persistence is a 17.0 integration target
+- PhysicsShapeBuilder bridge with explicit primitive/convex/triangle collision plans and no false triangle-mesh solver claims
+- Scene Persistence v7 and Object Crossing preserve Physics v3 collision-shape state across restart and Region transfer
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
 - production relational storage layer for SQLite, PostgreSQL and MariaDB with prepared parameters, bounded connection pools and transactions
 - cross-database schema migrations with SQL-authoritative Identity, Auth Session, World Registry, Region Registry, Audit, Moderation and Admin Role stores
@@ -116,7 +117,28 @@ API discovery:
 http://127.0.0.1:18080/v1
 ```
 
-Important development endpoints include:
+Release/client compatibility discovery:
+
+```text
+http://127.0.0.1:18080/v1/release
+```
+
+Atlas v1 discovery:
+
+```text
+http://127.0.0.1:18080/v1/atlas/bootstrap
+```
+
+Important release/API endpoints include:
+
+```text
+GET  /v1/release
+GET  /v1/atlas/bootstrap
+GET  /v1/atlas/regions
+GET  /v1/atlas/regions/<region-id>
+```
+
+Additional endpoints include:
 
 ```text
 POST /v1/auth/register
@@ -314,3 +336,8 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 ## License
 
 Mozilla Public License 2.0. See `LICENSE`.
+
+
+## Client project baseline
+
+Viewer and Atlas handover documents are distributed separately from this server repository. The shared server-side compatibility definition remains in `docs/RELEASE-CONTRACT-1.0.md`.

@@ -265,21 +265,26 @@ std::string worlds_json(const std::vector<WorldNodeInfo>& worlds) {
     return body.str();
 }
 
+std::string region_json(const RegionInfo& region) {
+    std::ostringstream body;
+    body << "{\"id\":\"" << json_escape(region.id) << "\",\"name\":\""
+         << json_escape(region.name) << "\",\"state\":\"" << json_escape(region.state)
+         << "\",\"node\":\"" << json_escape(region.node_id) << "\",\"grid_x\":"
+         << region.grid_x << ",\"grid_y\":" << region.grid_y << ",\"generation\":"
+         << region.node_generation << ",\"ticks\":" << region.ticks << ",\"entities\":"
+         << region.entities << ",\"avatars\":" << region.avatars << ",\"physics_bodies\":"
+         << region.physics_bodies << ",\"scene_events\":" << region.scene_events
+         << ",\"terrain_revision\":" << region.terrain_revision << ",\"sim_fps\":"
+         << region.sim_fps << '}';
+    return body.str();
+}
+
 std::string regions_json(const std::vector<RegionInfo>& regions) {
     std::ostringstream body;
     body << '[';
     for (std::size_t i = 0; i < regions.size(); ++i) {
         if (i) body << ',';
-        const auto& region = regions[i];
-        body << "{\"id\":\"" << json_escape(region.id) << "\",\"name\":\""
-             << json_escape(region.name) << "\",\"state\":\"" << json_escape(region.state)
-             << "\",\"node\":\"" << json_escape(region.node_id) << "\",\"grid_x\":"
-             << region.grid_x << ",\"grid_y\":" << region.grid_y << ",\"generation\":"
-             << region.node_generation << ",\"ticks\":" << region.ticks << ",\"entities\":"
-             << region.entities << ",\"avatars\":" << region.avatars << ",\"physics_bodies\":"
-             << region.physics_bodies << ",\"scene_events\":" << region.scene_events
-             << ",\"terrain_revision\":" << region.terrain_revision << ",\"sim_fps\":"
-             << region.sim_fps << '}';
+        body << region_json(regions[i]);
     }
     body << ']';
     return body.str();

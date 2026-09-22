@@ -1,6 +1,6 @@
 # OpenGenesisLINK Core Web API v1
 
-`2.0.0-dev` exposes a development browser dashboard and JSON API. The default bind address is `127.0.0.1:18080`.
+`1.0.0-alpha.1` exposes the versioned Core browser dashboard and JSON API. The default bind address remains `127.0.0.1:18080`. Internet-facing deployments should place it behind production TLS/reverse-proxy policy.
 
 ## Browser dashboard
 
@@ -11,7 +11,11 @@
 ```text
 GET /health
 GET /v1
+GET /v1/release
 GET /v1/status
+GET /v1/atlas/bootstrap
+GET /v1/atlas/regions
+GET /v1/atlas/regions/<region-id>
 GET /v1/worlds
 GET /v1/regions
 GET /v1/regions/<region-id>/neighbors
@@ -102,3 +106,18 @@ GET  /v1/admin/audit
 ## Security status
 
 The interface has authenticated bearer sessions, signed Scene Tickets, server-side capabilities, Parcel/object policy enforcement, Estate admission/capacity checks and an admin-key boundary. It remains a development API. Keep it on trusted interfaces. TLS termination, key rotation, distributed replay state, mature admin roles and rate limiting are not complete.
+
+
+## First-release client contracts
+
+`GET /v1/release` is the machine-readable compatibility contract for separate Viewer and Atlas projects.
+
+The first dedicated Atlas contract is `ogl-atlas-v1`:
+
+```text
+GET /v1/atlas/bootstrap
+GET /v1/atlas/regions
+GET /v1/atlas/regions/<region-id>
+```
+
+These endpoints are public read contracts and expose Region/Parcel discovery data, not exact individual Presence locations.

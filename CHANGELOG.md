@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0-alpha.1 — First Client Development Release
+
+Status: release candidate; acceptance requires the final PR head to pass the full cross-platform/database CI matrix.
+
+- transition from internal 17.x development milestones to the first semantic public alpha release line
+- add machine-readable `ogl-release-v1` compatibility discovery at `GET /v1/release`
+- add dedicated `ogl-atlas-v1` public read API with bootstrap, Region list and Region detail
+- freeze `ogl-viewer-bootstrap-v1` and `scene-v2` as the first Viewer-development contract baseline
+- define additive/feature-detected alpha compatibility rules
+- preserve semantic `VERSION` labels in the compiled server version
+- add CPack ZIP/TGZ/DEB packaging foundation
+- extend integrated smoke coverage for release discovery and Atlas v1
+- add canonical separate-project handovers for Viewer and Atlas
+- document deferred simulator features as post-alpha extensions rather than blockers for client development
+
+
 ## 17.0.0-dev — 2026-09-22
 
 Physics v3 & GenesisMesher v1 milestone.
