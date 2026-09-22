@@ -1,5 +1,25 @@
 # Changelog
 
+## 17.0.0-dev — 2026-09-22
+
+### In development
+
+- Started the Physics v3 & GenesisMesher v1 milestone from the accepted 16.0.0-dev main line.
+- Selectively ported the reusable native Physics-v3 solver core from the older divergent experimental PR #21 instead of merging that branch over the accepted 16.0 Script changes.
+- Added sphere, axis-aligned box and vertical capsule collision-shape state.
+- Added primitive/terrain raycasts, capsule character grounded/jump foundation, adaptive bounded substeps and damped spring constraints.
+- Added the independent native GenesisMesher v1 subsystem.
+- GenesisMesher v1 procedurally triangulates box, sphere/ellipsoid, cylinder and capsule geometry.
+- Added mesh validation, degenerate-triangle removal, AABB bounds, deterministic cache keys, UV generation controls and triangle budgets.
+- Added collision-representation policy for primitive proxy, convex-hull and triangle-mesh paths without claiming triangle-mesh narrowphase.
+- Added bounded GenesisMesher memory caching with hit/miss/eviction metrics.
+- Added PhysicsShapeBuilder collision planning between GenesisMesher and the native solver.
+- Integrated Physics v3 shape/raycast/spring/character operations with Region Runtime and authenticated Scene Physics v3.
+- Added Scene Persistence v7 and Object Crossing transport for collision shape, half extents and capsule height.
+- Added dedicated Physics-v3, GenesisMesher and PhysicsShapeBuilder unit-test targets.
+- Added `docs/GENESIS-MESHER-v1.md`, `docs/PROJECT-CONCEPT-ROADMAP.md` and the 17.0 wiki handover draft.
+
+
 ## 16.0.0-dev — 2026-09-21
 
 Script & LSL Event Expansion milestone.

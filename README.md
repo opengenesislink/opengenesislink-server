@@ -2,9 +2,9 @@
 
 OpenGenesisLINK is an independent **C++23** server platform for federated virtual worlds. It is not an OpenSimulator fork. Legacy/OpenSim interoperability is intended to live behind explicit compatibility adapters.
 
-Current development version: **16.0.0-dev**.
+Current development version: **17.0.0-dev**.
 
-`16.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
+`17.0.0-dev` is a development milestone, not a production-stable release. Protocol and persistence formats may still change before a stable release.
 
 ## What already runs
 
@@ -14,12 +14,13 @@ Current development version: **16.0.0-dev**.
 - 256×256 terrain runtime with persistence
 - persistent Scene objects, authenticated Avatar Presence and local chat/events
 - native OpenGenesis Physics foundation
-- Physics v2 with body-vs-body and terrain contacts, restitution/friction, force/impulse/torque, damping, buoyancy and distance constraints
+- Physics v3 development with sphere/box/capsule shapes, primitive raycasts, capsule character grounding/jump, adaptive substeps and damped spring constraints
 - collision start/stay/end and land-collision events emitted by Region Runtime
 - authenticated Scene object interaction path with server-authoritative `touch_start`, `touch` and `touch_end` Script events
 - native `changed` Script events for real object scale changes (`CHANGED_SCALE`) and link/unlink changes (`CHANGED_LINK`)
 - rigid root rotation/translation propagation for linked object children
-- Scene Persistence v6 and Object Crossing preserve Physics v2 material state
+- GenesisMesher v1 with deterministic procedural box/sphere/cylinder/capsule triangulation, validation, bounds, cache keys, triangle budgets and a bounded in-memory cache
+- PhysicsShapeBuilder bridge with explicit primitive/convex/triangle collision plans and no false triangle-mesh solver claims\n- Scene Persistence v6 and Object Crossing currently preserve the accepted Physics v2 material state; Physics-v3 shape persistence is a 17.0 integration target
 - persistent identities and bearer sessions with PBKDF2-HMAC-SHA256 password hashing
 - production relational storage layer for SQLite, PostgreSQL and MariaDB with prepared parameters, bounded connection pools and transactions
 - cross-database schema migrations with SQL-authoritative Identity, Auth Session, World Registry, Region Registry, Audit, Moderation and Admin Role stores
@@ -71,7 +72,7 @@ Current development version: **16.0.0-dev**.
 - persistent Script language selection (`legacy`, `lsl`, `ogl`) with state-specific handlers, event parameter binding and restart-safe VM state
 - native OGL language v1 with state/event declarations, variables, increments, World/Social actions and durable World queries
 - OGL v2 control flow with bounded `if/else`, `while`, `for`, reusable parameterless functions and typed declarations on the shared sandboxed VM
-- OGL v2 language core remains complete; the current 16.0 catalog is 37/37 implemented
+- OGL v2 language core remains complete; the accepted 16.0 catalog is 37/37 implemented
 - LSL function coverage is 62 strictly implemented plus 34 partial functions (96/523 executable including partial, 18.36%); the full 523-function catalog remains tracked without claiming full semantic compatibility
 - LSL event coverage is 1 implemented plus 13 partial events (14/44 executable including partial, 31.82%), including automatic state lifecycle, collision/land-collision, authenticated Scene touch and first `changed` bitmask sources
 - LSL compatibility frontend with real `default`/named-state syntax, typed event parameter names, state changes, executable deterministic built-ins and a machine-readable canonical function/event status catalog
@@ -287,7 +288,7 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/WEB-API-v1.md`
 - `docs/REGION-RUNTIME.md`
 - `docs/REGION-PERSISTENCE-v0.md`
-- `docs/PHYSICS.md`
+- `docs/PHYSICS.md`\n- `docs/GENESIS-MESHER-v1.md`\n- `docs/PROJECT-CONCEPT-ROADMAP.md`
 - `docs/OGL-FED-v0.md`
 - `docs/VOICE-PROVIDER-v0.md`
 - `docs/HYPERGRID-COMPAT-v0.md`
@@ -308,7 +309,7 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 - `docs/SCRIPT-COMMAND-STATUS-9.0.md`
 - `docs/SCRIPT-COMMAND-STATUS-12.0.md`
 - `docs/SCRIPT-COMMAND-STATUS-16.0.md`
-- `docs/WIKI-HANDOVER-16.0.0-dev.md`
+- `docs/WIKI-HANDOVER-16.0.0-dev.md`\n- `docs/WIKI-HANDOVER-17.0.0-dev.md`
 
 ## License
 

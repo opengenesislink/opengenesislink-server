@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 16.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 17.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -92,6 +92,8 @@ add_library(opengenesis-foundation
     src/storage/migrations.cpp
     src/voice/voice_provider.cpp
     src/physics/physics_world.cpp
+    src/physics/physics_shape_builder.cpp
+    src/meshing/genesis_mesher.cpp
     src/world/region_runtime.cpp
     src/world/region_persistence.cpp
     src/world/terrain.cpp
@@ -178,6 +180,24 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-platform-services-tests tests/platform_services_tests.cpp)
     target_link_libraries(ogl-platform-services-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME platform-services COMMAND ogl-platform-services-tests)
+
+    add_executable(ogl-physics-v3-tests tests/physics_v3_tests.cpp)
+    target_link_libraries(ogl-physics-v3-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME physics-v3 COMMAND ogl-physics-v3-tests)
+
+    add_executable(ogl-meshing-tests tests/meshing_tests.cpp)
+    target_link_libraries(ogl-meshing-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME genesis-mesher COMMAND ogl-meshing-tests)
+
+    add_executable(
+        ogl-physics-shape-builder-tests
+        tests/physics_shape_builder_tests.cpp)
+    target_link_libraries(
+        ogl-physics-shape-builder-tests
+        PRIVATE OpenGenesis::Foundation)
+    add_test(
+        NAME physics-shape-builder
+        COMMAND ogl-physics-shape-builder-tests)
 
     add_executable(ogl-database-foundation-tests tests/database_foundation_tests.cpp)
     target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)

@@ -1,214 +1,142 @@
-# OpenGenesis Physics — Physics v2
+# OpenGenesis Physics — Physics v3 development
 
-OpenGenesisLINK 12.0.0-dev promotes the native C++ physics layer from the early integration kernel to Physics v2.
+OpenGenesisLINK 17.0.0-dev advances the native C++ physics layer from Physics v2 toward shape-aware Physics v3.
 
-Physics v2 remains an OpenGenesisLINK-owned implementation. It does not embed or wrap an OpenSimulator physics engine.
+Physics remains an OpenGenesisLINK-owned implementation. It does not embed or wrap an OpenSimulator physics engine.
 
-## Body state
+## Physics v2 baseline retained
 
-A physics body contains:
+The existing solver still provides:
 
-- position and linear velocity
-- rotation and angular velocity
-- accumulated force and torque
-- mass
-- collision radius
-- restitution
-- friction
-- linear damping
-- angular damping
-- gravity scale
-- buoyancy
-- dynamic/static state
-- character marker
+- position and velocity integration
+- angular state
+- mass, restitution and friction
+- damping
+- gravity scale and buoyancy
+- force, torque and impulses
+- terrain contact
+- body collision reporting
+- distance constraints
+- Region Runtime collision events
 
-Inputs are validated and bounded before entering the solver.
+## Physics v3 core
 
-## Integration
+17.0 adds native collision-shape state:
 
-Dynamic bodies use bounded time steps and integrate:
+- sphere
+- axis-aligned box
+- vertical capsule
 
-- configured gravity
-- per-body gravity scale
-- buoyancy-adjusted gravity
-- accumulated force by inverse mass
-- accumulated torque by inverse mass
-- linear damping
-- angular damping
-- linear position
-- Euler angular state
+Body state now includes:
 
-Force and torque accumulators are cleared after each solver step.
+- half extents
+- capsule half height
+- collision shape
+- grounded state
+- character-controller parameters
 
-## Terrain contact
+Shape-aware narrowphase currently covers combinations of sphere, box and capsule.
 
-The solver samples the Region terrain height and resolves body penetration against the ground.
+Rotated OBB, convex hull and triangle-mesh narrowphase are not yet claimed.
 
-Ground contact applies:
+## Adaptive substeps
 
-- position correction
-- restitution
-- horizontal friction
-- low-speed vertical settling
-- collision-contact reporting
+Physics v3 bounds large frame deltas and divides integration into smaller substeps.
 
-Region Runtime converts these contacts into:
+This improves stability for:
 
-- `land_collision_start`
-- `land_collision`
-- `land_collision_end`
+- faster bodies
+- spring constraints
+- character contact
+- shape-aware collision resolution
 
-## Body-to-body collision
+It is not full continuous collision detection.
 
-Physics v2 includes deterministic sphere broad/narrow pair testing for the current native primitive-body abstraction.
+## Raycasts
 
-For overlapping bodies the solver performs:
+Physics v3 introduces bounded raycasts against:
 
-- penetration correction
-- normal impulse
-- restitution
-- friction impulse
-- contact point/normal reporting
+- supported primitive bodies
+- Region terrain
 
-Region Runtime converts contacts into:
+Raycast results include:
 
-- `collision_start`
-- `collision`
-- `collision_end`
+- body identifier
+- point
+- normal
+- distance
+- terrain/ground marker
 
-The event text contains the peer entity identifier and, when available, contact impulse metadata.
+Region Runtime integration is a separate 17.0 step.
 
-This collision model is intentionally a foundation for later shape-aware narrowphase. It does not claim mesh, convex-hull or triangle-mesh collision fidelity.
+## Character controller foundation
 
-## Forces and impulses
+Capsule bodies can act as characters.
 
-Physics v2 exposes:
+The v3 foundation adds:
 
-- continuous force
-- linear impulse
-- continuous torque
-- angular impulse
+- grounded state
+- maximum slope parameter
+- step-height parameter
+- jump speed
+- grounded jump
 
-These operations are available through Region Runtime, authenticated Scene Physics v2 and the Script-to-World action pipeline.
-
-## Material and motion controls
-
-Runtime-controllable body state includes:
-
-- mass
-- restitution
-- friction
-- buoyancy
-- linear/angular velocity
-- linear/angular damping
-- gravity scale
-
-The first public Scene Physics v2 contract exposes material, buoyancy, force, impulse, angular impulse and torque.
+This is not yet the final production Avatar controller.
 
 ## Constraints
 
-Physics v2 introduces bounded distance constraints between two physical bodies.
+Physics v3 retains distance constraints and adds damped spring constraints.
 
-A distance constraint defines:
+A spring defines:
 
 - body A
 - body B
 - rest length
 - stiffness
+- damping
 
-The solver applies iterative positional correction. Constraint IDs can be removed explicitly, and constraints are automatically discarded when a referenced body is deleted.
+## GenesisMesher relationship
 
-This is the first native constraint type. Hinges, sliders, six-degree-of-freedom joints and articulated ragdolls remain future work.
+17.0 adds GenesisMesher as a separate geometry layer.
 
-## Linksets
+GenesisMesher can produce validated indexed triangle meshes for native procedural geometry. It also recommends whether physics should use:
 
-Object Runtime v2 keeps one physical body on a linked root.
+- a native primitive proxy
+- a convex hull
+- a triangle mesh
 
-When the root moves or rotates, child parts are transformed as rigid offsets relative to the root. This fixes the earlier v1 limitation where only root translation propagated correctly.
+Physics v3 does not yet claim triangle-mesh narrowphase. A dedicated PhysicsShapeBuilder is now present so the solver never has to parse arbitrary asset data itself. It maps supported primitive geometry to native solver shapes and marks convex/triangle plans as pending rather than silently degrading them.
 
-Linked children do not own independent bodies in this contract.
+See `docs/GENESIS-MESHER-v1.md`.
 
-## Avatar bodies
+## 17.0 integration status
 
-Avatars continue to own native PhysicsWorld bodies and participate in Physics v2 contacts.
+Completed in the current 17.0 branch:
 
-12.0 improves the common collision foundation used by avatars and objects, but it does not claim a final character controller with stairs, slope limits, crouching, jumping policies or capsule-vs-mesh narrowphase.
+- Region Runtime shape state
+- scale-aware object collider mapping
+- Scene Physics v3 actions
+- persistence and crossing of shape state
+- GenesisMesher bounded memory cache
+- PhysicsShapeBuilder collision plans
 
-## Scene Physics v2
+Next:
 
-Authenticated Scene clients can submit `entity_physics` operations for objects they are allowed to modify.
+- static mesh BVH foundation
+- mesh raycast
+- primitive/capsule versus static mesh contacts
+- convex-hull builder for dynamic complex objects
 
-Supported operations:
+## Explicit non-claims
 
-- `force`
-- `impulse`
-- `angular_impulse`
-- `torque`
-- `buoyancy`
-- `material`
-- `constraint`
-- `constraint_remove`
+Current 17.0 development does not yet claim:
 
-Scene snapshots append:
-
-- mass
-- restitution
-- friction
-- buoyancy
-
-Existing snapshot fields retain their previous indices.
-
-## Scripting integration
-
-Native OGL gains:
-
-- `world.force`
-- `world.impulse`
-- `world.angular_impulse`
-- `world.torque`
-- `world.buoyancy`
-- `world.material`
-
-LSL compatibility gains partial executable semantics for:
-
-- `llApplyImpulse`
-- `llApplyRotationalImpulse`
-- `llSetForce`
-- `llSetTorque`
-- `llSetBuoyancy`
-
-The current LSL mappings deliberately support a narrower subset than complete Second Life semantics. In particular, the implemented vector-force calls require supported constant vector forms and the currently documented world-space mode.
-
-## Persistence and crossing
-
-Scene Persistence v6 preserves the physical root state required by Physics v2:
-
-- linear velocity
-- angular velocity
-- mass
-- restitution
-- friction
-- linear damping
-- angular damping
-- gravity scale
-- buoyancy
-
-The loader remains compatible with earlier Scene object record layouts.
-
-Object Crossing/linkset snapshots carry the same Physics v2 state, so a physical object does not silently revert to default material settings after a Region transfer.
-
-## Current boundaries
-
-Physics v2 does not yet claim:
-
-- production-grade mesh/convex collision shapes
+- rotated OBB collision
+- convex decomposition
+- triangle-mesh collision resolution
 - continuous collision detection
-- final avatar character controller
-- full vehicle parameter compatibility
-- articulated joints beyond distance constraints
+- production vehicle physics
+- final stair/step character controller
 - ragdolls
-- fluid-volume simulation
+- fluid simulation
 - distributed cross-Region contact solving
-- deterministic lockstep simulation across heterogeneous CPUs
-
-Those are later roadmap items and must not be presented as implemented 12.0 features.

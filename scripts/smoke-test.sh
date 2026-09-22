@@ -2,6 +2,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+OGL_EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
+OGL_EXPECTED_VERSION="${OGL_EXPECTED_VERSION%-dev}"
+export OGL_EXPECTED_VERSION
 rm -rf data
 cmake --preset dev >/dev/null
 cmake --build --preset dev >/dev/null
@@ -192,7 +195,7 @@ def register(username,display):
     assert st==201; return json.loads(raw)
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
-_,_,raw=api('/v1'); info=json.loads(raw); assert info['version']=='6.0.0'
+_,_,raw=api('/v1'); info=json.loads(raw); expected=os.environ['OGL_EXPECTED_VERSION']; assert info['version']==expected,(info['version'],expected)
 for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v2','scene-protocol-v2','viewer-bootstrap-v1','scene-sync-v1','avatar-reconcile-v1','region-metadata-v1','parcel-read-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','ogl-fed-v2','federation-service-grants-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
     assert cap in info['capabilities'],cap
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
@@ -429,4 +432,4 @@ import json,os,urllib.request
 d=json.load(urllib.request.urlopen(f"http://127.0.0.1:{os.environ['ADMIN_PORT']}/v1/status")); assert all(r['state']=='offline' for r in d['regions']); assert d['identities']==2 and d['active_sessions']==0 and d['friendships']==1 and d['messages']==3 and d['groups']==1 and d['parcels']==1 and d['estates']==1 and d['landmarks']==1 and d['group_posts']==1
 PY
 
-echo "OpenGenesisLINK 6.0.0-dev integrated world/social/federation/hypergrid services smoke test: PASS"
+echo "OpenGenesisLINK $(tr -d '\r\n' < VERSION) integrated world/social/federation/hypergrid services smoke test: PASS"

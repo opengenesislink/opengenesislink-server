@@ -61,6 +61,9 @@ struct ObjectTransferSnapshot {
     double angular_damping{0.04};
     double gravity_scale{1.0};
     double buoyancy{0.0};
+    physics::CollisionShape collision_shape{physics::CollisionShape::sphere};
+    physics::Vec3 half_extents{0.5, 0.5, 0.5};
+    double capsule_half_height{0.5};
     bool physical{false};
     std::uint64_t parent_source_entity_id{0};
     std::uint32_t link_number{1};
@@ -70,6 +73,14 @@ struct ObjectTransferSnapshot {
 struct ObjectLinksetTransferSnapshot {
     std::uint64_t source_root_entity_id{0};
     std::vector<ObjectTransferSnapshot> members;
+};
+
+struct RuntimeRaycastHit {
+    std::uint64_t entity_id{0};
+    physics::Vec3 point{};
+    physics::Vec3 normal{};
+    double distance{0.0};
+    bool ground{false};
 };
 
 struct SceneEvent {
@@ -128,7 +139,11 @@ public:
         double linear_damping = 0.04,
         double angular_damping = 0.04,
         double gravity_scale = 1.0,
-        double buoyancy = 0.0);
+        double buoyancy = 0.0,
+        physics::CollisionShape collision_shape =
+            physics::CollisionShape::sphere,
+        physics::Vec3 half_extents = {0.5, 0.5, 0.5},
+        double capsule_half_height = 0.5);
 
     bool remove_entity(std::uint64_t id);
     bool remove_linkset(std::uint64_t entity_id);
@@ -143,12 +158,29 @@ public:
     bool set_physics_material(std::uint64_t id, double mass,
                               double restitution, double friction);
     bool set_buoyancy(std::uint64_t id, double buoyancy);
+    bool set_physics_shape(std::uint64_t id,
+                           physics::CollisionShape shape);
+    bool configure_character(std::uint64_t id,
+                             double max_slope_degrees,
+                             double step_height,
+                             double jump_speed);
+    bool avatar_jump(std::uint64_t id);
+    [[nodiscard]] std::optional<RuntimeRaycastHit> raycast(
+        physics::Vec3 origin, physics::Vec3 direction,
+        double max_distance,
+        std::uint64_t ignore_entity_id = 0) const;
     bool set_physical(std::uint64_t id, bool enabled);
     std::uint64_t constrain_distance(std::uint64_t entity_a,
                                      std::uint64_t entity_b,
                                      double rest_length,
                                      double stiffness,
                                      std::string& reason);
+    std::uint64_t constrain_spring(std::uint64_t entity_a,
+                                   std::uint64_t entity_b,
+                                   double rest_length,
+                                   double stiffness,
+                                   double damping,
+                                   std::string& reason);
     bool remove_constraint(std::uint64_t constraint_id);
     bool set_floating_text(std::uint64_t id, std::string text);
     bool link_objects(std::uint64_t root_id, std::uint64_t child_id,
