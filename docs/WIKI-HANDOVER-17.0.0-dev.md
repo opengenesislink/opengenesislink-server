@@ -2,17 +2,16 @@
 
 ## Status
 
-17.0.0-dev is currently in development on:
+OpenGenesisLINK Server 17.0.0-dev is the accepted **Physics v3 & GenesisMesher v1** milestone.
 
-`dev/17.0.0-physics-meshing-v1`
+- Pull request: #23
+- Final tested PR head: `b7beed4ba4ee67c9c6ad9e850439c4179becda69`
+- Squash merge: `2291aa5e55369cbf85f15c007183daf12e39b3e9`
+- Canonical branch: `main`
 
-Milestone theme:
+The milestone starts from the accepted 16.0.0-dev main line. The older divergent PR #21 was not merged directly; reusable Physics-v3 core work was selectively ported onto the current main line so the accepted 16.0 Script work remained intact.
 
-**Physics v3 & GenesisMesher v1**
-
-This milestone starts from the accepted 16.0.0-dev main line. The old PR #21 is not merged directly because it diverged from the 16.0 accepted Script branch. Reusable Physics-v3 core work is being ported selectively instead.
-
-## Implemented so far
+## Implemented
 
 ### Physics v3 core
 
@@ -103,11 +102,35 @@ See:
 - expected API version is derived from the repository `VERSION` file
 - this prevents future milestone bumps from producing false-negative smoke failures
 
-## Remaining 17.0 work
+## Acceptance
 
-- first static mesh acceleration data / BVH
-- convex-hull generation
+The final tested PR head `b7beed4ba4ee67c9c6ad9e850439c4179becda69` passed:
+
+- Linux x86_64 warnings-as-errors build
+- Linux x86_64 unit tests
+- Linux x86_64 integrated world/social/handoff smoke
+- Linux x86_64 Script World query/ACK smoke
+- Linux x86_64 OGL/LSL ScriptEngine smoke
+- Linux x86_64 Crossing v3 smoke
+- Linux x86_64 Object Crossing end-to-end smoke
+- Linux x86_64 Viewer bootstrap / Scene v2 smoke
+- Linux x86_64 OGL-FED v2 remote services smoke
+- Linux x86_64 Platform Services smoke
+- Linux ARM64/aarch64 with the same complete build/unit/smoke matrix
+- Windows x86_64/MSVC warnings-as-errors build and unit tests
+- SQLite integration
+- PostgreSQL integration
+- MariaDB integration
+
+Canonical 17.0.0-dev squash merge: `2291aa5e55369cbf85f15c007183daf12e39b3e9`.
+
+## Deferred beyond the accepted 17.0 milestone
+
+These are explicit next-generation geometry/physics targets, not 17.0 completion blockers:
+
+- static triangle-mesh acceleration structure / BVH
+- convex-hull generation and convex decomposition
 - actual triangle-mesh narrowphase
-- optional OGL scripting exposure for shape/raycast
-- process smoke expansion
-- full cross-platform CI acceptance
+- imported mesh and sculpt compatibility inputs
+- optional native OGL scripting exposure for advanced shape/raycast operations
+- asynchronous/disk-backed meshing cache
