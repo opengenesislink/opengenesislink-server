@@ -2,7 +2,7 @@
 
 ## 17.0.0-dev — 2026-09-22
 
-### In development
+Physics v3 & GenesisMesher v1 milestone.
 
 - Started the Physics v3 & GenesisMesher v1 milestone from the accepted 16.0.0-dev main line.
 - Selectively ported the reusable native Physics-v3 solver core from the older divergent experimental PR #21 instead of merging that branch over the accepted 16.0 Script changes.
@@ -18,6 +18,11 @@
 - Added Scene Persistence v7 and Object Crossing transport for collision shape, half extents and capsule height.
 - Added dedicated Physics-v3, GenesisMesher and PhysicsShapeBuilder unit-test targets.
 - Added `docs/GENESIS-MESHER-v1.md`, `docs/PROJECT-CONCEPT-ROADMAP.md` and the 17.0 wiki handover draft.
+- hardened the integrated smoke so its expected API version is derived from `VERSION` instead of a historical hard-coded milestone
+- normalized the 17.0 `VERSION` file to a real newline
+- final tested PR head: `b7beed4ba4ee67c9c6ad9e850439c4179becda69`
+- squash merge: `2291aa5e55369cbf85f15c007183daf12e39b3e9`
+- acceptance: Linux x86_64 and ARM64 full build/unit/all-smoke matrix PASS; Windows x86_64/MSVC build+unit PASS; SQLite/PostgreSQL/MariaDB integration PASS
 
 
 ## 16.0.0-dev — 2026-09-21
