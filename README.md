@@ -338,10 +338,6 @@ The process smoke test covers two accounts, Social, Groups, Group notices, Notif
 Mozilla Public License 2.0. See `LICENSE`.
 
 
-## Client project handovers
+## Client project baseline
 
-The first separate client projects should use these canonical server handovers:
-
-- Viewer: `docs/VIEWER-HANDOVER-1.0.0-alpha.1.md`
-- Atlas: `docs/ATLAS-HANDOVER-1.0.0-alpha.1.md`
-- Shared release compatibility: `docs/RELEASE-CONTRACT-1.0.md`
+Viewer and Atlas handover documents are distributed separately from this server repository. The shared server-side compatibility definition remains in `docs/RELEASE-CONTRACT-1.0.md`.
