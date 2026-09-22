@@ -124,17 +124,13 @@ New first-release work:
 
 ## Viewer project baseline
 
-Viewer development can start now from:
-
-`docs/VIEWER-HANDOVER-1.0.0-alpha.1.md`
+Viewer development can start from the separately distributed 1.0.0-alpha.1 Viewer handover.
 
 The first Viewer does not wait for complete LSL, vehicles or final arbitrary mesh physics. Its initial objective is login, Scene entry, rendering, Avatar control/reconciliation, asset/inventory consumption, social/chat and Region travel.
 
 ## Atlas project baseline
 
-Atlas development can start now from:
-
-`docs/ATLAS-HANDOVER-1.0.0-alpha.1.md`
+Atlas development can start from the separately distributed 1.0.0-alpha.1 Atlas handover.
 
 Atlas v1 begins with Region discovery, map placement, Region runtime state, neighbors, Parcel overlays and Viewer destination handoff. Global place/category indexing remains an Atlas extension.
 
