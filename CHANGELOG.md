@@ -2,7 +2,7 @@
 
 ## 1.0.0-alpha.1 — First Client Development Release
 
-Status: release candidate; acceptance requires the final PR head to pass the full cross-platform/database CI matrix.
+Status: **accepted**. PR #24 passed the full cross-platform/database CI matrix on final head `bdbbb31a805782aeda8e53e3e274cab7141908a1` and was squash-merged as `af40e4cd58c6fb98dbce6c5e25c23aa09b4fb730`.
 
 - transition from internal 17.x development milestones to the first semantic public alpha release line
 - add machine-readable `ogl-release-v1` compatibility discovery at `GET /v1/release`
@@ -14,6 +14,7 @@ Status: release candidate; acceptance requires the final PR head to pass the ful
 - extend integrated smoke coverage for release discovery and Atlas v1
 - add canonical separate-project handovers for Viewer and Atlas
 - document deferred simulator features as post-alpha extensions rather than blockers for client development
+- acceptance: Linux x86_64 full unit/smoke matrix PASS; Linux ARM64/aarch64 full unit/smoke matrix PASS; Windows x86_64/MSVC build + unit tests PASS; SQLite/PostgreSQL/MariaDB integration PASS
 
 
 ## 17.0.0-dev — 2026-09-22
