@@ -3,7 +3,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 OGL_EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
-OGL_EXPECTED_VERSION="${OGL_EXPECTED_VERSION%-dev}"
 export OGL_EXPECTED_VERSION
 rm -rf data
 cmake --preset dev >/dev/null
@@ -196,8 +195,20 @@ def register(username,display):
 
 status,ctype,html=api('/'); assert status==200 and ctype=='text/html' and b'presence' in html.lower() and b'social' in html.lower()
 _,_,raw=api('/v1'); info=json.loads(raw); expected=os.environ['OGL_EXPECTED_VERSION']; assert info['version']==expected,(info['version'],expected)
-for cap in ['presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v2','scene-protocol-v2','viewer-bootstrap-v1','scene-sync-v1','avatar-reconcile-v1','region-metadata-v1','parcel-read-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','ogl-fed-v2','federation-service-grants-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
+for cap in ['release-contract-v1','atlas-v1','presence-v1','friends-v1','messaging-v1','avatar-movement-v1','region-handoff-v1','scene-capabilities-v2','scene-protocol-v2','viewer-bootstrap-v1','scene-sync-v1','avatar-reconcile-v1','region-metadata-v1','parcel-read-v1','groups-v1','land-parcels-v1','object-permissions-v1','asset-permissions-v1','teleport-v1','moderation-v1','audit-v1','estates-v1','landmarks-v1','notifications-v1','group-channels-v1','prometheus-metrics-v1','ogl-fed-v1','ogl-fed-v2','federation-service-grants-v1','hypergrid-session-v1','script-vm-v1','script-host-v1','script-world-actions-v1','crossing-v2','hypergrid-xinventory-v2','hypergrid-xinventory-auth-v1']:
     assert cap in info['capabilities'],cap
+_,_,raw=api('/v1/release'); release=json.loads(raw)
+assert release['release_contract']=='ogl-release-v1' and release['server_version']==expected
+assert release['contracts']['viewer']=='ogl-viewer-bootstrap-v1'
+assert release['contracts']['scene']=='scene-v2'
+assert release['contracts']['atlas']=='ogl-atlas-v1'
+_,_,raw=api('/v1/atlas/bootstrap'); atlas=json.loads(raw)
+assert atlas['atlas_contract']=='ogl-atlas-v1' and atlas['coordinate_system']['region_size_meters']==256
+ids={r['id'] for r in atlas['regions']}; assert {'genesis-central','genesis-east'} <= ids
+_,_,raw=api('/v1/atlas/regions/genesis-central'); atlas_region=json.loads(raw)
+assert atlas_region['region']['id']=='genesis-central'
+assert atlas_region['region']['grid_x']==1000 and atlas_region['region']['grid_y']==1000
+assert [r['id'] for r in atlas_region['neighbors']]==['genesis-east']
 _,_,raw=api('/v1/federation/info'); fed=json.loads(raw)
 assert fed['protocol']=='OGL-FED/2' and fed['grid_id']=='local.opengenesislink' and len(fed['public_key'])==64
 
