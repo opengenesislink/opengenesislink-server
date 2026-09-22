@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.25)
-project(OpenGenesisLINK VERSION 17.0.0 LANGUAGES CXX)
+project(OpenGenesisLINK VERSION 1.0.0 LANGUAGES CXX)
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" OGL_VERSION_LABEL)
+string(STRIP "${OGL_VERSION_LABEL}" OGL_VERSION_LABEL)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -114,7 +117,7 @@ target_link_libraries(opengenesis-foundation PUBLIC
 if(WIN32)
     target_link_libraries(opengenesis-foundation PUBLIC ws2_32)
 endif()
-target_compile_definitions(opengenesis-foundation PUBLIC OGL_VERSION="${PROJECT_VERSION}")
+target_compile_definitions(opengenesis-foundation PUBLIC OGL_VERSION="${OGL_VERSION_LABEL}")
 if(WIN32)
     target_compile_definitions(opengenesis-foundation PUBLIC WIN32_LEAN_AND_MEAN NOMINMAX)
 endif()
@@ -203,3 +206,19 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     target_link_libraries(ogl-database-foundation-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME database-foundation-sqlite COMMAND ogl-database-foundation-tests sqlite)
 endif()
+
+
+# Release packaging. The semantic release label comes from VERSION while
+# CMake keeps a numeric project version for package generators.
+set(CPACK_PACKAGE_NAME "opengenesislink-server")
+set(CPACK_PACKAGE_VENDOR "OpenGenesisLINK")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "OpenGenesisLINK federated virtual-world server")
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP")
+else()
+    set(CPACK_GENERATOR "TGZ;DEB")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpenGenesisLINK")
+    set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+endif()
+include(CPack)
