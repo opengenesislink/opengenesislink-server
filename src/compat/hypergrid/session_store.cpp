@@ -105,7 +105,7 @@ HomeTravelSession HypergridSessionStore::issue_home_travel(
         .service_token = {},
         .client_ip = std::move(client_ip),
         .secure_session_id = legacy_uuid_from_seed(security::random_hex(32)),
-        .caps_path = "CAPS/" + security::random_hex(16) + "/",
+        .caps_path = legacy_uuid_from_seed(security::random_hex(32)),
         .circuit_code = 0,
         .state = TravelState::active,
         .created_unix = now,
@@ -239,6 +239,16 @@ std::optional<ForeignVisitorSession> HypergridSessionStore::foreign_by_agent(
     std::scoped_lock lock(mutex_);
     for (const auto& [_, session] : foreign_) {
         if (session.agent_id == agent_id) return session;
+    }
+    return std::nullopt;
+}
+
+std::optional<ForeignVisitorSession> HypergridSessionStore::foreign_by_caps_path(
+    const std::string_view caps_path) const {
+    std::scoped_lock lock(mutex_);
+    for (const auto& [key, session] : foreign_) {
+        (void)key;
+        if (session.caps_path == caps_path) return session;
     }
     return std::nullopt;
 }
