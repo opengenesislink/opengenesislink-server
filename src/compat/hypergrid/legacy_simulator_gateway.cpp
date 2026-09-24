@@ -2,6 +2,7 @@
 
 #include "opengenesis/common/log.hpp"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstring>
@@ -198,20 +199,22 @@ LegacyDatagramResult LegacyCircuitRouter::handle(
         }
 
         const auto key = endpoint_key(peer_ip, peer_port);
-        std::scoped_lock lock(mutex_);
-        const auto it = by_endpoint_.find(key);
-        if (it == by_endpoint_.end() ||
-            it->second.session_id != movement->session_id ||
-            it->second.agent_id != movement->agent_id ||
-            it->second.circuit_code != movement->circuit_code) {
-            result.kind = LegacyDatagramKind::rejected;
-            result.reason = "legacy-movement-circuit-mismatch";
-            return result;
+        std::uint32_t sequence = 0U;
+        {
+            std::scoped_lock lock(mutex_);
+            const auto it = by_endpoint_.find(key);
+            if (it == by_endpoint_.end() ||
+                it->second.session_id != movement->session_id ||
+                it->second.agent_id != movement->agent_id ||
+                it->second.circuit_code != movement->circuit_code) {
+                result.kind = LegacyDatagramKind::rejected;
+                result.reason = "legacy-movement-circuit-mismatch";
+                return result;
+            }
+            it->second.state =
+                LegacyCircuitState::movement_completed;
+            sequence = server_sequence_++;
         }
-        it->second.state = LegacyCircuitState::movement_completed;
-        const auto binding = it->second;
-        const auto sequence = server_sequence_++;
-        lock.~scoped_lock();
 
         result.kind = LegacyDatagramKind::complete_movement;
         result.session_id = movement->session_id;
