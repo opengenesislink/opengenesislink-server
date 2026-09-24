@@ -255,6 +255,14 @@ HypergridServer::HypergridServer(
         !instant_messages_ || !inventory_ || !appearance_) {
         throw std::invalid_argument("Hypergrid server dependencies required");
     }
+
+    legacy_router_ = std::make_shared<LegacyCircuitRouter>(
+        service_, sessions_);
+    const auto& config = service_->config();
+    if (config.internal_port != 0U) {
+        legacy_udp_ = std::make_unique<LegacySimulatorUdpGateway>(
+            address_, config.internal_port, legacy_router_);
+    }
 }
 
 HypergridServer::~HypergridServer() {
@@ -263,11 +271,13 @@ HypergridServer::~HypergridServer() {
 
 void HypergridServer::start() {
     if (running_.exchange(true)) return;
+    if (legacy_udp_) legacy_udp_->start();
     thread_ = std::thread(&HypergridServer::run, this);
 }
 
 void HypergridServer::stop() {
     if (!running_.exchange(false)) return;
+    if (legacy_udp_) legacy_udp_->stop();
     if (platform::socket_valid(listen_fd_)) {
         platform::shutdown_socket(listen_fd_);
         platform::close_socket(listen_fd_);
@@ -370,6 +380,10 @@ void HypergridServer::run() {
                         const auto visitor =
                             sessions_->foreign_by_agent(route->agent_id);
                         if (visitor) {
+                            if (legacy_router_) {
+                                legacy_router_->remove_session(
+                                    visitor->session_id);
+                            }
                             notify_home_logout(*visitor);
                             (void)sessions_->logout_foreign(
                                 visitor->session_id);
