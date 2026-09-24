@@ -40,6 +40,8 @@ public:
                                                             std::int32_t grid_y);
     [[nodiscard]] std::optional<core::RegionInfo> region_by_legacy_uuid(
         std::string_view legacy_uuid) const;
+    [[nodiscard]] std::optional<core::RegionInfo> region(
+        std::string_view native_region_id) const;
     [[nodiscard]] const HypergridConfig& config() const noexcept { return config_; }
 
 private:
