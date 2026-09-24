@@ -8,6 +8,7 @@
 #include "opengenesis/compat/hypergrid/appearance_adapter.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
+#include "opengenesis/compat/hypergrid/legacy_simulator_gateway.hpp"
 #include "opengenesis/platform/socket.hpp"
 
 #include <atomic>
@@ -51,6 +52,8 @@ private:
     std::shared_ptr<HypergridInstantMessageAdapter> instant_messages_;
     std::shared_ptr<HypergridInventoryAdapter> inventory_;
     std::shared_ptr<HypergridAppearanceAdapter> appearance_;
+    std::shared_ptr<LegacyCircuitRouter> legacy_router_;
+    std::unique_ptr<LegacySimulatorUdpGateway> legacy_udp_;
     std::atomic_bool running_{false};
     std::thread thread_;
     platform::SocketHandle listen_fd_{platform::kInvalidSocket};
