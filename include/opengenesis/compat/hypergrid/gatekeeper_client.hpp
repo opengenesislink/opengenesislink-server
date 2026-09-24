@@ -1,7 +1,6 @@
 #pragma once
 
 #include "opengenesis/compat/hypergrid/service.hpp"
-#include "opengenesis/compat/hypergrid/session_store.hpp"
 
 #include <cstdint>
 #include <optional>
