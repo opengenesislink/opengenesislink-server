@@ -127,7 +127,7 @@ LegacyDatagramResult LegacyCircuitRouter::handle(
             result.reason = "legacy-circuit-not-authorized";
             return result;
         }
-        const auto region = service_->regions()->find(
+        const auto region = service_->region(
             visitor->destination_region);
         if (!region || region->state != "online") {
             result.kind = LegacyDatagramKind::rejected;
