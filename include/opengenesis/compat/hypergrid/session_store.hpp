@@ -89,6 +89,8 @@ public:
         std::string_view session_id) const;
     [[nodiscard]] std::optional<ForeignVisitorSession> foreign_by_agent(
         std::string_view agent_id) const;
+    [[nodiscard]] std::optional<ForeignVisitorSession> foreign_by_caps_path(
+        std::string_view caps_path) const;
     [[nodiscard]] bool logout_foreign(std::string_view session_id);
 
     [[nodiscard]] std::vector<HomeTravelSession> home_sessions() const;
