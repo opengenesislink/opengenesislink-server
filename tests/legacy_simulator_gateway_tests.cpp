@@ -137,8 +137,20 @@ int main() {
         auto result = router.handle(use, "192.0.2.30", 50000U);
         require(result.kind == LegacyDatagramKind::use_circuit &&
                     result.session_id == session &&
-                    result.replies.size() == 1U,
-                "UseCircuitCode binds verified circuit and ACKs");
+                    result.replies.size() == 2U,
+                "UseCircuitCode binds verified circuit, ACKs and handshakes");
+        std::string packet_reason;
+        const auto decoded_handshake =
+            lludp::zero_decode(result.replies[1], packet_reason);
+        require(decoded_handshake.has_value(),
+                "RegionHandshake reply zero-decodes");
+        const auto handshake_header =
+            lludp::parse_header(*decoded_handshake, packet_reason);
+        require(handshake_header &&
+                    handshake_header->frequency ==
+                        lludp::Frequency::low &&
+                    handshake_header->id == 148U,
+                "RegionHandshake reply emitted");
 
         auto bindings = router.bindings();
         require(bindings.size() == 1U &&
@@ -152,8 +164,15 @@ int main() {
             complete, "192.0.2.30", 50000U);
         require(result.kind ==
                     LegacyDatagramKind::complete_movement &&
-                    result.replies.size() == 1U,
-                "CompleteAgentMovement validates and ACKs");
+                    result.replies.size() == 2U,
+                "CompleteAgentMovement validates, ACKs and completes");
+        const auto movement_header =
+            lludp::parse_header(result.replies[1], packet_reason);
+        require(movement_header &&
+                    movement_header->frequency ==
+                        lludp::Frequency::low &&
+                    movement_header->id == 250U,
+                "AgentMovementComplete reply emitted");
         bindings = router.bindings();
         require(bindings[0].state ==
                     LegacyCircuitState::movement_completed,
