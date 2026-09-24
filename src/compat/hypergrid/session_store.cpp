@@ -319,8 +319,11 @@ void HypergridSessionStore::load() {
                     session.circuit_code = legacy_circuit_code(session.session_id);
                 }
                 home_[session.session_id] = std::move(session);
-            } else if (fields[0] == "V" && (fields.size() == 12 || fields.size() == 16)) {
-                const bool v2 = fields.size() == 16;
+            } else if (fields[0] == "V" &&
+                       (fields.size() == 12 || fields.size() == 16 ||
+                        fields.size() == 23)) {
+                const bool v2 = fields.size() >= 16;
+                const bool v3 = fields.size() == 23;
                 ForeignVisitorSession session{
                     .session_id = fields[1],
                     .agent_id = fields[2],
@@ -334,6 +337,15 @@ void HypergridSessionStore::load() {
                     .first_name = fields[v2 ? 10 : 6],
                     .last_name = fields[v2 ? 11 : 7],
                     .client_ip = fields[v2 ? 12 : 8],
+                    .secure_session_id = v3 ? fields[16] : std::string{},
+                    .caps_path = v3 ? fields[17] : std::string{},
+                    .base_folder = v3 ? fields[18] : std::string{},
+                    .inventory_folder = v3 ? fields[19] : std::string{},
+                    .start_pos = v3 ? fields[20] : std::string{},
+                    .circuit_code = v3 ? static_cast<std::uint32_t>(
+                                             std::stoul(fields[21])) : 0U,
+                    .teleport_flags = v3 ? static_cast<std::uint32_t>(
+                                               std::stoul(fields[22])) : 0U,
                     .verified = fields[v2 ? 13 : 9] == "1",
                     .created_unix = std::stoll(fields[v2 ? 14 : 10]),
                     .expires_unix = std::stoll(fields[v2 ? 15 : 11])};
@@ -368,7 +380,10 @@ void HypergridSessionStore::persist_locked() const {
                << session.destination_region << '\t' << session.first_name << '\t'
                << session.last_name << '\t' << session.client_ip << '\t'
                << (session.verified ? '1' : '0') << '\t' << session.created_unix << '\t'
-               << session.expires_unix << '\n';
+               << session.expires_unix << '\t' << session.secure_session_id << '\t'
+               << session.caps_path << '\t' << session.base_folder << '\t'
+               << session.inventory_folder << '\t' << session.start_pos << '\t'
+               << session.circuit_code << '\t' << session.teleport_flags << '\n';
     }
     output.close();
     if (!output) throw std::runtime_error("cannot flush Hypergrid session store");
