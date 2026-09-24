@@ -2,6 +2,7 @@
 
 #include "opengenesis/platform/filesystem.hpp"
 #include "opengenesis/security/crypto.hpp"
+#include "opengenesis/compat/hypergrid/gatekeeper_client.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -103,12 +104,16 @@ HomeTravelSession HypergridSessionStore::issue_home_travel(
         .destination_gatekeeper = std::move(destination_gatekeeper),
         .service_token = {},
         .client_ip = std::move(client_ip),
+        .secure_session_id = legacy_uuid_from_seed(security::random_hex(32)),
+        .caps_path = "CAPS/" + security::random_hex(16) + "/",
+        .circuit_code = 0,
         .state = TravelState::active,
         .created_unix = now,
         .expires_unix = now + lifetime.count(),
         .ended_unix = 0};
     session.service_token = session.destination_gatekeeper + ";" +
                             legacy_uuid_from_seed(security::random_hex(32));
+    session.circuit_code = legacy_circuit_code(session.session_id);
 
     std::scoped_lock lock(mutex_);
     home_[session.session_id] = session;
@@ -294,7 +299,8 @@ void HypergridSessionStore::load() {
         if (line.empty() || line[0] == '#') continue;
         const auto fields = split_tab(line);
         try {
-            if (fields[0] == "H" && fields.size() == 12) {
+            if (fields[0] == "H" && (fields.size() == 12 || fields.size() == 14)) {
+                const bool v3 = fields.size() == 14;
                 HomeTravelSession session{
                     .session_id = fields[1],
                     .user_id = fields[2],
@@ -302,10 +308,16 @@ void HypergridSessionStore::load() {
                     .destination_gatekeeper = fields[4],
                     .service_token = fields[5],
                     .client_ip = fields[6],
+                    .secure_session_id = v3 ? fields[11] : std::string{},
+                    .caps_path = v3 ? fields[12] : std::string{},
+                    .circuit_code = v3 ? static_cast<std::uint32_t>(std::stoul(fields[13])) : 0U,
                     .state = parse_state(fields[7]),
                     .created_unix = std::stoll(fields[8]),
                     .expires_unix = std::stoll(fields[9]),
                     .ended_unix = std::stoll(fields[10])};
+                if (session.circuit_code == 0U) {
+                    session.circuit_code = legacy_circuit_code(session.session_id);
+                }
                 home_[session.session_id] = std::move(session);
             } else if (fields[0] == "V" && (fields.size() == 12 || fields.size() == 16)) {
                 const bool v2 = fields.size() == 16;
@@ -338,13 +350,15 @@ void HypergridSessionStore::persist_locked() const {
     const auto temporary = path.string() + ".tmp";
     std::ofstream output(temporary, std::ios::trunc);
     if (!output) throw std::runtime_error("cannot write Hypergrid session store");
-    output << "# OpenGenesisLINK Hypergrid sessions v2\n";
+    output << "# OpenGenesisLINK Hypergrid sessions v3\n";
     for (const auto& [_, session] : home_) {
         output << "H\t" << session.session_id << '\t' << session.user_id << '\t'
                << session.native_user_id << '\t' << session.destination_gatekeeper << '\t'
                << session.service_token << '\t' << session.client_ip << '\t'
                << travel_state_name(session.state) << '\t' << session.created_unix << '\t'
-               << session.expires_unix << '\t' << session.ended_unix << "\t0\n";
+               << session.expires_unix << '\t' << session.ended_unix << '\t'
+               << session.secure_session_id << '\t' << session.caps_path << '\t'
+               << session.circuit_code << '\n';
     }
     for (const auto& [_, session] : foreign_) {
         output << "V\t" << session.session_id << '\t' << session.agent_id << '\t'
