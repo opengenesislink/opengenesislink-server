@@ -80,6 +80,23 @@ std::optional<std::string_view> json_object(const std::string_view json,
     return std::nullopt;
 }
 
+std::optional<bool> json_bool(const std::string_view json,
+                              const std::string_view key) {
+    const std::string needle = "\"" + std::string{key} + "\"";
+    auto position = json.find(needle);
+    if (position == std::string_view::npos) return std::nullopt;
+    position = json.find(':', position + needle.size());
+    if (position == std::string_view::npos) return std::nullopt;
+    ++position;
+    while (position < json.size() &&
+           std::isspace(static_cast<unsigned char>(json[position])) != 0) {
+        ++position;
+    }
+    if (json.substr(position, 4) == "true") return true;
+    if (json.substr(position, 5) == "false") return false;
+    return std::nullopt;
+}
+
 template <typename T>
 std::optional<T> json_integer(const std::string_view json, const std::string_view key) {
     const std::string needle = "\"" + std::string{key} + "\"";
@@ -125,7 +142,11 @@ std::optional<ForeignAgentCircuit> parse_foreign_agent_circuit(
     ForeignAgentCircuit circuit;
     circuit.agent_id = json_string(json, "agent_id").value_or("");
     circuit.session_id = json_string(json, "session_id").value_or("");
+    circuit.secure_session_id = json_string(json, "secure_session_id").value_or("");
     circuit.service_session_id = json_string(json, "service_session_id").value_or("");
+    circuit.caps_path = json_string(json, "caps_path").value_or("");
+    circuit.base_folder = json_string(json, "base_folder").value_or("");
+    circuit.inventory_folder = json_string(json, "inventory_folder").value_or("");
     circuit.first_name = json_string(json, "first_name").value_or("");
     circuit.last_name = json_string(json, "last_name").value_or("");
     circuit.client_ip = json_string(json, "client_ip").value_or("");
@@ -133,6 +154,9 @@ std::optional<ForeignAgentCircuit> parse_foreign_agent_circuit(
     circuit.channel = json_string(json, "channel").value_or("");
     circuit.mac = json_string(json, "mac").value_or("");
     circuit.id0 = json_string(json, "id0").value_or("");
+    circuit.start_pos = json_string(json, "start_pos").value_or("<128, 128, 25>");
+    circuit.child = json_bool(json, "child").value_or(false);
+    circuit.circuit_code = json_integer<std::uint32_t>(json, "circuit_code").value_or(0U);
     circuit.destination_uuid = json_string(json, "destination_uuid").value_or("");
     circuit.destination_name = json_string(json, "destination_name").value_or("");
     circuit.destination_x = json_integer<std::int32_t>(json, "destination_x").value_or(0);
