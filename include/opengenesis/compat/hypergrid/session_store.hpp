@@ -25,6 +25,9 @@ struct HomeTravelSession {
     std::string destination_gatekeeper;
     std::string service_token;
     std::string client_ip;
+    std::string secure_session_id;
+    std::string caps_path;
+    std::uint32_t circuit_code{0};
     TravelState state{TravelState::active};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
@@ -44,6 +47,13 @@ struct ForeignVisitorSession {
     std::string first_name;
     std::string last_name;
     std::string client_ip;
+    std::string secure_session_id;
+    std::string caps_path;
+    std::string base_folder;
+    std::string inventory_folder;
+    std::string start_pos;
+    std::uint32_t circuit_code{0};
+    std::uint32_t teleport_flags{0};
     bool verified{false};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
@@ -79,6 +89,8 @@ public:
         std::string_view session_id) const;
     [[nodiscard]] std::optional<ForeignVisitorSession> foreign_by_agent(
         std::string_view agent_id) const;
+    [[nodiscard]] std::optional<ForeignVisitorSession> foreign_by_caps_path(
+        std::string_view caps_path) const;
     [[nodiscard]] bool logout_foreign(std::string_view session_id);
 
     [[nodiscard]] std::vector<HomeTravelSession> home_sessions() const;

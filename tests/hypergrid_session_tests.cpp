@@ -37,6 +37,14 @@ int main() {
         require(travel.session_id.size() == 36, "HG session UUID generated");
         require(travel.service_token.starts_with("http://remote.example:8002;"),
                 "service token bound to destination");
+        require(travel.secure_session_id.size() == 36,
+                "secure session UUID generated");
+        require(travel.caps_path.size() == 36U &&
+                    travel.caps_path[8] == '-' &&
+                    travel.caps_path[13] == '-',
+                "OpenSim CAPS object path UUID generated");
+        require(travel.circuit_code != 0U,
+                "legacy circuit code generated");
         require(sessions.verify_agent(travel.session_id, travel.service_token),
                 "verify_agent accepts exact token");
         require(!sessions.verify_agent(travel.session_id, travel.service_token + "x"),
@@ -57,7 +65,13 @@ int main() {
             "{"
             "\"agent_id\":\"11111111-1111-4111-8111-111111111111\","
             "\"session_id\":\"22222222-2222-4222-8222-222222222222\","
+            "\"secure_session_id\":\"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\","
             "\"service_session_id\":\"http://grid-b.example:8002;33333333-3333-4333-8333-333333333333\","
+            "\"caps_path\":\"CAPS/remote-seed/\","
+            "\"base_folder\":\"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb\","
+            "\"inventory_folder\":\"cccccccc-cccc-4ccc-8ccc-cccccccccccc\","
+            "\"child\":false,\"circuit_code\":\"424242\","
+            "\"start_pos\":\"<128, 128, 25>\","
             "\"first_name\":\"Alice\",\"last_name\":\"Visitor\","
             "\"client_ip\":\"192.0.2.20\",\"viewer\":\"TestViewer\","
             "\"channel\":\"OpenGenesis\",\"mac\":\"mac\",\"id0\":\"id0\","
@@ -73,6 +87,12 @@ int main() {
         require(circuit->home_uri == "http://grid-a.example:8002", "HomeURI parsed");
         require(circuit->destination_x == 1000 && circuit->destination_y == 1001,
                 "destination coordinates parsed");
+        require(circuit->secure_session_id ==
+                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" &&
+                    circuit->caps_path == "CAPS/remote-seed/" &&
+                    circuit->circuit_code == 424242U &&
+                    circuit->start_pos == "<128, 128, 25>",
+                "legacy viewer circuit credentials parsed");
 
         const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                              std::chrono::system_clock::now().time_since_epoch())
@@ -90,6 +110,13 @@ int main() {
                      .first_name = circuit->first_name,
                      .last_name = circuit->last_name,
                      .client_ip = circuit->client_ip,
+                     .secure_session_id = circuit->secure_session_id,
+                     .caps_path = circuit->caps_path,
+                     .base_folder = circuit->base_folder,
+                     .inventory_folder = circuit->inventory_folder,
+                     .start_pos = circuit->start_pos,
+                     .circuit_code = circuit->circuit_code,
+                     .teleport_flags = circuit->teleport_flags,
                      .verified = true,
                      .created_unix = now,
                      .expires_unix = now + 600},
@@ -100,10 +127,21 @@ int main() {
             opengenesis::compat::hypergrid::HypergridSessionStore restored(path.string());
             require(restored.verify_agent(travel.session_id, travel.service_token),
                     "home travel persists");
+            const auto restored_home = restored.home(travel.session_id);
+            require(restored_home &&
+                        restored_home->secure_session_id ==
+                            travel.secure_session_id &&
+                        restored_home->caps_path == travel.caps_path &&
+                        restored_home->circuit_code == travel.circuit_code,
+                    "home legacy circuit credentials persist");
             const auto foreign = restored.foreign(circuit->session_id);
             require(foreign && foreign->verified &&
-                        foreign->destination_region == "native-region",
-                    "foreign visitor persists");
+                        foreign->destination_region == "native-region" &&
+                        foreign->secure_session_id ==
+                            circuit->secure_session_id &&
+                        foreign->caps_path == circuit->caps_path &&
+                        foreign->circuit_code == circuit->circuit_code,
+                    "foreign visitor legacy circuit persists");
         }
 
         const auto call = opengenesis::compat::hypergrid::xmlrpc_struct_call(

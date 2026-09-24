@@ -54,6 +54,11 @@ std::optional<core::RegionInfo> HypergridService::region_by_legacy_uuid(
     return it == regions.end() ? std::nullopt : std::optional<core::RegionInfo>{*it};
 }
 
+std::optional<core::RegionInfo> HypergridService::region(
+    const std::string_view native_region_id) const {
+    return regions_->find(std::string{native_region_id});
+}
+
 std::unordered_map<std::string, std::string> HypergridService::handle(
     const XmlRpcCall& call) const {
     if (!config_.enabled) return {{"result", "false"}, {"message", "Hypergrid disabled"}};

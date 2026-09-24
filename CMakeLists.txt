@@ -74,6 +74,9 @@ add_library(opengenesis-foundation
     src/compat/hypergrid/agent_circuit.cpp
     src/compat/hypergrid/home_verifier.cpp
     src/compat/hypergrid/http_client.cpp
+    src/compat/hypergrid/gatekeeper_client.cpp
+    src/compat/hypergrid/legacy_lludp.cpp
+    src/compat/hypergrid/legacy_simulator_gateway.cpp
     src/compat/hypergrid/friends_adapter.cpp
     src/compat/hypergrid/asset_adapter.cpp
     src/compat/hypergrid/appearance_adapter.cpp
@@ -171,6 +174,24 @@ if(BUILD_TESTING AND OGL_BUILD_TESTS)
     add_executable(ogl-hypergrid-services-tests tests/hypergrid_services_tests.cpp)
     target_link_libraries(ogl-hypergrid-services-tests PRIVATE OpenGenesis::Foundation)
     add_test(NAME hypergrid-services COMMAND ogl-hypergrid-services-tests)
+
+    add_executable(ogl-hypergrid-outbound-tests tests/hypergrid_outbound_tests.cpp)
+    target_link_libraries(ogl-hypergrid-outbound-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME hypergrid-outbound COMMAND ogl-hypergrid-outbound-tests)
+
+    add_executable(ogl-legacy-lludp-tests tests/legacy_lludp_tests.cpp)
+    target_link_libraries(ogl-legacy-lludp-tests PRIVATE OpenGenesis::Foundation)
+    add_test(NAME legacy-lludp-codec COMMAND ogl-legacy-lludp-tests)
+
+    add_executable(
+        ogl-legacy-simulator-gateway-tests
+        tests/legacy_simulator_gateway_tests.cpp)
+    target_link_libraries(
+        ogl-legacy-simulator-gateway-tests
+        PRIVATE OpenGenesis::Foundation)
+    add_test(
+        NAME legacy-simulator-gateway
+        COMMAND ogl-legacy-simulator-gateway-tests)
 
     add_executable(ogl-script-crossing-tests tests/script_crossing_tests.cpp)
     target_link_libraries(ogl-script-crossing-tests PRIVATE OpenGenesis::Foundation)

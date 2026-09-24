@@ -29,6 +29,7 @@
 #include "opengenesis/federation/runtime.hpp"
 #include "opengenesis/compat/hypergrid/service.hpp"
 #include "opengenesis/compat/hypergrid/session_store.hpp"
+#include "opengenesis/compat/hypergrid/gatekeeper_client.hpp"
 #include "opengenesis/compat/hypergrid/im_adapter.hpp"
 #include "opengenesis/platform/socket.hpp"
 #include "opengenesis/security/rate_limiter.hpp"

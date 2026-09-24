@@ -2,6 +2,7 @@
 
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/compat/hypergrid/agent_circuit.hpp"
+#include "opengenesis/compat/hypergrid/http_client.hpp"
 #include "opengenesis/compat/hypergrid/xmlrpc.hpp"
 
 #include <chrono>
@@ -152,6 +153,117 @@ bool same_uri(std::string left, std::string right) {
     return left == right;
 }
 
+struct AgentRoute {
+    std::string agent_id;
+    std::string region_id;
+    std::string action;
+};
+
+std::optional<AgentRoute> parse_agent_route(std::string_view raw_path) {
+    const auto query = raw_path.find('?');
+    const auto path = raw_path.substr(0, query);
+    constexpr std::string_view prefix = "/agent/";
+    if (!path.starts_with(prefix)) return std::nullopt;
+    auto rest = path.substr(prefix.size());
+    while (!rest.empty() && rest.back() == '/') rest.remove_suffix(1);
+    if (rest.empty()) return std::nullopt;
+
+    AgentRoute route;
+    const auto first = rest.find('/');
+    route.agent_id = std::string{rest.substr(0, first)};
+    if (first == std::string_view::npos) return route;
+    rest.remove_prefix(first + 1);
+    const auto second = rest.find('/');
+    route.region_id = std::string{rest.substr(0, second)};
+    if (second != std::string_view::npos) {
+        rest.remove_prefix(second + 1);
+        route.action = std::string{rest};
+    }
+    return route;
+}
+
+enum class CapsRouteKind {
+    none,
+    seed,
+    event_queue
+};
+
+struct CapsRoute {
+    CapsRouteKind kind{CapsRouteKind::none};
+    std::string caps_path;
+};
+
+std::optional<CapsRoute> parse_caps_route(std::string_view raw_path) {
+    const auto query = raw_path.find('?');
+    const auto path = raw_path.substr(0, query);
+    constexpr std::string_view prefix = "/CAPS/";
+    if (!path.starts_with(prefix)) return std::nullopt;
+    auto rest = path.substr(prefix.size());
+
+    constexpr std::string_view seed_suffix = "0000/";
+    constexpr std::string_view event_suffix = "eventqueue/";
+    CapsRoute route;
+    if (rest.ends_with(seed_suffix)) {
+        rest.remove_suffix(seed_suffix.size());
+        route.kind = CapsRouteKind::seed;
+    } else if (rest.ends_with(event_suffix)) {
+        rest.remove_suffix(event_suffix.size());
+        route.kind = CapsRouteKind::event_queue;
+    } else {
+        return std::nullopt;
+    }
+    if (rest.empty() || rest.size() > 128U ||
+        rest.find('/') != std::string_view::npos) {
+        return std::nullopt;
+    }
+    route.caps_path = std::string{rest};
+    return route;
+}
+
+std::string trim_trailing_slash(std::string value) {
+    while (!value.empty() && value.back() == '/') value.pop_back();
+    return value;
+}
+
+std::string seed_caps_llsd(const HypergridConfig& config,
+                           std::string_view caps_path) {
+    const auto base = trim_trailing_slash(config.external_name);
+    const auto queue = base + "/CAPS/" + std::string{caps_path} +
+                       "eventqueue/";
+    return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+           "<llsd><map>"
+           "<key>EventQueueGet</key><string>" +
+           json_escape(queue) +
+           "</string>"
+           "</map></llsd>";
+}
+
+std::string empty_event_queue_llsd() {
+    return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+           "<llsd><map>"
+           "<key>events</key><array></array>"
+           "<key>id</key><integer>1</integer>"
+           "</map></llsd>";
+}
+
+std::string simulation_access_response(bool success, std::string_view reason) {
+    return "{\"success\":" + std::string(success ? "true" : "false") +
+           ",\"reason\":\"" + json_escape(reason) +
+           "\",\"version\":\"SIMULATION/0.8\","
+           "\"negotiated_inbound_version\":0.8,"
+           "\"negotiated_outbound_version\":0.8,"
+           "\"features\":[]}";
+}
+
+void notify_home_logout(const ForeignVisitorSession& visitor) {
+    if (visitor.home_uri.empty()) return;
+    const auto body = xmlrpc_struct_call(
+        "logout_agent",
+        {{"userID", visitor.agent_id}, {"sessionID", visitor.session_id}});
+    std::string ignored;
+    (void)http_request(visitor.home_uri, "POST", "text/xml", body, {}, ignored);
+}
+
 std::unordered_map<std::string, std::string> home_method(
     const XmlRpcCall& call,
     HypergridSessionStore& sessions) {
@@ -207,6 +319,14 @@ HypergridServer::HypergridServer(
         !instant_messages_ || !inventory_ || !appearance_) {
         throw std::invalid_argument("Hypergrid server dependencies required");
     }
+
+    legacy_router_ = std::make_shared<LegacyCircuitRouter>(
+        service_, sessions_);
+    const auto& config = service_->config();
+    if (config.internal_port != 0U) {
+        legacy_udp_ = std::make_unique<LegacySimulatorUdpGateway>(
+            address_, config.internal_port, legacy_router_);
+    }
 }
 
 HypergridServer::~HypergridServer() {
@@ -215,11 +335,13 @@ HypergridServer::~HypergridServer() {
 
 void HypergridServer::start() {
     if (running_.exchange(true)) return;
+    if (legacy_udp_) legacy_udp_->start();
     thread_ = std::thread(&HypergridServer::run, this);
 }
 
 void HypergridServer::stop() {
     if (!running_.exchange(false)) return;
+    if (legacy_udp_) legacy_udp_->stop();
     if (platform::socket_valid(listen_fd_)) {
         platform::shutdown_socket(listen_fd_);
         platform::close_socket(listen_fd_);
@@ -277,6 +399,105 @@ void HypergridServer::run() {
                 if (request->method == "GET" && request->path.starts_with("/assets/")) {
                     const auto legacy = assets_->handle_get(request->path);
                     send_response(client, legacy.status, legacy.content_type, legacy.body);
+                    platform::close_socket(client);
+                    continue;
+                }
+
+                if (request->path.starts_with("/agent/")) {
+                    const auto route = parse_agent_route(request->path);
+                    if (!route || route->agent_id.empty()) {
+                        send_response(client, 404, "application/json",
+                                      "{\"success\":false,\"reason\":\"invalid-agent-route\"}");
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (request->method == "QUERYACCESS") {
+                        const auto region =
+                            service_->region_by_legacy_uuid(route->region_id);
+                        const bool available =
+                            region && region->state == "online";
+                        send_response(
+                            client, 200, "application/json",
+                            simulation_access_response(
+                                available,
+                                available ? "" : "destination region unavailable"));
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (request->method == "PUT") {
+                        const auto visitor =
+                            sessions_->foreign_by_agent(route->agent_id);
+                        const bool accepted =
+                            visitor && visitor->verified &&
+                            (route->region_id.empty() ||
+                             service_->region_by_legacy_uuid(route->region_id)
+                                 .has_value());
+                        send_response(client, 200, "application/json",
+                                      accepted ? "True" : "False");
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (request->method == "DELETE") {
+                        const auto visitor =
+                            sessions_->foreign_by_agent(route->agent_id);
+                        if (visitor) {
+                            if (legacy_router_) {
+                                legacy_router_->remove_session(
+                                    visitor->session_id);
+                            }
+                            notify_home_logout(*visitor);
+                            (void)sessions_->logout_foreign(
+                                visitor->session_id);
+                        }
+                        send_response(client, 200, "text/plain",
+                                      "OpenSim agent " + route->agent_id);
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    send_response(client, 405, "application/json",
+                                  "{\"success\":false,\"reason\":\"method-not-allowed\"}");
+                    platform::close_socket(client);
+                    continue;
+                }
+
+                if (request->path.starts_with("/CAPS/")) {
+                    const auto caps = parse_caps_route(request->path);
+                    if (!caps) {
+                        send_response(
+                            client, 404, "application/llsd+xml",
+                            "<?xml version=\"1.0\"?><llsd><undef /></llsd>");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    if (request->method != "POST") {
+                        send_response(client, 405, "text/plain",
+                                      "method not allowed");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    const auto visitor =
+                        sessions_->foreign_by_caps_path(caps->caps_path);
+                    if (!visitor) {
+                        send_response(
+                            client, 404, "application/llsd+xml",
+                            "<?xml version=\"1.0\"?><llsd><undef /></llsd>");
+                        platform::close_socket(client);
+                        continue;
+                    }
+                    if (caps->kind == CapsRouteKind::seed) {
+                        send_response(
+                            client, 200, "application/llsd+xml",
+                            seed_caps_llsd(
+                                service_->config(), caps->caps_path));
+                    } else {
+                        send_response(
+                            client, 200, "application/llsd+xml",
+                            empty_event_queue_llsd());
+                    }
                     platform::close_socket(client);
                     continue;
                 }
@@ -390,6 +611,13 @@ void HypergridServer::run() {
                         .first_name = circuit->first_name,
                         .last_name = circuit->last_name,
                         .client_ip = circuit->client_ip,
+                        .secure_session_id = circuit->secure_session_id,
+                        .caps_path = circuit->caps_path,
+                        .base_folder = circuit->base_folder,
+                        .inventory_folder = circuit->inventory_folder,
+                        .start_pos = circuit->start_pos,
+                        .circuit_code = circuit->circuit_code,
+                        .teleport_flags = circuit->teleport_flags,
                         .verified = true,
                         .created_unix = now,
                         .expires_unix = now + 1800};

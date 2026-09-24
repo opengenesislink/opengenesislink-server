@@ -400,7 +400,7 @@ void AdminHttpServer::run() {
                 } else if (method == "GET" && path == "/v1") {
                     response.body = R"JSON({"service":"OpenGenesisLINK Core","version":")JSON" +
                                     std::string(OGL_VERSION) +
-                                    R"JSON(","api_version":1,"capabilities":["release-contract-v1","atlas-v1","identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","scene-interaction-v1","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","social-policy-v1","groups-v1","group-invites-v1","land-parcels-v1","parcel-access-v1","economy-ledger-v1","economy-escrow-v1","marketplace-v1","marketplace-fulfillment-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","ogl-fed-v2","federation-service-grants-v1","federation-remote-profile-v1","federation-remote-appearance-v1","federation-remote-inventory-v1","federation-remote-assets-v1","federation-remote-social-v1","federation-remote-presence-v1","hypergrid-session-v1","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-engine-v4","script-world-events-v1","lsl-collision-events-v1","lsl-touch-events-v1","lsl-changed-events-v1","lsl-state-lifecycle-v1","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","physics-v3","physics-primitive-shapes-v1","physics-raycast-v1","physics-spring-constraint-v1","character-capsule-v1","genesis-mesher-v1","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-physics-v3","scene-persistence-v5","scene-persistence-v6","scene-persistence-v7","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"release":"GET /v1/release","atlas_bootstrap":"GET /v1/atlas/bootstrap","atlas_regions":"GET /v1/atlas/regions","atlas_region":"GET /v1/atlas/regions/{region-id}","status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","group_invites":"GET|POST /v1/groups/invites","parcels":"POST /v1/parcels","parcel_access":"GET /v1/parcels/{id}/access | POST /v1/parcels/access","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","social_policies":"GET /v1/social/policies","economy_wallet":"GET /v1/economy/wallet","economy_transfer":"POST /v1/economy/transfer","marketplace":"GET|POST /v1/marketplace/listings","marketplace_purchase":"POST /v1/marketplace/purchase","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","federation_service_profile":"POST /v1/federation/service/profile","federation_service_appearance":"POST /v1/federation/service/appearance","federation_service_inventory":"POST /v1/federation/service/inventory","federation_service_asset":"POST /v1/federation/service/asset","federation_service_social":"POST /v1/federation/service/social","federation_service_presence":"POST /v1/federation/service/presence","federation_service_grants":"GET /v1/federation/service-grants","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
+                                    R"JSON(","api_version":1,"capabilities":["release-contract-v1","atlas-v1","identity","scene-ticket-v2","scene-capabilities-v2","scene-protocol-v2","scene-interaction-v1","viewer-bootstrap-v1","scene-sync-v1","avatar-reconcile-v1","region-metadata-v1","parcel-read-v1","avatar-movement-v1","presence-v1","friends-v1","messaging-v1","social-policy-v1","groups-v1","group-invites-v1","land-parcels-v1","parcel-access-v1","economy-ledger-v1","economy-escrow-v1","marketplace-v1","marketplace-fulfillment-v1","object-permissions-v1","asset-permissions-v1","teleport-v1","region-handoff-v2","moderation-v1","audit-v1","estates-v1","landmarks-v1","notifications-v1","group-channels-v1","prometheus-metrics-v1","sql-storage-v1","sqlite-storage-v1","postgresql-storage-v1","mariadb-storage-v1","storage-health-v1","admin-rbac-v1","auth-rate-limit-v1","assets-v2","inventory-v1","world-status","ogl-fed-v1","ogl-fed-v2","federation-service-grants-v1","federation-remote-profile-v1","federation-remote-appearance-v1","federation-remote-inventory-v1","federation-remote-assets-v1","federation-remote-social-v1","federation-remote-presence-v1","hypergrid-session-v1","hypergrid-agent-circuit-v2","hypergrid-outbound-v2","hypergrid-xinventory-v2","hypergrid-xinventory-auth-v1","script-vm-v1","script-host-v1","script-engine-v2","script-engine-v3","script-engine-v4","script-world-events-v1","lsl-collision-events-v1","lsl-touch-events-v1","lsl-changed-events-v1","lsl-state-lifecycle-v1","script-language-lsl-v1","script-language-ogl-v1","script-language-ogl-v2","lsl-catalog-v1","script-world-actions-v1","script-world-actions-v2","script-world-actions-v3","script-world-queries-v1","script-world-queries-v2","crossing-v3","crossing-reservation-v1","object-crossing-v1","object-crossing-v2","linkset-runtime-v1","linkset-runtime-v2","physics-v2","physics-v3","physics-primitive-shapes-v1","physics-raycast-v1","physics-spring-constraint-v1","character-capsule-v1","genesis-mesher-v1","collision-events-v1","distance-constraints-v1","scene-motion-v1","scene-text-v1","scene-physics-v2","scene-physics-v3","scene-persistence-v5","scene-persistence-v6","scene-persistence-v7","script-world-actions-v4","ogl-physics-v1"],"endpoints":{"release":"GET /v1/release","atlas_bootstrap":"GET /v1/atlas/bootstrap","atlas_regions":"GET /v1/atlas/regions","atlas_region":"GET /v1/atlas/regions/{region-id}","status":"/v1/status","storage_status":"GET /v1/storage/status","worlds":"/v1/worlds","regions":"/v1/regions","presence":"GET /v1/presence","viewer_bootstrap":"POST /v1/viewer/bootstrap","viewer_session":"POST /v1/viewer/session","viewer_teleport":"POST /v1/viewer/teleport","viewer_handoff":"POST /v1/viewer/handoff","viewer_handoff_reserve":"POST /v1/viewer/handoff/reserve","viewer_handoff_complete":"POST /v1/viewer/handoff/complete","viewer_handoff_rollback":"POST /v1/viewer/handoff/rollback","object_crossings":"GET|POST /v1/world/object-crossings","object_crossing_rollback":"POST /v1/world/object-crossings/rollback","scripts":"GET|POST /v1/scripts","script_capabilities":"GET /v1/scripts/capabilities","script_event":"POST /v1/scripts/event","groups":"GET|POST /v1/groups","group_invites":"GET|POST /v1/groups/invites","parcels":"POST /v1/parcels","parcel_access":"GET /v1/parcels/{id}/access | POST /v1/parcels/access","friends":"GET /v1/social/friends","messages":"GET|POST /v1/social/messages","social_policies":"GET /v1/social/policies","economy_wallet":"GET /v1/economy/wallet","economy_transfer":"POST /v1/economy/transfer","marketplace":"GET|POST /v1/marketplace/listings","marketplace_purchase":"POST /v1/marketplace/purchase","assets":"GET|POST /v1/assets","asset_transfer":"POST /v1/assets/transfer","inventory":"GET /v1/inventory","admin_roles":"GET|POST /v1/admin/roles","admin_moderation":"GET|POST /v1/admin/moderation","estates":"GET|POST /v1/estates","landmarks":"GET|POST /v1/landmarks","notifications":"GET /v1/notifications","group_channel":"GET|POST /v1/groups/{id}/channel","metrics":"GET /metrics","admin_audit":"GET /v1/admin/audit","hypergrid_info":"GET /v1/hypergrid/info","hypergrid_travel_issue":"POST /v1/hypergrid/travel/issue","hypergrid_travel_prepare":"POST /v1/hypergrid/travel/prepare","hypergrid_return":"POST /v1/hypergrid/travel/return","hypergrid_im_send":"POST /v1/hypergrid/im/send","federation_info":"GET /v1/federation/info","federation_issue":"POST /v1/federation/travel/issue","federation_accept":"POST /v1/federation/travel/accept","federation_service_profile":"POST /v1/federation/service/profile","federation_service_appearance":"POST /v1/federation/service/appearance","federation_service_inventory":"POST /v1/federation/service/inventory","federation_service_asset":"POST /v1/federation/service/asset","federation_service_social":"POST /v1/federation/service/social","federation_service_presence":"POST /v1/federation/service/presence","federation_service_grants":"GET /v1/federation/service-grants","register":"POST /v1/auth/register","login":"POST /v1/auth/login","me":"GET /v1/auth/me","logout":"POST /v1/auth/logout"}})JSON";
                 } else if (method == "GET" && path == "/v1/release") {
                     response.body =
                         "{\"release_contract\":\"ogl-release-v1\",\"server_version\":\"" +
@@ -636,6 +636,145 @@ void AdminHttpServer::run() {
                                 std::to_string(travel.expires_unix) + "}";
                         } catch (const std::exception&) {
                             response = {.status = 400, .body = "{\"error\":\"hypergrid-travel-issue-failed\"}"};
+                        }
+                    }
+                } else if (method == "POST" && path == "/v1/hypergrid/travel/prepare") {
+                    auto [session, user] = auth();
+                    const auto destination =
+                        json_string(request->body, "destination_gatekeeper");
+                    const auto region_name =
+                        json_string(request->body, "region_name");
+                    const auto client_ip =
+                        json_string(request->body, "client_ip");
+                    const auto start_x =
+                        json_number(request->body, "x").value_or(128.0);
+                    const auto start_y =
+                        json_number(request->body, "y").value_or(128.0);
+                    const auto start_z =
+                        json_number(request->body, "z").value_or(25.0);
+                    if (!session || !user) {
+                        response = {.status = 401,
+                                    .body = "{\"error\":\"invalid-session\"}"};
+                    } else if (!hypergrid_service_->enabled()) {
+                        response = {.status = 503,
+                                    .body = "{\"error\":\"hypergrid-disabled\"}"};
+                    } else if (!destination || destination->empty() ||
+                               !region_name || region_name->empty() ||
+                               !client_ip || client_ip->empty()) {
+                        response = {
+                            .status = 400,
+                            .body =
+                                "{\"error\":\"invalid-hypergrid-travel-fields\"}"};
+                    } else if (start_x < 0.0 || start_x > 4096.0 ||
+                               start_y < 0.0 || start_y > 4096.0 ||
+                               start_z < -4096.0 || start_z > 65536.0) {
+                        response = {
+                            .status = 400,
+                            .body =
+                                "{\"error\":\"invalid-hypergrid-start-position\"}"};
+                    } else {
+                        compat::hypergrid::HypergridGatekeeperClient client;
+                        std::string reason;
+                        const auto legacy_user_id =
+                            compat::hypergrid::legacy_uuid_from_seed(user->id);
+                        const auto remote = client.link_region(
+                            *destination, *region_name, reason);
+                        if (!remote) {
+                            response = {
+                                .status = 502,
+                                .body =
+                                    "{\"error\":\"hypergrid-region-resolution-failed\","
+                                    "\"reason\":\"" + json_escape(reason) + "\"}"};
+                        } else {
+                            try {
+                                const auto travel =
+                                    hypergrid_sessions_->issue_home_travel(
+                                        user->id, legacy_user_id, *destination,
+                                        *client_ip);
+                                std::string first = user->display_name;
+                                std::string last = "Resident";
+                                const auto split = first.find(' ');
+                                if (split != std::string::npos) {
+                                    last = first.substr(split + 1);
+                                    first.resize(split);
+                                }
+                                compat::hypergrid::OutboundAgentRequest outbound{
+                                    .agent_id = travel.user_id,
+                                    .session_id = travel.session_id,
+                                    .secure_session_id =
+                                        travel.secure_session_id,
+                                    .service_session_id =
+                                        travel.service_token,
+                                    .first_name = first,
+                                    .last_name = last,
+                                    .client_ip = travel.client_ip,
+                                    .caps_path = travel.caps_path,
+                                    .circuit_code = travel.circuit_code,
+                                    .start_x = start_x,
+                                    .start_y = start_y,
+                                    .start_z = start_z,
+                                    .teleport_flags = 0U};
+                                const auto remote_result =
+                                    client.create_agent(
+                                        *remote,
+                                        hypergrid_service_->config(),
+                                        outbound);
+                                if (!remote_result.success) {
+                                    response = {
+                                        .status = 502,
+                                        .body =
+                                            "{\"error\":\"hypergrid-remote-agent-rejected\","
+                                            "\"session_id\":\"" +
+                                            json_escape(travel.session_id) +
+                                            "\",\"reason\":\"" +
+                                            json_escape(remote_result.reason) +
+                                            "\"}"};
+                                } else {
+                                    response.status = 201;
+                                    response.body =
+                                        "{\"status\":\"remote-agent-created\","
+                                        "\"agent_id\":\"" +
+                                        json_escape(travel.user_id) +
+                                        "\",\"session_id\":\"" +
+                                        json_escape(travel.session_id) +
+                                        "\",\"secure_session_id\":\"" +
+                                        json_escape(travel.secure_session_id) +
+                                        "\",\"service_session_id\":\"" +
+                                        json_escape(travel.service_token) +
+                                        "\",\"caps_path\":\"" +
+                                        json_escape(travel.caps_path) +
+                                        "\",\"circuit_code\":" +
+                                        std::to_string(travel.circuit_code) +
+                                        ",\"destination\":{\"uuid\":\"" +
+                                        json_escape(remote->region_id) +
+                                        "\",\"name\":\"" +
+                                        json_escape(remote->name) +
+                                        "\",\"server_uri\":\"" +
+                                        json_escape(remote->server_uri) +
+                                        "\",\"host\":\"" +
+                                        json_escape(remote->host) +
+                                        "\",\"http_port\":" +
+                                        std::to_string(remote->http_port) +
+                                        ",\"internal_port\":" +
+                                        std::to_string(remote->internal_port) +
+                                        ",\"x\":" +
+                                        std::to_string(remote->x) +
+                                        ",\"y\":" +
+                                        std::to_string(remote->y) +
+                                        ",\"size_x\":" +
+                                        std::to_string(remote->size_x) +
+                                        ",\"size_y\":" +
+                                        std::to_string(remote->size_y) +
+                                        "},\"caller_ip\":\"" +
+                                        json_escape(remote_result.caller_ip) +
+                                        "\"}";
+                                }
+                            } catch (const std::exception&) {
+                                response = {
+                                    .status = 400,
+                                    .body =
+                                        "{\"error\":\"hypergrid-travel-prepare-failed\"}"};
+                            }
                         }
                     }
                 } else if (method == "POST" && path == "/v1/hypergrid/travel/return") {
