@@ -10,7 +10,11 @@ namespace opengenesis::compat::hypergrid {
 struct ForeignAgentCircuit {
     std::string agent_id;
     std::string session_id;
+    std::string secure_session_id;
     std::string service_session_id;
+    std::string caps_path;
+    std::string base_folder;
+    std::string inventory_folder;
     std::string first_name;
     std::string last_name;
     std::string home_uri;
@@ -23,6 +27,9 @@ struct ForeignAgentCircuit {
     std::string channel;
     std::string mac;
     std::string id0;
+    std::string start_pos;
+    bool child{false};
+    std::uint32_t circuit_code{0};
     std::string destination_uuid;
     std::string destination_name;
     std::int32_t destination_x{0};
