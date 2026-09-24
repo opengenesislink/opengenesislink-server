@@ -25,6 +25,9 @@ struct HomeTravelSession {
     std::string destination_gatekeeper;
     std::string service_token;
     std::string client_ip;
+    std::string secure_session_id;
+    std::string caps_path;
+    std::uint32_t circuit_code{0};
     TravelState state{TravelState::active};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
