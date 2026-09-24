@@ -237,7 +237,7 @@ _,_,raw=api('/v1/hypergrid/sessions',admin=True); hgs=json.loads(raw); assert hg
 st,body=hg_xml('get_server_urls',{}); assert st==200 and 'SRV_InventoryServerURI' in body and 'SRV_AvatarServerURI' in body and 'SRV_IMServerURI' in body
 st,body=hg_form('/xinventory',{'METHOD':'GETROOTFOLDER','PRINCIPAL':hgtravel['agent_id']}); assert st==200 and '<folder type="List">' in body
 import re
-root_match=re.search(r'<ID>([0-9a-fA-F-]{36})</ID>',body); assert root_match
+root_match=re.search(r'<ID>([0-9a-fA-F-]{36})</ID>',body); assert root_match,body
 hg_root=root_match.group(1)
 hg_folder='55555555-5555-4555-8555-555555555555'
 st,body=hg_form('/xinventory',{'SERVICEKEY':'smoke-xinventory-service-secret-123456','METHOD':'ADDFOLDER','ParentID':hg_root,'Type':'-1','Version':'1','Name':'HG Smoke Folder','Owner':hgtravel['agent_id'],'ID':hg_folder}); assert st==200 and '<RESULT>True</RESULT>' in body
