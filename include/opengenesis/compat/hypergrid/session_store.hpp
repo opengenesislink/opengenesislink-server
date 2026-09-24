@@ -47,6 +47,13 @@ struct ForeignVisitorSession {
     std::string first_name;
     std::string last_name;
     std::string client_ip;
+    std::string secure_session_id;
+    std::string caps_path;
+    std::string base_folder;
+    std::string inventory_folder;
+    std::string start_pos;
+    std::uint32_t circuit_code{0};
+    std::uint32_t teleport_flags{0};
     bool verified{false};
     std::int64_t created_unix{0};
     std::int64_t expires_unix{0};
