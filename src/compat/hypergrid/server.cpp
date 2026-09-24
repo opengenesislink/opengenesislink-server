@@ -390,6 +390,13 @@ void HypergridServer::run() {
                         .first_name = circuit->first_name,
                         .last_name = circuit->last_name,
                         .client_ip = circuit->client_ip,
+                        .secure_session_id = circuit->secure_session_id,
+                        .caps_path = circuit->caps_path,
+                        .base_folder = circuit->base_folder,
+                        .inventory_folder = circuit->inventory_folder,
+                        .start_pos = circuit->start_pos,
+                        .circuit_code = circuit->circuit_code,
+                        .teleport_flags = circuit->teleport_flags,
                         .verified = true,
                         .created_unix = now,
                         .expires_unix = now + 1800};
