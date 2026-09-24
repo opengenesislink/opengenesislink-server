@@ -2,6 +2,7 @@
 
 #include "opengenesis/common/log.hpp"
 #include "opengenesis/compat/hypergrid/agent_circuit.hpp"
+#include "opengenesis/compat/hypergrid/http_client.hpp"
 #include "opengenesis/compat/hypergrid/xmlrpc.hpp"
 
 #include <chrono>
@@ -152,6 +153,53 @@ bool same_uri(std::string left, std::string right) {
     return left == right;
 }
 
+struct AgentRoute {
+    std::string agent_id;
+    std::string region_id;
+    std::string action;
+};
+
+std::optional<AgentRoute> parse_agent_route(std::string_view raw_path) {
+    const auto query = raw_path.find('?');
+    const auto path = raw_path.substr(0, query);
+    constexpr std::string_view prefix = "/agent/";
+    if (!path.starts_with(prefix)) return std::nullopt;
+    auto rest = path.substr(prefix.size());
+    while (!rest.empty() && rest.back() == '/') rest.remove_suffix(1);
+    if (rest.empty()) return std::nullopt;
+
+    AgentRoute route;
+    const auto first = rest.find('/');
+    route.agent_id = std::string{rest.substr(0, first)};
+    if (first == std::string_view::npos) return route;
+    rest.remove_prefix(first + 1);
+    const auto second = rest.find('/');
+    route.region_id = std::string{rest.substr(0, second)};
+    if (second != std::string_view::npos) {
+        rest.remove_prefix(second + 1);
+        route.action = std::string{rest};
+    }
+    return route;
+}
+
+std::string simulation_access_response(bool success, std::string_view reason) {
+    return "{\"success\":" + std::string(success ? "true" : "false") +
+           ",\"reason\":\"" + json_escape(reason) +
+           "\",\"version\":\"SIMULATION/0.8\","
+           "\"negotiated_inbound_version\":0.8,"
+           "\"negotiated_outbound_version\":0.8,"
+           "\"features\":[]}";
+}
+
+void notify_home_logout(const ForeignVisitorSession& visitor) {
+    if (visitor.home_uri.empty()) return;
+    const auto body = xmlrpc_struct_call(
+        "logout_agent",
+        {{"userID", visitor.agent_id}, {"sessionID", visitor.session_id}});
+    std::string ignored;
+    (void)http_request(visitor.home_uri, "POST", "text/xml", body, {}, ignored);
+}
+
 std::unordered_map<std::string, std::string> home_method(
     const XmlRpcCall& call,
     HypergridSessionStore& sessions) {
@@ -277,6 +325,63 @@ void HypergridServer::run() {
                 if (request->method == "GET" && request->path.starts_with("/assets/")) {
                     const auto legacy = assets_->handle_get(request->path);
                     send_response(client, legacy.status, legacy.content_type, legacy.body);
+                    platform::close_socket(client);
+                    continue;
+                }
+
+                if (request->path.starts_with("/agent/")) {
+                    const auto route = parse_agent_route(request->path);
+                    if (!route || route->agent_id.empty()) {
+                        send_response(client, 404, "application/json",
+                                      "{\"success\":false,\"reason\":\"invalid-agent-route\"}");
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (request->method == "QUERYACCESS") {
+                        const auto region =
+                            service_->region_by_legacy_uuid(route->region_id);
+                        const bool available =
+                            region && region->state == "online";
+                        send_response(
+                            client, 200, "application/json",
+                            simulation_access_response(
+                                available,
+                                available ? "" : "destination region unavailable"));
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (request->method == "PUT") {
+                        const auto visitor =
+                            sessions_->foreign_by_agent(route->agent_id);
+                        const bool accepted =
+                            visitor && visitor->verified &&
+                            (route->region_id.empty() ||
+                             service_->region_by_legacy_uuid(route->region_id)
+                                 .has_value());
+                        send_response(client, 200, "application/json",
+                                      accepted ? "True" : "False");
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    if (request->method == "DELETE") {
+                        const auto visitor =
+                            sessions_->foreign_by_agent(route->agent_id);
+                        if (visitor) {
+                            notify_home_logout(*visitor);
+                            (void)sessions_->logout_foreign(
+                                visitor->session_id);
+                        }
+                        send_response(client, 200, "text/plain",
+                                      "OpenSim agent " + route->agent_id);
+                        platform::close_socket(client);
+                        continue;
+                    }
+
+                    send_response(client, 405, "application/json",
+                                  "{\"success\":false,\"reason\":\"method-not-allowed\"}");
                     platform::close_socket(client);
                     continue;
                 }
