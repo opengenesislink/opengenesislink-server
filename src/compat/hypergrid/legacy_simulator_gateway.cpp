@@ -6,6 +6,7 @@
 #include <chrono>
 #include <cstring>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <utility>
 
@@ -20,6 +21,21 @@ std::string numeric_host(const sockaddr* address,
         return {};
     }
     return host;
+}
+
+std::array<float, 3> parse_start_position(std::string text) {
+    std::array<float, 3> value{128.0F, 128.0F, 25.0F};
+    for (char& c : text) {
+        if (c == '<' || c == '>' || c == ',') c = ' ';
+    }
+    std::istringstream input{text};
+    float x = value[0];
+    float y = value[1];
+    float z = value[2];
+    if (input >> x >> y >> z) {
+        value = {x, y, z};
+    }
+    return value;
 }
 
 std::uint16_t numeric_port(const sockaddr* address) {
@@ -151,6 +167,23 @@ LegacyDatagramResult LegacyCircuitRouter::handle(
         result.kind = LegacyDatagramKind::use_circuit;
         result.session_id = visitor->session_id;
         maybe_ack();
+
+        std::uint32_t sequence = 0U;
+        {
+            std::scoped_lock lock(mutex_);
+            sequence = server_sequence_++;
+        }
+        result.replies.push_back(
+            lludp::build_region_handshake(
+                sequence,
+                {.region_id =
+                     HypergridService::legacy_region_uuid(region->id),
+                 .region_name = region->name,
+                 .region_handle =
+                     HypergridService::legacy_region_handle(
+                         region->grid_x, region->grid_y),
+                 .water_height = 20.0F,
+                 .sim_access = 21U}));
         return result;
     }
 
@@ -176,12 +209,53 @@ LegacyDatagramResult LegacyCircuitRouter::handle(
             return result;
         }
         it->second.state = LegacyCircuitState::movement_completed;
+        const auto binding = it->second;
+        const auto sequence = server_sequence_++;
+        lock.~scoped_lock();
+
         result.kind = LegacyDatagramKind::complete_movement;
         result.session_id = movement->session_id;
         if (header->reliable) {
             result.replies.push_back(
                 lludp::build_packet_ack(header->sequence));
         }
+
+        const auto visitor =
+            sessions_->foreign(movement->session_id);
+        const auto region =
+            visitor ? service_->region(visitor->destination_region)
+                    : std::nullopt;
+        if (!visitor || !region) {
+            result.kind = LegacyDatagramKind::rejected;
+            result.reason =
+                "legacy-movement-region-state-missing";
+            result.replies.clear();
+            return result;
+        }
+        const auto position =
+            parse_start_position(visitor->start_pos);
+        const auto now =
+            std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::system_clock::now().time_since_epoch())
+                .count();
+        result.replies.push_back(
+            lludp::build_agent_movement_complete(
+                sequence,
+                {.agent_id = movement->agent_id,
+                 .session_id = movement->session_id,
+                 .x = position[0],
+                 .y = position[1],
+                 .z = position[2],
+                 .look_x = 0.0F,
+                 .look_y = 1.0F,
+                 .look_z = 0.0F,
+                 .region_handle =
+                     HypergridService::legacy_region_handle(
+                         region->grid_x, region->grid_y),
+                 .timestamp = static_cast<std::uint32_t>(
+                     std::max<std::int64_t>(0, now)),
+                 .channel_version =
+                     "OpenGenesisLINK Hypergrid"}));
         return result;
     }
 
