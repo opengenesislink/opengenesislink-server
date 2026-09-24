@@ -246,9 +246,14 @@ std::optional<ForeignVisitorSession> HypergridSessionStore::foreign_by_agent(
 std::optional<ForeignVisitorSession> HypergridSessionStore::foreign_by_caps_path(
     const std::string_view caps_path) const {
     std::scoped_lock lock(mutex_);
+    const auto now = unix_now();
     for (const auto& [key, session] : foreign_) {
         (void)key;
-        if (session.caps_path == caps_path) return session;
+        if (session.caps_path == caps_path &&
+            session.verified &&
+            session.expires_unix > now) {
+            return session;
+        }
     }
     return std::nullopt;
 }
