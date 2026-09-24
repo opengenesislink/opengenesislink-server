@@ -4,6 +4,8 @@
 #include <array>
 #include <charconv>
 #include <cctype>
+#include <bit>
+#include <cstring>
 
 namespace opengenesis::compat::hypergrid::lludp {
 namespace {
@@ -41,6 +43,47 @@ void append_u32_le(std::vector<std::uint8_t>& out, const std::uint32_t value) {
     out.push_back(static_cast<std::uint8_t>((value >> 8U) & 0xffU));
     out.push_back(static_cast<std::uint8_t>((value >> 16U) & 0xffU));
     out.push_back(static_cast<std::uint8_t>((value >> 24U) & 0xffU));
+}
+
+void append_u16_le(std::vector<std::uint8_t>& out, const std::uint16_t value) {
+    out.push_back(static_cast<std::uint8_t>(value & 0xffU));
+    out.push_back(static_cast<std::uint8_t>((value >> 8U) & 0xffU));
+}
+
+void append_u64_le(std::vector<std::uint8_t>& out, const std::uint64_t value) {
+    for (unsigned shift = 0U; shift < 64U; shift += 8U) {
+        out.push_back(static_cast<std::uint8_t>((value >> shift) & 0xffU));
+    }
+}
+
+void append_f32_le(std::vector<std::uint8_t>& out, const float value) {
+    const auto bits = std::bit_cast<std::uint32_t>(value);
+    append_u32_le(out, bits);
+}
+
+bool append_uuid(std::vector<std::uint8_t>& out, const std::string_view uuid) {
+    const auto bytes = uuid_to_network_bytes(uuid);
+    if (!bytes) return false;
+    out.insert(out.end(), bytes->begin(), bytes->end());
+    return true;
+}
+
+void append_zero_uuid(std::vector<std::uint8_t>& out) {
+    out.insert(out.end(), 16U, 0U);
+}
+
+void append_variable1(std::vector<std::uint8_t>& out, const std::string_view text) {
+    const auto size = static_cast<std::uint8_t>(
+        std::min<std::size_t>(text.size(), 255U));
+    out.push_back(size);
+    out.insert(out.end(), text.begin(), text.begin() + size);
+}
+
+void append_variable2(std::vector<std::uint8_t>& out, const std::string_view text) {
+    const auto size = static_cast<std::uint16_t>(
+        std::min<std::size_t>(text.size(), 65535U));
+    append_u16_le(out, size);
+    out.insert(out.end(), text.begin(), text.begin() + size);
 }
 
 std::vector<std::uint8_t> low_header(const std::uint8_t flags,
@@ -278,6 +321,94 @@ std::vector<std::uint8_t> zero_encode(
         }
     }
     flush();
+    return out;
+}
+
+std::optional<std::vector<std::uint8_t>> zero_decode(
+    const std::span<const std::uint8_t> packet,
+    std::string& reason) {
+    if (packet.size() < 6U) {
+        reason = "legacy-udp-zero-packet-too-short";
+        return std::nullopt;
+    }
+    std::vector<std::uint8_t> out;
+    out.reserve(packet.size() * 2U);
+    out.insert(out.end(), packet.begin(), packet.begin() + 6);
+    for (std::size_t i = 6U; i < packet.size(); ++i) {
+        if (packet[i] != 0U) {
+            out.push_back(packet[i]);
+            continue;
+        }
+        if (++i >= packet.size() || packet[i] == 0U) {
+            reason = "legacy-udp-zero-run-invalid";
+            return std::nullopt;
+        }
+        out.insert(out.end(), packet[i], 0U);
+        if (out.size() > 1024U * 1024U) {
+            reason = "legacy-udp-zero-output-too-large";
+            return std::nullopt;
+        }
+    }
+    if (!out.empty()) out[0] &= static_cast<std::uint8_t>(~kZerocoded);
+    reason.clear();
+    return out;
+}
+
+std::vector<std::uint8_t> build_region_handshake(
+    const std::uint32_t sequence,
+    const RegionHandshakeInfo& info) {
+    // RegionHandshake is Low 148, reliable and zero-coded.
+    auto raw = low_header(kReliable | kZerocoded, sequence, 148U);
+    append_u32_le(raw, 0U); // RegionFlags
+    raw.push_back(info.sim_access);
+    append_variable1(raw, info.region_name);
+    append_zero_uuid(raw); // SimOwner
+    raw.push_back(0U); // IsEstateManager
+    append_f32_le(raw, info.water_height);
+    append_f32_le(raw, 0.0F); // BillableFactor
+    append_zero_uuid(raw); // CacheID
+
+    // TerrainBase0..3 + TerrainDetail0..3.
+    for (int index = 0; index < 8; ++index) append_zero_uuid(raw);
+
+    // TerrainStartHeight00/01/10/11.
+    for (int index = 0; index < 4; ++index) append_f32_le(raw, 0.0F);
+    // TerrainHeightRange00/01/10/11.
+    for (int index = 0; index < 4; ++index) append_f32_le(raw, 20.0F);
+
+    if (!append_uuid(raw, info.region_id)) return {};
+    append_u32_le(raw, 0U); // CPUClassID
+    append_u32_le(raw, 0U); // CPURatio
+    append_variable1(raw, "OpenGenesisLINK");
+    append_variable1(raw, "OGL-HG");
+    append_variable1(raw, "OpenGenesisLINK Hypergrid");
+
+    // RegionInfo4 variable block count, followed by its two U64 fields.
+    raw.push_back(1U);
+    append_u64_le(raw, 0U); // RegionFlagsExtended
+    append_u64_le(raw, 0U); // RegionProtocols
+
+    return zero_encode(raw);
+}
+
+std::vector<std::uint8_t> build_agent_movement_complete(
+    const std::uint32_t sequence,
+    const AgentMovementInfo& info) {
+    // AgentMovementComplete is Low 250 and unencoded.
+    auto out = low_header(0U, sequence, 250U);
+    if (!append_uuid(out, info.agent_id) ||
+        !append_uuid(out, info.session_id)) {
+        return {};
+    }
+    append_f32_le(out, info.x);
+    append_f32_le(out, info.y);
+    append_f32_le(out, info.z);
+    append_f32_le(out, info.look_x);
+    append_f32_le(out, info.look_y);
+    append_f32_le(out, info.look_z);
+    append_u64_le(out, info.region_handle);
+    append_u32_le(out, info.timestamp);
+    append_variable2(out, info.channel_version);
     return out;
 }
 
