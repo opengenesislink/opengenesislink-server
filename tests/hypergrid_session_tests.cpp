@@ -39,9 +39,10 @@ int main() {
                 "service token bound to destination");
         require(travel.secure_session_id.size() == 36,
                 "secure session UUID generated");
-        require(travel.caps_path.starts_with("CAPS/") &&
-                    travel.caps_path.ends_with("/"),
-                "legacy CAPS seed path generated");
+        require(travel.caps_path.size() == 36U &&
+                    travel.caps_path[8] == '-' &&
+                    travel.caps_path[13] == '-',
+                "OpenSim CAPS object path UUID generated");
         require(travel.circuit_code != 0U,
                 "legacy circuit code generated");
         require(sessions.verify_agent(travel.session_id, travel.service_token),
